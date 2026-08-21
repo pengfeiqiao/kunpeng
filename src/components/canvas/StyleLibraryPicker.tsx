@@ -6,6 +6,14 @@ import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { loadStyleLibrary, type StylePreset, type StyleCategory } from '@/lib/styleLibrary';
 import { loadMidjourneyStyleLibrary, type MidjourneyStylePreset } from '@/lib/midjourney/styles';
 
+/** Bundled web assets (public/) are used as-is; local files go through the asset protocol. */
+function styleThumbSrc(path: string): string {
+  if (/^\/(Users|home|var|private|tmp)\//.test(path) || /^[A-Za-z]:[\\/]/.test(path)) {
+    return convertFileSrc(path);
+  }
+  return path;
+}
+
 export default function StyleLibraryPicker({
   open,
   onClose,
@@ -151,7 +159,13 @@ export default function StyleLibraryPicker({
                 >
                   <div className="w-full aspect-[4/3] rounded-md overflow-hidden bg-[rgba(0,0,0,0.2)]">
                     <img
-                      src={s.thumbnailPath.startsWith('/') ? s.thumbnailPath : convertFileSrc(s.thumbnailPath)}
+                      // Two thumbnail kinds share this picker:
+                      //  - bundled web assets from public/ (e.g. /midjourney-styles/x.jpg)
+                      //    — root-relative web paths, used as-is;
+                      //  - local files (style-library under ~/.kunpeng) — a raw
+                      //    "/Users/..." src 404s against the webview origin, so
+                      //    route those through the asset protocol.
+                      src={styleThumbSrc(s.thumbnailPath)}
                       alt={s.name}
                       className="w-full h-full object-cover"
                     />

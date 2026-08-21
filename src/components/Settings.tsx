@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Key, Eye, EyeOff, Boxes, RotateCcw, ArrowLeft,
   ScrollText, Settings2, Download, Upload, Image as ImageIcon,
-  Film, Sparkles as WandSparkles, Route, Cloud, Database, ChevronDown, ChevronRight, Gauge,
+  Film, Route, Cloud, Database, ChevronDown, ChevronRight, Gauge,
   RefreshCw, Loader2,
 } from 'lucide-react';
 import { useSettingsStore } from '@/stores';
@@ -32,7 +32,6 @@ type TabId =
   | 'credentials'
   | 'images'
   | 'videos'
-  | 'omni'
   | 'usage'
   | 'integrations'
   | 'routes'
@@ -51,11 +50,10 @@ const SETTINGS_TABS: Array<{
   { id: 'models', group: 'AI 服务', label: '语言模型', description: '管理对话与 Agent 使用的模型服务', icon: <Key size={16} /> },
   { id: 'credentials', group: 'AI 服务', label: 'API 凭证', description: '密钥的单一事实源，各能力统一引用', icon: <Database size={16} /> },
   { id: 'images', group: 'AI 服务', label: '图片模型', description: '管理生图服务槽位与图片相关密钥', icon: <ImageIcon size={16} /> },
-  { id: 'videos', group: 'AI 服务', label: '视频与语音', description: '管理 Seedance、语音与备用视频服务', icon: <Film size={16} /> },
-  { id: 'omni', group: 'AI 服务', label: 'Omni MG', description: '管理 Omni MG 动画服务密钥', icon: <WandSparkles size={16} /> },
+  { id: 'videos', group: 'AI 服务', label: '视频与语音', description: 'Seedance、MiniMax H3、Omni MG 与豆包语音的统一管理', icon: <Film size={16} /> },
   { id: 'usage', group: 'AI 服务', label: '用量与余额', description: '查看媒体生成服务的剩余额度', icon: <Gauge size={16} /> },
   { id: 'routes', group: 'AI 服务', label: '智能路由', description: '配置模型降级链与生图通道顺序', icon: <Route size={16} /> },
-  { id: 'integrations', group: 'AI 服务', label: '存储与集成', description: 'RunningHub、Kimi 与腾讯云 COS', icon: <Cloud size={16} /> },
+  { id: 'integrations', group: 'AI 服务', label: '存储与集成', description: 'Kimi 剪辑 Agent 与腾讯云 COS', icon: <Cloud size={16} /> },
   { id: 'data', group: '偏好设置', label: '数据与备份', description: '导入或导出鲲鹏设置', icon: <Database size={16} /> },
   { id: 'skills', group: '扩展与诊断', label: '技能库', description: '查看鲲鹏当前可用技能', icon: <Boxes size={16} /> },
   { id: 'logs', group: '扩展与诊断', label: '运行日志', description: '诊断 Agent 与接口问题', icon: <ScrollText size={16} /> },
@@ -178,7 +176,6 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   {activeTab === 'credentials' && <CredentialSettings />}
                   {activeTab === 'images' && <ApiKeysTab section="images" />}
                   {activeTab === 'videos' && <ApiKeysTab section="videos" />}
-                  {activeTab === 'omni' && <ApiKeysTab section="omni" />}
                   {activeTab === 'usage' && <UsageSettings />}
                   {activeTab === 'integrations' && <ApiKeysTab section="integrations" />}
                   {activeTab === 'routes' && (
@@ -441,7 +438,7 @@ function sanitizeSettingsPayload(
   );
 }
 
-type ApiSettingsSection = 'images' | 'videos' | 'omni' | 'integrations' | 'data';
+type ApiSettingsSection = 'images' | 'videos' | 'integrations' | 'data';
 
 function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
   const {
@@ -455,7 +452,8 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
     happyHorseApiKey, setHappyHorseApiKey,
     runninghubApiKey, setRunninghubApiKey,
     kuaiziApiKey, setKuaiziApiKey,
-    useRhtvSeedance, setUseRhtvSeedance,
+    seedanceEngine, setSeedanceEngine,
+    minimaxH3Channel, setMinimaxH3Channel,
     kimiEditModel, setKimiEditModel,
     kimiEditUseCos, setKimiEditUseCos,
     doubaoSpeechApiKey, setDoubaoSpeechApiKey,
@@ -619,7 +617,90 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
 
       {/* 视频生成 */}
       {section === 'videos' && <>
-      <CollapsibleSection title="火山方舟 Seedance" description="Seedance 视频生成服务" defaultOpen={false}>
+      <CollapsibleSection title="视频引擎" description="Seedance 2.0 与 MiniMax H3 的通道选择；画布、工坊、剪辑与普通对话共用" defaultOpen>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Seedance 2.0 通道</label>
+            <div className="flex rounded-md bg-zinc-100 p-0.5">
+              {([
+                { id: 'kuaizi', label: '筷子丽帧（默认）', hint: '默认通道；失败按内置容灾链处理' },
+                { id: 'runninghub', label: 'RunningHub', hint: '改走 RHTV 标准模型端点' },
+                { id: 'ark', label: '火山方舟', hint: '火山引擎方舟官方通道（doubao-seedance-2-0 系列）' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSeedanceEngine(opt.id)}
+                  title={opt.hint}
+                  className={`min-w-[58px] rounded-[5px] px-2.5 py-1.5 text-center text-xs font-medium transition-colors ${
+                    seedanceEngine === opt.id
+                      ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+              默认启用筷子丽帧（用下方「筷子丽帧」的 Key）；RunningHub 用下方「RunningHub」的 Key；火山方舟用下方「火山方舟 Seedance」的 Key（官方通道，按 token 计费，参考视频/音频需公网 URL）。Seedance 2.5 走即梦本地 CLI（免 Key）与筷子丽帧自动容灾，无需选择。
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">MiniMax H3 渠道</label>
+            <div className="flex rounded-md bg-zinc-100 p-0.5">
+              {([
+                { id: 'auto', label: '自动容灾（推荐）', hint: '按近期成功率与延迟自动选路' },
+                { id: 'runninghub', label: 'RunningHub 优先', hint: '优先 RunningHub，失败自动容灾 APIMart' },
+                { id: 'apimart', label: 'APIMart 优先', hint: '优先 APIMart，失败自动容灾 RunningHub' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setMinimaxH3Channel(opt.id)}
+                  title={opt.hint}
+                  className={`min-w-[58px] rounded-[5px] px-2.5 py-1.5 text-center text-xs font-medium transition-colors ${
+                    minimaxH3Channel === opt.id
+                      ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+              H3 在 RunningHub 与 APIMart 双渠道间容灾；积分不足/认证失败等不扣费错误会自动切换渠道（两个 Key 分别在下方「RunningHub」与「Omni MG 渠道 → APIMart」配置）。
+            </p>
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="筷子丽帧" description="Seedance 2.0 默认视频通道" defaultOpen={false}>
+            <KeyInputRow
+              label="API Key"
+              hint="筷子丽帧 Seedance 2.0 / 2.5 视频生成（Seedance 2.0 默认通道）"
+              value={rk('kuaizi', kuaiziApiKey)}
+              onChange={setKuaiziApiKey}
+              show={showKeys.has('kuaizi')}
+              onToggleShow={() => toggleShow('kuaizi')}
+              placeholder="输入筷子丽帧 API Key..."
+            />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="RunningHub" description="RunningHub 多媒体生成（MiniMax H3 渠道、视频/图片/音频/3D/AI应用）" defaultOpen={false}>
+        <KeyInputRow
+          label="RunningHub API Key"
+          hint="runninghub.cn 企业 API Key；MiniMax H3 的渠道之一"
+          value={rk('runninghub', runninghubApiKey)}
+          onChange={setRunninghubApiKey}
+          show={showKeys.has('runninghub')}
+          onToggleShow={() => toggleShow('runninghub')}
+          placeholder="输入 RunningHub API Key..."
+        />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="火山方舟 Seedance" description="Seedance 视频生成服务（含 Seedance 2.5 / Seedream 5.0 模型目录）" defaultOpen={false}>
           <KeyInputRow
             label="火山方舟 API Key"
             hint="Seedance 视频生成 (ark.cn-beijing.volces.com)"
@@ -732,84 +813,45 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
             </div>
       </CollapsibleSection>
 
-      <CollapsibleSection title="筷子丽帧" description="Seedance 2.0 默认视频通道" defaultOpen={false}>
+      {/* Omni MG 渠道（并入视频与语音统一管理） */}
+      <CollapsibleSection title="Omni MG 渠道" description="MG 动画与视频包装，默认按 ZexAPI → ZeroFall → APIMart 依次容灾（10s / 720p）" defaultOpen={false}>
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-[11px] leading-relaxed text-zinc-600">
+            这里仅配置密钥，调用顺序由内置智能路由管理。
+          </div>
+          <div className="mt-3 space-y-3">
             <KeyInputRow
-              label="API Key"
-              hint="筷子丽帧 Seedance 2.0 视频生成（默认视频通道）"
-              value={rk('kuaizi', kuaiziApiKey)}
-              onChange={setKuaiziApiKey}
-              show={showKeys.has('kuaizi')}
-              onToggleShow={() => toggleShow('kuaizi')}
-              placeholder="输入筷子丽帧 API Key..."
+              label="ZexAPI / Omni API Key"
+              hint="ZexAPI 低价 10s 第一通道。"
+              value={rk('omni', omniApiKey)}
+              onChange={setOmniApiKey}
+              show={showKeys.has('omni')}
+              onToggleShow={() => toggleShow('omni')}
+              placeholder="输入 ZexAPI / Omni API Key..."
             />
-            <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={useRhtvSeedance}
-                onChange={(e) => setUseRhtvSeedance(e.target.checked)}
-                className="rounded border-zinc-300 text-sky-500 focus:ring-sky-200"
-              />
-              <span className="text-xs text-zinc-500">
-                使用 RunningHub Seedance（默认关闭，启用后视频走 RHTV 而非筷子丽帧）
-              </span>
-            </label>
-      </CollapsibleSection>
-      </>}
-
-      {/* Omni MG 动画 */}
-      {section === 'omni' && <>
-      <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-[11px] leading-relaxed text-zinc-600">
-        默认按 ZexAPI → ZeroFall → APIMart 兼容通道依次尝试 10s / 720p。这里仅配置密钥，调用顺序由内置智能路由管理。
-      </div>
-      <CollapsibleSection title="ZexAPI" description="低价 10s 第一通道" defaultOpen={false}>
-          <KeyInputRow
-            label="ZexAPI / Omni API Key"
-            hint="ZexAPI 低价 10s 第一通道。"
-            value={rk('omni', omniApiKey)}
-            onChange={setOmniApiKey}
-            show={showKeys.has('omni')}
-            onToggleShow={() => toggleShow('omni')}
-            placeholder="输入 ZexAPI / Omni API Key..."
-          />
-      </CollapsibleSection>
-      <CollapsibleSection title="ZeroFall" description="Omni 文生、图生与视频编辑第二通道" defaultOpen={false}>
-          <KeyInputRow
-            label="ZeroFall Omni API Key"
-            hint="第二路由：文生/图生用 omni-flash，视频编辑用 omni-flash-vref，10s / 720p。"
-            value={rk('omniZeroFall', omniZeroFallApiKey)}
-            onChange={setOmniZeroFallApiKey}
-            show={showKeys.has('omni-zerofall')}
-            onToggleShow={() => toggleShow('omni-zerofall')}
-            placeholder="输入 ZeroFall Omni API Key..."
-          />
-          <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">若出现 400，通常是 Google 因违规、版权或真人内容拒绝提示词。</p>
-      </CollapsibleSection>
-      <CollapsibleSection title="APIMart" description="自动检测 api.apimart.ai、apib.ai、aiuxu.com、aishuch.com，选择当前最快健康线路" defaultOpen={false}>
-          <KeyInputRow
-            label="APIMart API Key"
-            hint="同一密钥用于 Omni、Seedream 5 Pro、MiniMax H3 和 Midjourney。画布、工坊、剪辑与普通对话共用内置容灾路由。"
-            value={rk('omniApimart', omniApimartApiKey)}
-            onChange={setOmniApimartApiKey}
-            show={showKeys.has('omni-apimart')}
-            onToggleShow={() => toggleShow('omni-apimart')}
-            placeholder="输入 APIMart API Key..."
-          />
+            <KeyInputRow
+              label="ZeroFall Omni API Key"
+              hint="第二路由：文生/图生用 omni-flash，视频编辑用 omni-flash-vref，10s / 720p。若出现 400，通常是 Google 因违规、版权或真人内容拒绝提示词。"
+              value={rk('omniZeroFall', omniZeroFallApiKey)}
+              onChange={setOmniZeroFallApiKey}
+              show={showKeys.has('omni-zerofall')}
+              onToggleShow={() => toggleShow('omni-zerofall')}
+              placeholder="输入 ZeroFall Omni API Key..."
+            />
+            <KeyInputRow
+              label="APIMart API Key"
+              hint="同一密钥用于 Omni、Seedream 5 Pro、MiniMax H3 和 Midjourney。画布、工坊、剪辑与普通对话共用内置容灾路由。"
+              value={rk('omniApimart', omniApimartApiKey)}
+              onChange={setOmniApimartApiKey}
+              show={showKeys.has('omni-apimart')}
+              onToggleShow={() => toggleShow('omni-apimart')}
+              placeholder="输入 APIMart API Key..."
+            />
+          </div>
       </CollapsibleSection>
       </>}
 
       {/* RunningHub */}
       {section === 'integrations' && <>
-      <CollapsibleSection title="RunningHub" description="RunningHub 多媒体生成（视频/图片/音频/3D/AI应用）">
-        <KeyInputRow
-          label="RunningHub API Key"
-          hint="runninghub.cn 企业 API Key"
-          value={rk('runninghub', runninghubApiKey)}
-          onChange={setRunninghubApiKey}
-          show={showKeys.has('runninghub')}
-          onToggleShow={() => toggleShow('runninghub')}
-          placeholder="输入 RunningHub API Key..."
-        />
-      </CollapsibleSection>
 
       {/* Kimi 剪辑 Agent */}
       <CollapsibleSection title="Kimi 剪辑 Agent" description="参考视频拉片、剪辑计划与成片复盘" defaultOpen={false}>

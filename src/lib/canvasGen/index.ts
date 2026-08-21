@@ -17,6 +17,8 @@
  * before spending money.
  */
 import { useCanvasStore } from '@/stores/canvasStore';
+import { createTask as arkCreateTask, pollUntilDone as arkPollUntilDone, type SeedanceContentItem } from '@/lib/seedance/client';
+import { loadMediaInput } from '@/lib/agent/mediaInput';
 import {
   useCanvasTaskStore,
   MAX_CONCURRENT_CANVAS_TASKS,
@@ -74,6 +76,7 @@ import {
   type ImageRouteModel,
 } from '@/lib/imageRouter/metrics';
 import {
+  isAmbiguousPaidSubmitStatus,
   PaidSubmissionUnknownError,
   PaidTaskCreatedError,
   mustNotAutoResubmit,
@@ -999,8 +1002,23 @@ function isVideoOutputUrl(url: string): boolean {
   return /\.(mp4|mov|webm|m4v|mkv|avi)(?:\?|$)/i.test(url);
 }
 
+type SeedanceEngineChoice = 'kuaizi' | 'runninghub' | 'ark';
+
+function getSeedanceEngineChoice(): SeedanceEngineChoice {
+  const s = useSettingsStore.getState();
+  // v31+ 用引擎选择；老配置（无 seedanceEngine 时）回退到旧布尔。
+  return s.seedanceEngine ?? (s.useRhtvSeedance ? 'runninghub' : 'kuaizi');
+}
+
 function shouldUseKuaiziForSeedance(): boolean {
-  return !useSettingsStore.getState().useRhtvSeedance;
+  return getSeedanceEngineChoice() === 'kuaizi';
+}
+
+/** Seedance 2.0 引擎 id → 火山方舟目录模型 ID（注册表 src/lib/channels/arkModels.ts）。 */
+function arkModelForSeedanceEngine(engineId: string): string {
+  if (engineId === 'seedance-2.0-fast') return 'doubao-seedance-2-0-fast-260128';
+  if (engineId.includes('mini')) return 'doubao-seedance-2-0-mini-260615';
+  return 'doubao-seedance-2-0-260128';
 }
 
 function requestsProviderAutoDuration(req: CoreGenRequest): boolean {
@@ -1346,7 +1364,12 @@ async function runMinimaxH3Generation(req: CoreGenRequest): Promise<CoreGenResul
   const available: MinimaxH3Channel[] = [];
   if (resolveApiKey(settings, 'runninghub', settings.runninghubApiKey).trim()) available.push('runninghub');
   if (hasApimartApiKey()) available.push('apimart');
-  const first = chooseMinimaxH3Channel(available);
+  // 用户在「设置 → 视频与语音」里可以指定 H3 优先渠道；auto 保持按
+  // 健康度/延迟自动选路。失败时仍会容灾到另一个渠道（防止单点不可用）。
+  const pref = settings.minimaxH3Channel ?? 'auto';
+  const first = pref !== 'auto' && available.includes(pref)
+    ? pref
+    : chooseMinimaxH3Channel(available);
   if (!first) {
     return {
       success: false, taskId: '', resultPaths: [], resultUrls: [], engineKind: 'video',
@@ -1404,6 +1427,136 @@ export async function runGeneration(req: CoreGenRequest): Promise<CoreGenResult>
   return runStandardGeneration(req);
 }
 
+// ── Seedance 2.0 via 火山方舟 Ark（contents/generations/tasks）──────────────
+// 参考图内联为 data URI；参考视频/音频仅支持公网 URL（本地文件请先用 COS 中转）。
+async function runArkSeedanceGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
+  const settings = useSettingsStore.getState();
+  if (!resolveApiKey(settings, 'ark', settings.arkApiKey).trim()) {
+    return {
+      success: false, taskId: '', resultPaths: [], resultUrls: [], engineKind: 'video',
+      error: '未配置火山方舟 API Key，请在「设置 → 视频与语音 → 火山方舟 Seedance」中填写。',
+    };
+  }
+  const model = arkModelForSeedanceEngine(req.engineId);
+  const refs = req.referenceUrls ?? [];
+  const videoRefs = req.videoUrls ?? [];
+  const audioRefs = req.audioUrls ?? [];
+  const localVideo = [...videoRefs, ...audioRefs].filter((u) => !/^https?:\/\//i.test(u));
+  if (localVideo.length > 0) {
+    return {
+      success: false, taskId: '', resultPaths: [], resultUrls: [], engineKind: 'video',
+      error: '火山方舟通道的参考视频/音频需要公网 URL；本地文件请先在「存储与集成」配置 COS 中转，或改用筷子丽帧/RunningHub 通道。',
+    };
+  }
+  const taskId = useCanvasTaskStore.getState().addTask({
+    nodeId: req.nodeId ?? '',
+    kind: 'video',
+    engineId: req.engineId,
+    engineLabel: `Seedance 2.0 · 火山方舟`,
+    endpoint: `ark/${model}`,
+    prompt: req.prompt,
+    referenceUrls: refs.length > 0 ? refs : undefined,
+    params: req.params,
+    projectId: req.projectId,
+    workshopShotNo: req.workshopShotNo,
+    workshopShotKind: req.workshopShotKind,
+    workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    inFlight: true,
+  });
+  const ac = new AbortController();
+  taskAborts.set(taskId, ac);
+  try { req.onTaskCreated?.(taskId); } catch { /* callback must not break a paid task */ }
+  const update = (patch: Partial<CanvasTask>) => useCanvasTaskStore.getState().updateTask(taskId, patch);
+  let providerTaskId = '';
+  try {
+    await acquireSlot(taskId);
+    if (ac.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    update({ status: 'uploading', progress: '准备火山方舟参考素材…' });
+    const content: SeedanceContentItem[] = [{ type: 'text', text: req.prompt }];
+    for (const [index, source] of refs.entries()) {
+      const url = /^https?:\/\//i.test(source)
+        ? source
+        : (await loadMediaInput(source)).dataUrl;
+      const role = req.engineId === 'startend-v3.1-pro'
+        ? (index === 0 ? 'first_frame' : 'last_frame')
+        : undefined;
+      content.push({ type: 'image_url', image_url: { url }, ...(role ? { role } : {}) });
+    }
+    for (const url of videoRefs) content.push({ type: 'video_url', video_url: { url } });
+    for (const url of audioRefs) content.push({ type: 'audio_url', audio_url: { url } });
+
+    update({ status: 'running', progress: '火山方舟 Seedance 已提交，等待生成…' });
+    let created;
+    try {
+      created = await arkCreateTask({
+        model,
+        content,
+        duration: typeof req.params?.duration === 'number' ? req.params.duration
+          : Number(req.params?.duration) || undefined,
+        ratio: String(req.params?.ratio ?? req.params?.aspectRatio ?? 'adaptive'),
+        resolution: typeof req.params?.resolution === 'string' ? req.params.resolution : undefined,
+        generate_audio: req.params?.generateAudio !== false,
+      });
+    } catch (submitError) {
+      const message = submitError instanceof Error ? submitError.message : String(submitError);
+      const statusMatch = message.match(/API error: (\d{3})/);
+      const status = statusMatch ? Number(statusMatch[1]) : 0;
+      const lower = message.toLowerCase();
+      // 认证/余额类错误不可能已创建任务（不扣费），可以安全降级或重试；
+      // 408/5xx 可能已创建，按「提交结果未知」处理，禁止盲目重放。
+      const terminal = status === 401 || status === 403
+        || /balance|insufficient|余额|quota/.test(lower);
+      const uncertain = isAmbiguousPaidSubmitStatus(status);
+      update({ status: 'failed', error: message, finishedAt: Date.now() });
+      return {
+        success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video',
+        error: message, providerFailed: terminal, submissionUncertain: uncertain,
+      };
+    }
+    providerTaskId = created.id ?? '';
+    if (!providerTaskId) throw new Error(`火山方舟未返回任务 ID: ${JSON.stringify(created).slice(0, 200)}`);
+    update({ rhTaskId: providerTaskId });
+    const done = await arkPollUntilDone(providerTaskId, (status) => update({ progress: `火山方舟 ${status}` }), 10_000, ac.signal);
+    if (done.status === 'failed') {
+      const detail = done.error?.message || '生成失败';
+      update({ status: 'failed', rhTaskId: providerTaskId, error: detail, finishedAt: Date.now() });
+      return {
+        success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video',
+        error: `火山方舟任务失败: ${detail}`, providerTaskId, providerFailed: true,
+      };
+    }
+    const videoUrl = done.content?.video_url;
+    if (!videoUrl) throw new Error('火山方舟生成完成但没有返回视频地址');
+    update({ status: 'downloading', progress: '生成完成，正在保存视频…', resultUrls: [videoUrl] });
+    const paths = await rhtvDownloadAll([videoUrl], 'video', `ark-${model}`, (progress) => update({ progress }));
+    update({ status: 'succeeded', progress: '完成', resultPaths: paths, resultUrls: [videoUrl], finishedAt: Date.now() });
+    for (const path of paths) {
+      void appendArtifact({ path, type: 'video', engine: `ark/${model}`, prompt: req.prompt, taskId });
+    }
+    return {
+      success: true, taskId, resultPaths: paths,
+      resultUrls: paths.map((path) => convertFileSrc(path)),
+      engineKind: 'video',
+      providerTaskId,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      update({ status: 'failed', error: '已取消', finishedAt: Date.now() });
+      return { success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video', error: '已取消' };
+    }
+    update({ status: 'failed', rhTaskId: providerTaskId || undefined, error: message, finishedAt: Date.now() });
+    return {
+      success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video',
+      error: message, providerTaskId: providerTaskId || undefined,
+    };
+  } finally {
+    taskAborts.delete(taskId);
+    useCanvasTaskStore.getState().updateTask(taskId, { inFlight: false });
+    releaseSlot();
+  }
+}
+
 // ── Core: store-agnostic generation run ──────────────────────────────────────
 async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
   if (req.engineId === DREAMINA_SEEDANCE_25_ENGINE_ID) {
@@ -1422,6 +1575,11 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
     && !requestsProviderAutoDuration(req)
   ) {
     return runKuaiziSeedanceGeneration(req);
+  }
+
+  // 火山方舟通道：用户在「设置 → 视频与语音」选择的 Seedance 2.0 通道。
+  if (isSeedanceVideoEngine(req.engineId) && getSeedanceEngineChoice() === 'ark') {
+    return runArkSeedanceGeneration(req);
   }
 
   const refs = req.referenceUrls ?? [];

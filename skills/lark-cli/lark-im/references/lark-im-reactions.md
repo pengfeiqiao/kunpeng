@@ -120,7 +120,7 @@ lark-cli im reactions list --params '{"message_id":"om_xxx","user_id_type":"open
     }
   ],
   "has_more": true,
-  "page_token": "YhljsPiGfUgnVAg9urvRFd-BvSqRLxxxx"
+  "page_token": "PAGE_TOKEN_EXAMPLE"
 }
 ```
 

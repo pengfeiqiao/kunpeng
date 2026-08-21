@@ -220,6 +220,13 @@ interface SettingsState {
   setKuaiziApiKey: (key: string) => void;
   useRhtvSeedance: boolean;
   setUseRhtvSeedance: (enabled: boolean) => void;
+  /** Seedance 2.0 通道选择：kuaizi=筷子丽帧（默认）；runninghub=RHTV；ark=火山方舟。
+   *  取代旧的 useRhtvSeedance 布尔（v31 迁移保留原选择）。 */
+  seedanceEngine: 'kuaizi' | 'runninghub' | 'ark';
+  setSeedanceEngine: (engine: 'kuaizi' | 'runninghub' | 'ark') => void;
+  /** MiniMax H3 渠道偏好：auto=按健康度自动容灾（默认）；runninghub/apimart=优先该渠道，失败仍容灾另一个。 */
+  minimaxH3Channel: 'auto' | 'runninghub' | 'apimart';
+  setMinimaxH3Channel: (channel: 'auto' | 'runninghub' | 'apimart') => void;
   kimiEditModel: string;
   setKimiEditModel: (model: string) => void;
   kimiEditUseCos: boolean;
@@ -404,6 +411,10 @@ export const useSettingsStore = create<SettingsState>()(
       setKuaiziApiKey: (kuaiziApiKey) => set((s) => ({ kuaiziApiKey, ...mirrorCredentialWrite(s, 'kuaizi', kuaiziApiKey) })),
       useRhtvSeedance: false,
       setUseRhtvSeedance: (useRhtvSeedance) => set({ useRhtvSeedance }),
+      seedanceEngine: 'kuaizi',
+      setSeedanceEngine: (seedanceEngine) => set({ seedanceEngine }),
+      minimaxH3Channel: 'auto',
+      setMinimaxH3Channel: (minimaxH3Channel) => set({ minimaxH3Channel }),
       kimiEditModel: '',
       setKimiEditModel: (kimiEditModel) => set({ kimiEditModel }),
       kimiEditUseCos: true,
@@ -556,7 +567,7 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: LS_KEY,
       storage: createJSONStorage(() => hybridStateStorage),
-      version: 30,
+      version: 31,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Partial<SettingsState>;
         let result = { ...state } as any;
@@ -739,6 +750,13 @@ export const useSettingsStore = create<SettingsState>()(
           result.credentials = migrated.credentials;
           result.credentialRefs = migrated.credentialRefs;
           if (migrated.imageApiSlots) result.imageApiSlots = migrated.imageApiSlots;
+        }
+        if (version <= 30) {
+          // v30 → v31: Seedance 2.0 通道从布尔开关升级为引擎选择，
+          // 保留老用户的原选择；MiniMax H3 渠道偏好默认自动容灾。
+          result.seedanceEngine = result.seedanceEngine
+            ?? (result.useRhtvSeedance ? 'runninghub' : 'kuaizi');
+          result.minimaxH3Channel = result.minimaxH3Channel ?? 'auto';
         }
         // Tier 4 seeds (idempotent)
         result.arkModelsCache = result.arkModelsCache ?? null;
