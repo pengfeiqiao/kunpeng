@@ -11,7 +11,7 @@ import { readBinaryFile } from '@tauri-apps/api/fs';
 import { useSettingsStore, type ImageApiSlot } from '@/stores/settingsStore';
 import { resolveSlotApiKey } from '@/lib/credentials';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
-import { normalizeGptImage2Size, normalizeSeedreamProSize } from './size';
+import { normalizeGptImage2Size, normalizeSeedreamProSize, fitSeedreamProPixelSize } from './size';
 import {
   PaidSubmissionUnknownError,
   PaidTaskCreatedError,
@@ -373,22 +373,9 @@ async function gptImage2ZexapiAsync(
 
 // DMXAPI 的 Seedream 5 Pro 走 /v1/responses，模型 ID 与 Ark 目录不同
 // （官方文档 doc.dmxapi.cn/doubao-seedream-5-0-pro-260628-text-to-image）。
-// 注意：DMXAPI 像素上限 4,194,304，超出直接报错；1K/2K 档位可免像素计算。
+// 像素上限 4,194,304：轻度超限时按比例缩小，缩太狠则退 2K 档位
+// （见 size.ts 的 fitSeedreamProPixelSize）。
 const DMX_SEEDREAM_PRO_MODEL_ID = 'doubao-seedream-5-0-pro-260628';
-const DMX_SEEDREAM_PRO_MAX_PIXELS = 4194304;
-
-/** 像素尺寸压到 DMXAPI 允许的总像素上限内（按比例缩放，取偶数）。 */
-function clampSeedreamProSize(size: string): string {
-  const match = size.toLowerCase().match(/^(\d+)x(\d+)$/);
-  if (!match) return '2K';
-  let w = Number(match[1]);
-  let h = Number(match[2]);
-  if (w * h <= DMX_SEEDREAM_PRO_MAX_PIXELS) return `${w}x${h}`;
-  const scale = Math.sqrt(DMX_SEEDREAM_PRO_MAX_PIXELS / (w * h));
-  w = Math.max(2, Math.floor((w * scale) / 2) * 2);
-  h = Math.max(2, Math.floor((h * scale) / 2) * 2);
-  return `${w}x${h}`;
-}
 
 async function seedreamProDmxapiGen(
   baseUrl: string,
@@ -400,7 +387,7 @@ async function seedreamProDmxapiGen(
   const payload: Record<string, unknown> = {
     model: DMX_SEEDREAM_PRO_MODEL_ID,
     input: prompt,
-    size: clampSeedreamProSize(size),
+    size: fitSeedreamProPixelSize(size) ?? '2K',
     response_format: 'url',
     output_format: 'jpeg',
     watermark: false,

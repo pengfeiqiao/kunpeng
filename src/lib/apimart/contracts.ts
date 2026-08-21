@@ -1,3 +1,5 @@
+import { fitSeedreamProPixelSize } from '../imageGen/size';
+
 export type ApimartTaskKind = 'image' | 'video';
 
 export const APIMART_SEEDREAM_SLOT_ID = 'apimart-seedream-v5-pro';
@@ -155,9 +157,12 @@ export function buildApimartSeedreamPayload(input: {
   const resolutionRaw = String(input.resolution || '2K').toUpperCase();
   const resolution = ['1K', '1.5K', '2K'].includes(resolutionRaw) ? resolutionRaw : '2K';
   const requestedSize = String(input.size || input.aspectRatio || 'auto');
-  const size = SEEDREAM_RATIOS.has(requestedSize) || /^\d{3,5}x\d{3,5}$/i.test(requestedSize)
+  // 像素尺寸受渠道总像素上限约束：轻缩则缩，缩太狠退回 auto
+  // （由 resolution 档位决定输出档位，比例交给模型）。
+  const fittedSize = fitSeedreamProPixelSize(requestedSize);
+  const size = SEEDREAM_RATIOS.has(requestedSize)
     ? requestedSize
-    : 'auto';
+    : (fittedSize && /^\d{3,5}x\d{3,5}$/i.test(fittedSize) ? fittedSize : 'auto');
   const payload: Record<string, unknown> = {
     model: 'seedream-5-0-pro',
     prompt: input.prompt,

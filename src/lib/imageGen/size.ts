@@ -65,3 +65,28 @@ export function normalizeSeedreamProSize(size?: string, aspectRatio?: string, re
   const [w, h] = table[res][String(aspectRatio || '16:9')] ?? table[res]['16:9'];
   return `${w}x${h}`;
 }
+
+/**
+ * Seedream 渠道（DMXAPI / APIMart 等中转）对单次生成的总像素有上限
+ * （DMXAPI 为 4,194,304）。超限时处理分两级：
+ *  - 只需轻度缩小（scale ≥ minScale）→ 按比例缩到上限内（取偶数）；
+ *  - 需要缩得太狠（如 4K 请求）→ 返回 null，调用方退用渠道档位
+ *    （DMXAPI 的 2K tier / APIMart 的 auto），不要交出远小于预期的图。
+ */
+export function fitSeedreamProPixelSize(
+  size: string,
+  opts?: { maxPixels?: number; minScale?: number },
+): string | null {
+  const maxPixels = opts?.maxPixels ?? 4194304;
+  const minScale = opts?.minScale ?? 0.75;
+  const match = size.toLowerCase().match(/^(\d+)x(\d+)$/);
+  if (!match) return size;
+  let w = Number(match[1]);
+  let h = Number(match[2]);
+  if (w * h <= maxPixels) return `${w}x${h}`;
+  const scale = Math.sqrt(maxPixels / (w * h));
+  if (scale < minScale) return null;
+  w = Math.max(2, Math.floor((w * scale) / 2) * 2);
+  h = Math.max(2, Math.floor((h * scale) / 2) * 2);
+  return `${w}x${h}`;
+}
