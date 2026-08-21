@@ -10,7 +10,6 @@ import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { readBinaryFile } from '@tauri-apps/api/fs';
 import { useSettingsStore, type ImageApiSlot } from '@/stores/settingsStore';
 import { resolveSlotApiKey } from '@/lib/credentials';
-import { DEFAULT_ARK_IMAGE_MODEL } from '@/lib/channels/arkModels';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { normalizeGptImage2Size, normalizeSeedreamProSize } from './size';
 import {
@@ -76,10 +75,9 @@ interface EditReference {
   ext: string;
 }
 
-// Seedream 5 Pro 中转模型 ID 收敛到 Ark 注册表默认值（doubao-seedream-5-0-260128）。
-// 历史别名 `doubao-seedream-5-0-pro-260628`（260628 批次）曾经可能有效，
-// 详见 src/lib/channels/arkModels.ts 顶部注释与 09 文档 §4 任务 3。
-const SEEDREAM_PRO_MODEL_ID = DEFAULT_ARK_IMAGE_MODEL;
+// 中转渠道模型 ID 各归各：DMXAPI 用 doubao-seedream-5-0-pro-260628（见其
+// 官方文档，在 seedreamProDmxapiGen 定义）；Ark 官方通道用 Ark 注册表
+// （src/lib/channels/arkModels.ts 的 DEFAULT_ARK_IMAGE_MODEL）。
 
 function getSlots(params: GenerateImageParams | undefined, model: string): ImageApiSlot[] {
   const settings = useSettingsStore.getState();
@@ -373,6 +371,25 @@ async function gptImage2ZexapiAsync(
   }
 }
 
+// DMXAPI 的 Seedream 5 Pro 走 /v1/responses，模型 ID 与 Ark 目录不同
+// （官方文档 doc.dmxapi.cn/doubao-seedream-5-0-pro-260628-text-to-image）。
+// 注意：DMXAPI 像素上限 4,194,304，超出直接报错；1K/2K 档位可免像素计算。
+const DMX_SEEDREAM_PRO_MODEL_ID = 'doubao-seedream-5-0-pro-260628';
+const DMX_SEEDREAM_PRO_MAX_PIXELS = 4194304;
+
+/** 像素尺寸压到 DMXAPI 允许的总像素上限内（按比例缩放，取偶数）。 */
+function clampSeedreamProSize(size: string): string {
+  const match = size.toLowerCase().match(/^(\d+)x(\d+)$/);
+  if (!match) return '2K';
+  let w = Number(match[1]);
+  let h = Number(match[2]);
+  if (w * h <= DMX_SEEDREAM_PRO_MAX_PIXELS) return `${w}x${h}`;
+  const scale = Math.sqrt(DMX_SEEDREAM_PRO_MAX_PIXELS / (w * h));
+  w = Math.max(2, Math.floor((w * scale) / 2) * 2);
+  h = Math.max(2, Math.floor((h * scale) / 2) * 2);
+  return `${w}x${h}`;
+}
+
 async function seedreamProDmxapiGen(
   baseUrl: string,
   apiKey: string,
@@ -381,9 +398,9 @@ async function seedreamProDmxapiGen(
   refs: EditReference[],
 ): Promise<{ b64?: string; url?: string }> {
   const payload: Record<string, unknown> = {
-    model: SEEDREAM_PRO_MODEL_ID,
-    prompt,
-    size,
+    model: DMX_SEEDREAM_PRO_MODEL_ID,
+    input: prompt,
+    size: clampSeedreamProSize(size),
     response_format: 'url',
     output_format: 'jpeg',
     watermark: false,
@@ -391,9 +408,10 @@ async function seedreamProDmxapiGen(
   if (refs.length > 0) {
     payload.image = refs.slice(0, 10).map((ref) => bytesToDataUrl(ref.binary, ref.mime || 'image/png'));
   }
-  const resp = await paidSubmit('DMX Seedream 5 Pro', () => fetch(`${baseUrl}/v1/images/generations`, {
+  const resp = await paidSubmit('DMX Seedream 5 Pro', () => fetch(`${baseUrl}/v1/responses`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    // /v1/responses 的认证头是裸 key（无 Bearer），与 dmxClient.ts 实测一致。
+    headers: { 'Authorization': apiKey, 'Content-Type': 'application/json' },
     body: { type: 'Json', payload },
     responseType: ResponseType.JSON,
     timeout: 300,
