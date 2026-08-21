@@ -1694,7 +1694,7 @@ export function useAgent(options?: { primary?: boolean }) {
               runId,
               apiKey: resolveApiKey(settings, 'provider:deepseek', settings.providerApiKeys.deepseek || ''),
               baseUrl: settings.providerBaseUrls.deepseek || 'https://api.deepseek.com',
-              model: primaryRoute.modelId || settings.providerModels.deepseek || 'deepseek-v4-flash',
+              model: primaryRoute.modelId || settings.providerModels.deepseek || 'deepseek-v4-flash-vision-exp',
               // DSH exposes Kunpeng tools through its MCP bridge with a fixed
               // `mcp__kunpeng__` prefix (upstream naming invariant, cannot be
               // disabled). Kunpeng's own prompts reference bare tool names, so

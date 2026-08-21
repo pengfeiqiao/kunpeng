@@ -5,6 +5,7 @@ const MODEL_WINDOWS: Record<string, number> = {
   'glm-4.6': 128_000,
   'deepseek-v4-pro': 1_000_000,
   'deepseek-v4-flash': 1_000_000,
+  'deepseek-v4-flash-vision-exp': 1_000_000,
   'deepseek-v4': 1_000_000,
   'deepseek-chat': 1_000_000,
   'deepseek-reasoner': 64_000,

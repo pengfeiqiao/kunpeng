@@ -567,7 +567,7 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: LS_KEY,
       storage: createJSONStorage(() => hybridStateStorage),
-      version: 31,
+      version: 32,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Partial<SettingsState>;
         let result = { ...state } as any;
@@ -757,6 +757,13 @@ export const useSettingsStore = create<SettingsState>()(
           result.seedanceEngine = result.seedanceEngine
             ?? (result.useRhtvSeedance ? 'runninghub' : 'kuaizi');
           result.minimaxH3Channel = result.minimaxH3Channel ?? 'auto';
+        }
+        if (version <= 31) {
+          // v31 → v32: DeepSeek 默认模型切换为官方视觉模型
+          // deepseek-v4-flash-vision-exp（2026-08-21 上线，原生识图默认开启）。
+          // 按产品决策覆盖此前的任何 DeepSeek 模型选择。
+          result.providerModels = result.providerModels ?? {};
+          result.providerModels.deepseek = 'deepseek-v4-flash-vision-exp';
         }
         // Tier 4 seeds (idempotent)
         result.arkModelsCache = result.arkModelsCache ?? null;

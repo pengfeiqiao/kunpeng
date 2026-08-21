@@ -87,7 +87,7 @@ export class DeepSeekProvider implements Provider {
 
   constructor(private cfg: DeepSeekConfig) {
     this.baseUrl = cfg.baseUrl || 'https://api.deepseek.com/anthropic';
-    this.defaultModelId = cfg.modelId || (isAnthropicBase(this.baseUrl) ? 'deepseek-v4-pro' : 'deepseek-v4');
+    this.defaultModelId = cfg.modelId || (isAnthropicBase(this.baseUrl) ? DEEPSEEK_VISION_MODEL : 'deepseek-v4');
 
     if (isAnthropicBase(this.baseUrl)) {
       this.anthropicClient = new GLMClient({
