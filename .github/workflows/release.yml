@@ -42,11 +42,19 @@ jobs:
         env:
           CI: true
 
+      - name: 重命名 DMG（GitHub 会剥离中文文件名）
+        run: |
+          cd src-tauri/target/release/bundle/dmg
+          for f in *.dmg; do
+            mv "$f" "$(echo "$f" | sed 's/^鲲鹏_/kunpeng_/')"
+          done
+          ls -la *.dmg
+
       - name: 上传 DMG 到 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/dmg/kunpeng_*.dmg
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
