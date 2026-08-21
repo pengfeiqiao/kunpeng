@@ -50,7 +50,7 @@ function requireKey(): string {
 }
 
 export async function submitApimartTask(input: {
-  path: '/v1/images/generations' | '/v1/videos/generations';
+  path: '/v1/images/generations' | '/v1/videos/generations' | '/v1/music/generations';
   payload: Record<string, unknown>;
   label: string;
   signal?: AbortSignal;
@@ -91,8 +91,10 @@ export async function submitApimartTask(input: {
 
 export async function queryApimartTask(taskId: string, kind: ApimartTaskKind): Promise<ApimartTaskState> {
   const key = requireKey();
+  // Suno 音乐任务走独立查询路由 /v1/music/tasks/{id}，其余走 /v1/tasks/{id}。
+  const taskPath = kind === 'music' ? `/v1/music/tasks/` : `/v1/tasks/`;
   return withApimartGetFailover(key, async (baseUrl) => {
-    const response = await tauriFetch(`${baseUrl}/v1/tasks/${encodeURIComponent(taskId)}`, {
+    const response = await tauriFetch(`${baseUrl}${taskPath}${encodeURIComponent(taskId)}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${key}` },
       responseType: ResponseType.JSON,

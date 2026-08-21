@@ -365,7 +365,12 @@ export default function NodeInfoBar() {
   const [textPrompt, setTextPrompt] = useState('');
   const [panoPrompt, setPanoPrompt] = useState('');
   const [audioPrompt, setAudioPrompt] = useState('');
-  const [audioMode, setAudioMode] = useState<'tts' | 'music' | 'dubbing'>('music');
+  const [audioMode, setAudioMode] = useState<'song' | 'tts' | 'music' | 'dubbing'>('music');
+  const [songVersion, setSongVersion] = useState('v5');
+  const [songTitle, setSongTitle] = useState('');
+  const [songStyle, setSongStyle] = useState('');
+  const [songInstrumental, setSongInstrumental] = useState(false);
+  const [songRewriting, setSongRewriting] = useState(false);
   const [dubbingRefPath, setDubbingRefPath] = useState('');
   const [dubbingGenerating, setDubbingGenerating] = useState(false);
   const [ttsVoice, setTtsVoice] = useState('Wise_Woman');
@@ -1293,13 +1298,20 @@ export default function NodeInfoBar() {
         return;
       }
       const prompt = audioPrompt.trim();
-      if (!prompt) return;
+      if (!prompt && !(audioMode === 'song' && songInstrumental)) return;
       updateNode(node.id, { description: prompt, isGenerating: true });
       const { runGeneration } = await import('@/lib/canvasGen');
-      const engineId = audioMode === 'tts' ? 'minimax-speech' : 'minimax-music';
+      const engineId = audioMode === 'song' ? 'suno-v5' : audioMode === 'tts' ? 'minimax-speech' : 'minimax-music';
       // 实测必传参数（price-preview 验证 2026-06-11）
       const audioParams: Record<string, string | number | boolean> = {};
-      if (audioMode === 'tts') {
+      if (audioMode === 'song') {
+        // Suno（APIMart）：custom 自定义模式，prompt 作歌词
+        audioParams.custom = true;
+        audioParams.version = songVersion;
+        audioParams.instrumental = songInstrumental;
+        if (songTitle.trim()) audioParams.title = songTitle.trim();
+        if (songStyle.trim()) audioParams.style = songStyle.trim();
+      } else if (audioMode === 'tts') {
         audioParams.text = prompt;
         audioParams.voice_id = ttsVoice;
         audioParams.emotion = ttsEmotion;
@@ -1327,10 +1339,32 @@ export default function NodeInfoBar() {
         if (result.error) alert(`音频生成失败: ${result.error}`);
       }
     };
+    const handleSunoRewrite = async () => {
+      const rough = [songStyle.trim(), audioPrompt.trim()].filter(Boolean).join('\n');
+      if (!rough) return;
+      setSongRewriting(true);
+      try {
+        const { quickChat } = await import('@/lib/agent/quickChat');
+        const { SUNO_REWRITE_SYSTEM_PROMPT, parseSunoRewrite } = await import('@/lib/suno/promptTemplate');
+        const text = await quickChat([
+          { role: 'system', content: SUNO_REWRITE_SYSTEM_PROMPT },
+          { role: 'user', content: rough },
+        ]);
+        const draft = parseSunoRewrite(text);
+        if (!draft) throw new Error('改写结果格式无法解析，请重试');
+        setSongStyle(draft.style);
+        setAudioPrompt(draft.lyrics);
+        updateNode(node.id, { description: draft.lyrics });
+      } catch (err) {
+        alert(`提示词改写失败: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setSongRewriting(false);
+      }
+    };
     return (
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 w-[600px] max-w-[92vw] bg-[var(--canvas-panel)] backdrop-blur-sm rounded-2xl border border-[var(--canvas-node-border)] shadow-lg px-3 py-2.5">
         <div className="flex items-center gap-0.5 rounded-lg p-0.5 mb-2 w-fit" style={{ background: 'rgba(255,255,255,0.05)' }}>
-          {([['tts', '配音'], ['music', '纯音乐'], ['dubbing', '台词配音']] as const).map(([m, label]) => (
+          {([['song', '写歌'], ['tts', '配音'], ['music', '纯音乐'], ['dubbing', '台词配音']] as const).map(([m, label]) => (
             <button
               key={m}
               onClick={() => setAudioMode(m)}
@@ -1345,6 +1379,62 @@ export default function NodeInfoBar() {
             </button>
           ))}
         </div>
+        {audioMode === 'song' && (
+          <div className="mb-1.5 space-y-1.5">
+            <div className="flex gap-2">
+              <SelectPill
+                value={songVersion}
+                onChange={setSongVersion}
+                options={[
+                  { value: 'v5.5', label: 'Suno v5.5' },
+                  { value: 'v5', label: 'Suno v5' },
+                  { value: 'v4.5+', label: 'Suno v4.5+' },
+                  { value: 'v4.5', label: 'Suno v4.5' },
+                  { value: 'v4', label: 'Suno v4' },
+                  { value: 'v3.5', label: 'Suno v3.5' },
+                ]}
+                title="Suno 版本（APIMart 通道）"
+              />
+              <button
+                type="button"
+                onClick={() => setSongInstrumental((v) => !v)}
+                className="px-2.5 py-1 rounded-md text-[11px] transition-colors"
+                style={{
+                  background: songInstrumental ? 'rgba(255,255,255,0.12)' : 'transparent',
+                  color: songInstrumental ? 'var(--canvas-text-1)' : 'var(--canvas-text-3)',
+                }}
+                title="纯音乐（无人声）"
+              >
+                纯音乐
+              </button>
+              <div className="flex-1" />
+              <button
+                type="button"
+                disabled={songRewriting || (!audioPrompt.trim() && !songStyle.trim())}
+                onClick={() => void handleSunoRewrite()}
+                className="px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors disabled:opacity-40"
+                style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--canvas-text-1)' }}
+                title="用 AI 把粗略想法改写成专业 Suno 提示词（风格行 + 结构歌词）"
+              >
+                {songRewriting ? '改写中…' : '✨ 提示词改写'}
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={songTitle}
+                onChange={(e) => setSongTitle(e.target.value)}
+                placeholder="歌名（可留空）"
+                className="w-36 px-2 py-1 rounded-lg text-[11px] bg-[rgba(255,255,255,0.04)] border border-[var(--canvas-node-border)] text-[var(--canvas-text-1)] focus:outline-none focus:border-[rgba(255,255,255,0.4)]"
+              />
+              <input
+                value={songStyle}
+                onChange={(e) => setSongStyle(e.target.value)}
+                placeholder="风格标签（流派+情绪+配器+人声+BPM，如：cinematic pop, 史诗感, 弦乐+钢琴, 女声高亢, 92 BPM）"
+                className="flex-1 px-2 py-1 rounded-lg text-[11px] bg-[rgba(255,255,255,0.04)] border border-[var(--canvas-node-border)] text-[var(--canvas-text-1)] focus:outline-none focus:border-[rgba(255,255,255,0.4)]"
+              />
+            </div>
+          </div>
+        )}
         <textarea
           value={audioPrompt}
           onChange={(e) => {
@@ -1356,7 +1446,7 @@ export default function NodeInfoBar() {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleAudioGenerate(); }
             e.stopPropagation();
           }}
-          placeholder={audioMode === 'tts' ? '输入要配音的台词文案（支持中英混合）' : audioMode === 'dubbing' ? '台词配音提示词，如：（压低音量，唏嘘口吻）"他十来岁就当了皇帝。"' : '描述音乐氛围与风格（如：紧张悬疑的电影配乐，弦乐渐强，120BPM…）'}
+          placeholder={audioMode === 'song' ? '歌词（用 [Verse] [Chorus] 结构标记分段；点「提示词改写」可由 AI 代写）' : audioMode === 'tts' ? '输入要配音的台词文案（支持中英混合）' : audioMode === 'dubbing' ? '台词配音提示词，如：（压低音量，唏嘘口吻）"他十来岁就当了皇帝。"' : '描述音乐氛围与风格（如：紧张悬疑的电影配乐，弦乐渐强，120BPM…）'}
           rows={2}
           className="w-full resize-none bg-transparent text-xs text-[var(--canvas-text-1)] focus:outline-none placeholder:text-[var(--canvas-text-3)] leading-relaxed"
         />
@@ -1410,7 +1500,7 @@ export default function NodeInfoBar() {
         )}
         <div className="flex items-center gap-2 mt-1.5">
           <span className="px-2 py-1 rounded-lg text-[11px] bg-[rgba(255,255,255,0.05)] text-[var(--canvas-text-2)]">
-            {audioMode === 'tts' ? 'MiniMax Speech' : audioMode === 'dubbing' ? 'Doubao Seed-Audio' : 'MiniMax Music'}
+            {audioMode === 'song' ? `Suno ${songVersion} · APIMart` : audioMode === 'tts' ? 'MiniMax Speech' : audioMode === 'dubbing' ? 'Doubao Seed-Audio' : 'MiniMax Music'}
           </span>
           {hasAudio && <span className="text-[10px] text-[var(--canvas-text-3)]">已有音频，重新生成将衍生新版本</span>}
           <div className="flex-1" />

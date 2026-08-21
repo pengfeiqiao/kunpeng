@@ -1,10 +1,63 @@
-import { fitSeedreamProPixelSize } from '../imageGen/size';
+import { fitSeedreamProPixelSize } from '../imageGen/size.ts';
 
-export type ApimartTaskKind = 'image' | 'video';
+export type ApimartTaskKind = 'image' | 'video' | 'music';
 
 export const APIMART_SEEDREAM_SLOT_ID = 'apimart-seedream-v5-pro';
 export const APIMART_GPT_IMAGE2_SLOT_ID = 'apimart-gpt-image-2';
 export const APIMART_GPT_IMAGE2_ENDPOINT = 'apimart/gpt-image-2';
+export const APIMART_SUNO_ENDPOINT = 'apimart/suno';
+
+export const APIMART_SUNO_VERSIONS = ['v3.5', 'v4', 'v4.5', 'v4.5+', 'v4.5-all', 'v5', 'v5.5'] as const;
+export type ApimartSunoVersion = (typeof APIMART_SUNO_VERSIONS)[number];
+
+/**
+ * Suno 生成（/v1/music/generations，异步任务，docs.apib.ai/audios/suno）。
+ * custom=false 灵感模式：prompt 作灵感描述，style/title 等自定义字段被静默忽略；
+ * custom=true 自定义模式：prompt 作歌词，style/negative_tags/权重字段生效。
+ * version 两种模式都必填（不传 400）。
+ */
+export function buildApimartSunoPayload(input: {
+  prompt: string;
+  custom?: boolean;
+  instrumental?: boolean;
+  version?: string;
+  title?: string;
+  style?: string;
+  negativeTags?: string;
+  autoLyrics?: boolean;
+  vocalGender?: 'Male' | 'Female';
+  styleWeight?: number;
+  weirdnessConstraint?: number;
+  audioWeight?: number;
+}): Record<string, unknown> {
+  const custom = input.custom ?? true;
+  const version = APIMART_SUNO_VERSIONS.includes(input.version as ApimartSunoVersion)
+    ? input.version as string
+    : 'v5';
+  if (!input.prompt.trim() && !(custom && input.instrumental)) {
+    throw new Error(custom && input.instrumental
+      ? 'Suno 提示词不能为空'
+      : 'Suno 歌词/灵感提示词不能为空');
+  }
+  const payload: Record<string, unknown> = {
+    model: 'suno',
+    custom,
+    instrumental: input.instrumental ?? false,
+    version,
+    prompt: input.prompt,
+  };
+  if (custom) {
+    if (input.title?.trim()) payload.title = input.title.trim();
+    if (input.style?.trim()) payload.style = input.style.trim();
+    if (input.negativeTags?.trim()) payload.negative_tags = input.negativeTags.trim();
+    if (input.autoLyrics !== undefined) payload.auto_lyrics = input.autoLyrics;
+    if (typeof input.styleWeight === 'number') payload.style_weight = input.styleWeight;
+    if (typeof input.weirdnessConstraint === 'number') payload.weirdness_constraint = input.weirdnessConstraint;
+    if (typeof input.audioWeight === 'number') payload.audio_weight = input.audioWeight;
+  }
+  if (input.vocalGender) payload.vocal_gender = input.vocalGender;
+  return payload;
+}
 
 export interface ApimartTaskState {
   status: 'pending' | 'running' | 'succeeded' | 'failed';
@@ -64,7 +117,7 @@ function collectUrls(value: unknown, output: string[]): void {
   if (!value || typeof value !== 'object') return;
   const record = value as Record<string, unknown>;
   for (const [key, child] of Object.entries(record)) {
-    if (/^(url|urls|images?|videos?|files?|outputs?|results?|output_url|image_url|video_url)$/i.test(key)) {
+    if (/^(url|urls|images?|videos?|files?|outputs?|results?|results?|output_url|image_url|video_url|audio_url|music)$/i.test(key)) {
       collectUrls(child, output);
     } else if (key === 'result') {
       collectUrls(child, output);
@@ -89,7 +142,7 @@ export function parseApimartTask(body: unknown, kind: ApimartTaskKind): ApimartT
   if (['success', 'succeeded', 'completed'].includes(rawStatus)) {
     return urls.length > 0
       ? { status: 'succeeded', progress: 100, urls }
-      : { status: 'failed', progress: 100, urls: [], error: error || `APIMart ${kind === 'video' ? '视频' : '图片'}任务已完成但没有返回产物` };
+      : { status: 'failed', progress: 100, urls: [], error: error || `APIMart ${kind === 'video' ? '视频' : kind === 'music' ? '音乐' : '图片'}任务已完成但没有返回产物` };
   }
   if (['failed', 'failure', 'cancelled', 'canceled', 'error'].includes(rawStatus)) {
     return { status: 'failed', progress, urls: [], error: error || 'APIMart 任务失败' };

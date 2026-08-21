@@ -92,7 +92,11 @@ import {
   resolveApimartPublicMedia,
   submitApimartTask,
 } from '@/lib/apimart/client';
-import { buildApimartMinimaxH3Payload } from '@/lib/apimart/contracts';
+import {
+  APIMART_SUNO_ENDPOINT,
+  buildApimartMinimaxH3Payload,
+  buildApimartSunoPayload,
+} from '@/lib/apimart/contracts';
 import {
   chooseMinimaxH3Channel,
   recordMinimaxH3Metric,
@@ -1401,7 +1405,101 @@ async function runMinimaxH3Generation(req: CoreGenRequest): Promise<CoreGenResul
 export async function runGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
   if (isMidjourneyEngine(req.engineId)) return runMidjourneyGeneration(req);
   if (req.engineId === 'minimax-hailuo-h3') return runMinimaxH3Generation(req);
+  if (req.engineId === 'suno-v5' || req.engineId === 'suno') return runSunoGeneration(req);
   return runStandardGeneration(req);
+}
+
+// ── Suno 音乐生成（APIMart /v1/music/generations，2026-08 接回）──────────────
+async function runSunoGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
+  if (!hasApimartApiKey()) {
+    return {
+      success: false, taskId: '', resultPaths: [], resultUrls: [], engineKind: 'audio',
+      error: 'Suno 现在走 APIMart 通道，请在「设置 → 视频与语音 → Omni MG 渠道 → APIMart」中填写 Key。',
+    };
+  }
+  const version = String(req.params?.version ?? 'v5');
+  const taskId = useCanvasTaskStore.getState().addTask({
+    nodeId: req.nodeId ?? '',
+    kind: 'audio',
+    engineId: 'suno-v5',
+    engineLabel: `Suno ${version} · APIMart`,
+    endpoint: APIMART_SUNO_ENDPOINT,
+    prompt: req.prompt,
+    params: req.params,
+    projectId: req.projectId,
+    workshopShotNo: req.workshopShotNo,
+    workshopShotKind: req.workshopShotKind,
+    workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    inFlight: true,
+  });
+  const ac = new AbortController();
+  taskAborts.set(taskId, ac);
+  try { req.onTaskCreated?.(taskId); } catch { /* callback must not break a paid task */ }
+  const update = (patch: Partial<CanvasTask>) => useCanvasTaskStore.getState().updateTask(taskId, patch);
+  let providerTaskId = '';
+  try {
+    await acquireSlot(taskId);
+    if (ac.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    update({ status: 'running', progress: 'Suno 已提交，等待生成…' });
+    providerTaskId = await submitApimartTask({
+      path: '/v1/music/generations',
+      label: 'APIMart Suno',
+      signal: ac.signal,
+      payload: buildApimartSunoPayload({
+        prompt: req.prompt,
+        custom: req.params?.custom !== false && req.params?.custom !== 'false',
+        instrumental: req.params?.instrumental === true || req.params?.instrumental === 'true',
+        version,
+        title: typeof req.params?.title === 'string' ? req.params.title : undefined,
+        style: typeof req.params?.style === 'string' ? req.params.style : undefined,
+        negativeTags: typeof req.params?.negativeTags === 'string' ? req.params.negativeTags : undefined,
+        vocalGender: req.params?.vocalGender === 'Male' || req.params?.vocalGender === 'Female'
+          ? req.params.vocalGender
+          : undefined,
+      }),
+    });
+    update({ rhTaskId: providerTaskId });
+    const state = await pollApimartTask({
+      taskId: providerTaskId,
+      kind: 'music',
+      label: 'APIMart Suno',
+      signal: ac.signal,
+      maxMs: 8 * 60_000,
+      onProgress: (progress) => update({ status: 'running', progress }),
+    });
+    const urls = state.urls.slice(0, 2);
+    if (urls.length === 0) throw new Error('Suno 生成完成但没有返回音频地址');
+    update({ status: 'downloading', progress: '生成完成，正在保存音频…', resultUrls: urls });
+    const paths = await rhtvDownloadAll(urls, 'audio', 'suno', (progress) => update({ progress }));
+    update({ status: 'succeeded', progress: '完成', resultPaths: paths, resultUrls: urls, finishedAt: Date.now() });
+    for (const path of paths) {
+      void appendArtifact({ path, type: 'audio', engine: APIMART_SUNO_ENDPOINT, prompt: req.prompt, taskId });
+    }
+    return {
+      success: true, taskId, resultPaths: paths,
+      resultUrls: paths.map((path) => convertFileSrc(path)),
+      engineKind: 'audio',
+      providerTaskId,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      update({ status: 'failed', error: '已取消', finishedAt: Date.now() });
+      return { success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'audio', error: '已取消' };
+    }
+    if (error instanceof PaidTaskCreatedError) providerTaskId = error.taskId;
+    update({ status: 'failed', rhTaskId: providerTaskId || undefined, error: message, finishedAt: Date.now() });
+    return {
+      success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'audio',
+      error: message,
+      providerTaskId: providerTaskId || undefined,
+      providerFailed: error instanceof ApimartTaskFailedError,
+    };
+  } finally {
+    taskAborts.delete(taskId);
+    useCanvasTaskStore.getState().updateTask(taskId, { inFlight: false });
+    releaseSlot();
+  }
 }
 
 // ── Seedance 2.0 via 火山方舟 Ark（contents/generations/tasks）──────────────
