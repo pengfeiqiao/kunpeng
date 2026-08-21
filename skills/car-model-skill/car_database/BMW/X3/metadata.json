@@ -1,0 +1,30 @@
+{
+  "brand": "BMW",
+  "model": "X3",
+  "full_name": "华晨宝马 X3",
+  "created_at": "2026-02-22 09:55:05",
+  "images": {
+    "body_views": [
+      "body_front.jpg",
+      "body_side.jpg",
+      "body_rear.jpg"
+    ],
+    "details": [
+      "wheel.jpg",
+      "logo.jpg",
+      "sensor_radar.jpg",
+      "lights_front.jpg",
+      "lights_rear.jpg"
+    ]
+  },
+  "showcase": {
+    "bannanapro": "bannanapro_showcase.jpg",
+    "video": [
+      "video_showcase_body.jpg",
+      "video_showcase_lights.jpg",
+      "video_showcase_details.jpg"
+    ]
+  },
+  "status": "completed",
+  "quality_verified": true
+}

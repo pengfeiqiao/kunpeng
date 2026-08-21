@@ -1,0 +1,132 @@
+/**
+ * styleKits/retrofuture — 复古年代族（12 种）。
+ * 每种锚定一个具体年代的印刷/媒介质感：报纸铅字、CRT 荧幕、宝丽来、像素机——
+ * 媒介的物理缺陷（网点/磨损/色偏）正是风格的灵魂。
+ */
+import type { StyleKit } from '../styleKits';
+
+/* eslint-disable max-len */
+
+export const RETRO_KITS: StyleKit[] = [
+  {
+    id: 'newsprint', family: '复古年代', label: '铅字报纸',
+    vibe: '米白报纸底、黑色大标宋、专栏分割线、网点图——新闻体/揭露/怀旧叙事',
+    cssVars: { '--fx-primary': '#efe9dc', '--fx-accent': '#1a1712', '--fx-accent2': '#8c2f24', '--fx-text': '#1a1712', '--fx-surface': 'rgba(26,23,18,0.05)' },
+    fontPairing: 'editorial',
+    bgCss: 'linear-gradient(180deg,#f1ebde 0%,#e9e2d1 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:.9"></div><div style="position:absolute;left:5%;right:5%;top:70px;height:4px;border-top:3px double rgba(26,23,18,.65)"></div><div style="position:absolute;left:5%;right:5%;bottom:76px;height:1.5px;background:rgba(26,23,18,.4)"></div><div style="position:absolute;left:5%;top:34px;font-family:'Noto Serif SC',serif;font-size:17px;letter-spacing:.32em;color:rgba(26,23,18,.6)">DAILY EDITION</div><div style="position:absolute;right:5%;top:34px;font-family:'Noto Serif SC',serif;font-size:16px;color:rgba(26,23,18,.55)">第 1024 期 · ¥0.5</div><div style="position:absolute;left:35%;top:120px;bottom:120px;width:1px;background:rgba(26,23,18,.22)"></div><div style="position:absolute;left:68%;top:120px;bottom:120px;width:1px;background:rgba(26,23,18,.22)"></div></div>`,
+    motionNotes: '印刷落版：标题 maskReveal bottom 0.4s 如油墨压上；正文逐段淡入；重点词 kp-mark 红笔圈划感（accent2）；忌彩色忌辉光——黑白+一点报社红',
+  },
+  {
+    id: 'crt', family: '复古年代', label: 'CRT 荧幕',
+    vibe: '凸面荧光屏、磷光绿字、色差边缘、关机白线——90 年代电视/游戏怀旧',
+    cssVars: { '--fx-primary': '#0c1410', '--fx-accent': '#7dffb0', '--fx-accent2': '#ffd23d', '--fx-text': '#d8ffe8', '--fx-surface': 'rgba(125,255,176,0.06)' },
+    fontPairing: 'tech',
+    bgCss: 'radial-gradient(ellipse 95% 90% at 50% 50%,#122018 0%,#0a110d 80%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;inset:0;background:radial-gradient(ellipse 120% 115% at 50% 50%,transparent 62%,rgba(0,0,0,.75) 100%)"></div></div>`,
+    foregroundHtml: `<div style="position:absolute;inset:0;pointer-events:none"><div class="kp-scanline" style="position:absolute;inset:0;opacity:.65"></div><div style="position:absolute;inset:0;background:radial-gradient(ellipse 65% 45% at 50% 22%,rgba(255,255,255,.07),transparent 60%)"></div></div>`,
+    css: `.kit-crt-phosphor{color:#7dffb0;text-shadow:0 0 8px rgba(125,255,176,.9),1.5px 0 0 rgba(255,60,60,.35),-1.5px 0 0 rgba(60,120,255,.35)}`,
+    motionNotes: '开机仪式：场景开头 scaleY 0.005→1 (0.3s outExpo) 模拟 CRT 点亮；文字 kit-crt-phosphor+typewriter；glitch 偶发信号干扰；关键帧可加一次白 flash',
+  },
+  {
+    id: 'polaroid', family: '复古年代', label: '宝丽来白框',
+    vibe: '奶白宽相框、暖褪色照片、手写批注、胶带贴角——旅行/纪念/vlog 回忆杀',
+    cssVars: { '--fx-primary': '#e8e0d2', '--fx-accent': '#d97f4e', '--fx-accent2': '#7a92a8', '--fx-text': '#4a4038', '--fx-surface': '#faf6ee' },
+    fontPairing: 'literary',
+    bgCss: 'linear-gradient(160deg,#ece4d6 0%,#ded4c2 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:.8"></div><div style="position:absolute;left:8%;top:14%;width:300px;height:360px;background:#faf6ee;box-shadow:0 14px 40px rgba(74,64,56,.3);transform:rotate(-5deg)"><div style="position:absolute;left:20px;right:20px;top:20px;height:250px;background:linear-gradient(150deg,#c8b298 0%,#a89478 100%)"></div></div><div style="position:absolute;right:10%;bottom:12%;width:260px;height:315px;background:#faf6ee;box-shadow:0 14px 40px rgba(74,64,56,.28);transform:rotate(4deg)"><div style="position:absolute;left:18px;right:18px;top:18px;height:220px;background:linear-gradient(150deg,#8fa5b5 0%,#71879a 100%)"></div></div><div style="position:absolute;left:calc(8% + 110px);top:calc(14% - 16px);width:90px;height:32px;background:rgba(230,220,190,.75);transform:rotate(-8deg);box-shadow:0 2px 6px rgba(0,0,0,.12)"></div></div>`,
+    motionNotes: '相片甩出显影：照片元素 rotate -12→-5 + y 60→0 spring 甩落，内容 blur 6→0 慢显影（宝丽来显影就是叙事）；手写字 kp-serif 斜体晚 0.5s 出现',
+  },
+  {
+    id: 'pixel8bit', family: '复古年代', label: '像素游戏',
+    vibe: '8-bit 方块像素、马赛克渐变、血条金币计分——游戏/闯关叙事/成就解锁',
+    cssVars: { '--fx-primary': '#1a1c2c', '--fx-accent': '#ffcd75', '--fx-accent2': '#41a6f6', '--fx-text': '#f4f4f4', '--fx-surface': 'rgba(65,166,246,0.1)' },
+    fontPairing: 'tech',
+    bgCss: '#1a1c2c',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:0;right:0;bottom:0;height:120px;background:repeating-linear-gradient(90deg,#29366f 0 60px,#3b5dc9 60px 120px);opacity:.5"></div><div style="position:absolute;left:10%;top:16%;width:36px;height:36px;background:#ffcd75;box-shadow:72px 0 0 rgba(255,205,117,.5),144px 36px 0 rgba(255,205,117,.3)"></div><div style="position:absolute;right:12%;top:24%;width:36px;height:36px;background:#41a6f6;box-shadow:-36px 36px 0 rgba(65,166,246,.5)"></div></div>`,
+    foregroundHtml: `<div style="position:absolute;left:44px;top:40px;display:flex;gap:10px">${Array.from({ length: 3 }).map(() => '<div style="width:30px;height:26px;background:#ef4a5b;clip-path:polygon(50% 100%,0 45%,0 18%,25% 0,50% 22%,75% 0,100% 18%,100% 45%)"></div>').join('')}</div><div style="position:absolute;right:44px;top:40px;font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;color:#ffcd75;letter-spacing:.1em">SCORE 9999</div>`,
+    css: `.kit-pixel-box{image-rendering:pixelated;border:4px solid #f4f4f4;box-shadow:4px 4px 0 #29366f}`,
+    motionNotes: '帧动画感：一切入场用 2-3 个硬切关键帧（无缓动 linear 阶梯）模拟低帧率；数字 numberRoll format:plain 快滚如计分；shake 像素抖动 amp 4 无旋转',
+  },
+  {
+    id: 'y2k', family: '复古年代', label: 'Y2K 千禧',
+    vibe: '水滴玻璃按钮、镭射贴纸、气泡字、银色金属——千禧回潮/时尚/音乐',
+    cssVars: { '--fx-primary': '#dfe6f2', '--fx-accent': '#3d7bff', '--fx-accent2': '#ff5db8', '--fx-text': '#1c2540', '--fx-surface': 'rgba(255,255,255,0.55)' },
+    fontPairing: 'minimal',
+    bgCss: 'linear-gradient(150deg,#e8eef8 0%,#ccd9ef 55%,#b8c9e8 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:10%;top:14%;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle at 32% 26%,rgba(255,255,255,.95),rgba(61,123,255,.35) 55%,rgba(61,123,255,.15));box-shadow:inset -8px -12px 30px rgba(61,123,255,.3),0 20px 50px rgba(61,123,255,.2)"></div><div style="position:absolute;right:14%;top:40%;width:130px;height:130px;border-radius:50%;background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.95),rgba(255,93,184,.3) 55%,rgba(255,93,184,.12));box-shadow:inset -6px -8px 22px rgba(255,93,184,.25)"></div><svg style="position:absolute;left:-4%;bottom:-8%;opacity:.5" width="700" height="400" viewBox="0 0 700 400" fill="none"><path d="M0 200 Q 175 60 350 200 T 700 200" stroke="url(#y2k)" stroke-width="40" stroke-linecap="round" fill="none"/><defs><linearGradient id="y2k" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#3d7bff"/><stop offset=".5" stop-color="#ff5db8"/><stop offset="1" stop-color="#7de0ff"/></linearGradient></defs></svg></div>`,
+    css: `.kit-y2k-bubble{background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(200,215,240,.75));border-radius:999px;box-shadow:inset 0 -6px 14px rgba(61,123,255,.25),inset 0 4px 8px rgba(255,255,255,.9),0 14px 34px rgba(61,123,255,.22);border:1px solid rgba(255,255,255,.9)}
+.kit-y2k-chrome{background:linear-gradient(180deg,#fff 0%,#9fb6d9 45%,#5a769e 50%,#c8d8ef 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}`,
+    motionNotes: '果冻质感：spring(stiffness 200, damping 9) 大回弹、气泡元素 scale 过冲；标题 kit-y2k-chrome 金属字+shine 循环扫；轻快甜',
+  },
+  {
+    id: 'vhs', family: '复古年代', label: 'VHS 录像带',
+    vibe: '磁带噪纹、色度撕裂、REC 红点、时间码——伪纪录/悬疑/复古 vlog',
+    cssVars: { '--fx-primary': '#141018', '--fx-accent': '#ff4757', '--fx-accent2': '#4fd0e0', '--fx-text': '#ece4f0', '--fx-surface': 'rgba(236,228,240,0.07)' },
+    fontPairing: 'tech',
+    bgCss: 'linear-gradient(180deg,#181322 0%,#100d16 100%)',
+    backdropHtml: `<div class="kp-noise" style="position:absolute;inset:0;opacity:1.6"></div>`,
+    foregroundHtml: `<div style="position:absolute;inset:0;pointer-events:none"><div class="kp-scanline" style="position:absolute;inset:0;opacity:.55"></div><div style="position:absolute;left:48px;top:44px;display:flex;align-items:center;gap:12px"><div style="width:16px;height:16px;border-radius:50%;background:#ff4757;box-shadow:0 0 12px rgba(255,71,87,.8)"></div><span style="font-family:'JetBrains Mono',monospace;font-size:24px;letter-spacing:.14em;color:rgba(236,228,240,.85)">REC</span></div><div style="position:absolute;right:48px;top:46px;font-family:'JetBrains Mono',monospace;font-size:20px;letter-spacing:.1em;color:rgba(236,228,240,.7)">PM 11:42 · SP</div><div style="position:absolute;left:48px;bottom:44px;font-family:'JetBrains Mono',monospace;font-size:18px;color:rgba(236,228,240,.5)">TRACKING ▮▮▮▯▯</div></div>`,
+    motionNotes: 'glitch 是母语（每 3-4s 一次小抽搐 amp 4 + 一次大撕裂 amp 10）；文字带 1.5px 红青错位（kit 用 text-shadow 实现于 kp-stroke 之上）；REC 点 opacity 方波闪',
+  },
+  {
+    id: 'seventies', family: '复古年代', label: '70s 迷幻胶印',
+    vibe: '橙棕米三色条纹、圆弧太阳、粗圆字——嬉皮/音乐/咖啡馆',
+    cssVars: { '--fx-primary': '#f3e4c8', '--fx-accent': '#d96c2f', '--fx-accent2': '#8a5a2b', '--fx-text': '#4b3316', '--fx-surface': 'rgba(75,51,22,0.07)' },
+    fontPairing: 'editorial',
+    bgCss: '#f3e4c8',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;right:-8%;top:-14%;opacity:.9" width="700" height="700" viewBox="0 0 700 700" fill="none"><circle cx="350" cy="350" r="300" fill="#d96c2f" opacity=".9"/><circle cx="350" cy="350" r="240" fill="#e8933f"/><circle cx="350" cy="350" r="180" fill="#f0b45a"/><circle cx="350" cy="350" r="120" fill="#f3d27a"/></svg><div style="position:absolute;left:0;right:0;bottom:0;height:140px;background:repeating-linear-gradient(0deg,#8a5a2b 0 18px,#d96c2f 18px 36px,#e8933f 36px 54px,transparent 54px 140px)"></div><div class="kp-noise" style="position:absolute;inset:0;opacity:.7"></div></div>`,
+    motionNotes: '慵懒摆动：元素 rotate ±2° 慢摇轨道、同心圆 scale 依次呼吸（stagger 相位）；标题粗衬线棕色 maskReveal center；速度慢而松弛，忌锐利',
+  },
+  {
+    id: 'artdeco', family: '复古年代', label: '装饰艺术',
+    vibe: '黑金扇形放射、几何对称、Gatsby 边框——奢华复古/年度盛典/高端酒店',
+    cssVars: { '--fx-primary': '#101012', '--fx-accent': '#cfa54a', '--fx-accent2': '#8c7238', '--fx-text': '#f2e8d0', '--fx-surface': 'rgba(207,165,74,0.08)' },
+    fontPairing: 'luxury',
+    bgCss: 'radial-gradient(ellipse 80% 70% at 50% 35%,#17171b 0%,#0e0e10 75%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);opacity:.6" width="1100" height="560" viewBox="0 0 1100 560" fill="none">${Array.from({ length: 11 }).map((_, i) => `<path d="M550 560 L ${55 + i * 99} 0" stroke="#cfa54a" stroke-width="1.5" opacity="${(0.25 + 0.05 * Math.abs(5 - i)).toFixed(2)}"/>`).join('')}<path d="M 275 560 A 275 275 0 0 1 825 560" stroke="#cfa54a" stroke-width="2" opacity=".55"/><path d="M 385 560 A 165 165 0 0 1 715 560" stroke="#cfa54a" stroke-width="1.5" opacity=".45"/></svg></div>`,
+    foregroundHtml: `<div style="position:absolute;left:56px;top:52px;right:56px;bottom:52px;border:1.5px solid rgba(207,165,74,.4);pointer-events:none"></div><div style="position:absolute;left:66px;top:62px;right:66px;bottom:62px;border:1px solid rgba(207,165,74,.22);pointer-events:none"></div>`,
+    motionNotes: '仪式对称：扇形线 lineDraw 从中轴向两侧对称展开（stagger 镜像）；标题金色衬线字距拉大(letter-spacing .3em) maskReveal center；奢而慢',
+  },
+  {
+    id: 'ottoman', family: '复古年代', label: '老上海月份牌',
+    vibe: '石库门暖黄、月份牌圆框、民国美术字、花边——城市怀旧/美食老店/国货',
+    cssVars: { '--fx-primary': '#e8d5ae', '--fx-accent': '#a83c2e', '--fx-accent2': '#3d6b52', '--fx-text': '#43301c', '--fx-surface': 'rgba(67,48,28,0.07)' },
+    fontPairing: 'literary',
+    bgCss: 'radial-gradient(ellipse 90% 80% at 50% 40%,#ecdcb8 0%,#e0cc9e 75%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:1"></div><svg style="position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);opacity:.5" width="760" height="760" viewBox="0 0 760 760" fill="none"><circle cx="380" cy="380" r="330" stroke="#a83c2e" stroke-width="3"/><circle cx="380" cy="380" r="308" stroke="#a83c2e" stroke-width="1.5" stroke-dasharray="3 10"/>${Array.from({ length: 12 }).map((_, i) => `<circle cx="${380 + 330 * Math.cos((i * Math.PI) / 6)}" cy="${380 + 330 * Math.sin((i * Math.PI) / 6)}" r="7" fill="#a83c2e" opacity=".6"/>`).join('')}</svg></div>`,
+    foregroundHtml: `<div style="position:absolute;right:7%;top:8%;padding:8px 12px;border:2px solid #a83c2e;color:#a83c2e;font-family:'Noto Serif SC',serif;font-size:21px;letter-spacing:.3em;writing-mode:vertical-rl;opacity:.85">出品</div>`,
+    motionNotes: '月份牌开幕：圆框 lineDraw 画圆 + 圆点 stagger 亮起；标题美术字（kp-serif 加粗 + 描边）从圆心 scale 0.7→1 outBack；温和中速',
+  },
+  {
+    id: 'midcentury', family: '复古年代', label: '中古世纪现代',
+    vibe: '芥末黄橄榄绿几何、原子图案、锥形腿家具曲线——家居/生活方式/设计科普',
+    cssVars: { '--fx-primary': '#f0e6d2', '--fx-accent': '#d99a2b', '--fx-accent2': '#5c7351', '--fx-text': '#3a3128', '--fx-surface': 'rgba(58,49,40,0.06)' },
+    fontPairing: 'minimal',
+    bgCss: '#f0e6d2',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:6%;bottom:10%;width:340px;height:340px;border-radius:50% 50% 4px 50%;background:#5c7351;opacity:.85;transform:rotate(-8deg)"></div><div style="position:absolute;right:8%;top:10%;width:260px;height:260px;border-radius:50%;background:#d99a2b;opacity:.85"></div><svg style="position:absolute;right:22%;bottom:14%;opacity:.7" width="240" height="240" viewBox="0 0 240 240" fill="none"><circle cx="120" cy="120" r="8" fill="#3a3128"/><ellipse cx="120" cy="120" rx="105" ry="42" stroke="#3a3128" stroke-width="2.5" transform="rotate(30 120 120)"/><ellipse cx="120" cy="120" rx="105" ry="42" stroke="#3a3128" stroke-width="2.5" transform="rotate(-30 120 120)"/><ellipse cx="120" cy="120" rx="105" ry="42" stroke="#3a3128" stroke-width="2.5" transform="rotate(90 120 120)"/></svg></div>`,
+    motionNotes: '轻松几何：图形 spring 中等弹入（damping 13）+ 原子轨道 rotate 缓转全程；文字干净 sans 左对齐；节奏轻快友好',
+  },
+  {
+    id: 'letterpress', family: '复古年代', label: '凸版印刷',
+    vibe: '厚纸压痕字、油墨不匀、活字边框、盖印编号——手作/独立品牌/工坊',
+    cssVars: { '--fx-primary': '#eae4d8', '--fx-accent': '#2f2b26', '--fx-accent2': '#a34a2e', '--fx-text': '#2f2b26', '--fx-surface': 'rgba(47,43,38,0.05)' },
+    fontPairing: 'editorial',
+    bgCss: 'linear-gradient(170deg,#ece6da 0%,#e2dbcc 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:1.2"></div><div style="position:absolute;left:7%;top:10%;right:7%;bottom:10%;border:2.5px solid rgba(47,43,38,.55);pointer-events:none"></div><div style="position:absolute;left:calc(7% + 10px);top:calc(10% + 10px);right:calc(7% + 10px);bottom:calc(10% + 10px);border:1px solid rgba(47,43,38,.3)"></div></div>`,
+    foregroundHtml: `<div style="position:absolute;right:9%;bottom:12.5%;font-family:'JetBrains Mono',monospace;font-size:17px;letter-spacing:.16em;color:rgba(163,74,46,.8);transform:rotate(-2deg)">№ 042/500</div>`,
+    css: `.kit-letterpress-deboss{color:#2f2b26;text-shadow:0 1px 0 rgba(255,255,255,.65),0 -1px 1px rgba(0,0,0,.28)}`,
+    motionNotes: '压印一瞬：标题 kit-letterpress-deboss scale 1.15→1 快压（inExpo 0.22s）+落地极轻 shake(amp 2, dur 0.15) 如机器压下；其余元素慢淡入；编号盖戳最后出现',
+  },
+  {
+    id: 'zine', family: '复古年代', label: '复印小志',
+    vibe: '高对比复印机黑白、撕纸边、胶带、手写涂改——地下文化/独立音乐/亚文化',
+    cssVars: { '--fx-primary': '#e9e7e2', '--fx-accent': '#141414', '--fx-accent2': '#d43d2a', '--fx-text': '#141414', '--fx-surface': '#ffffff' },
+    fontPairing: 'minimal',
+    bgCss: '#e9e7e2',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:1.8"></div><div style="position:absolute;left:8%;top:16%;width:420px;height:300px;background:#141414;transform:rotate(-2.5deg)"></div><div style="position:absolute;right:10%;bottom:14%;width:360px;height:60px;background:#fff;border:2px dashed #141414;transform:rotate(1.8deg)"></div><div style="position:absolute;left:30%;top:8%;width:120px;height:36px;background:rgba(220,214,190,.85);transform:rotate(-6deg);box-shadow:0 2px 5px rgba(0,0,0,.2)"></div></div>`,
+    css: `.kit-zine-invert{background:#141414;color:#e9e7e2;padding:.1em .3em}
+.kit-zine-scrawl{text-decoration:underline wavy #d43d2a 3px}`,
+    motionNotes: '剪贴张力：元素硬切入场（无缓动，两帧到位）+ 轻微 rotate 错位；反白条 kit-zine-invert 逐条拍上（stagger 0.15 + shake amp 3 一下）；红色涂改 kit-zine-scrawl 只给一处',
+  },
+];

@@ -1,0 +1,9 @@
+characters: {}
+created_at: '2026-03-20T11:18:06.030932'
+defaults:
+  aspect_ratio: '16:9'
+  costume: 日常常服
+  image_size: 2K
+name: 夹缝-阿勒泰
+scenes: {}
+style: modern_travel

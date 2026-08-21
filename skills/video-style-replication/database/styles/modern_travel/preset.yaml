@@ -1,0 +1,749 @@
+# 现代旅游风光影视片风格配置
+# Modern Travel Landscape Cinematography Style
+
+name: "现代旅游风光影视片"
+name_en: "Modern Travel Landscape"
+description: "16:9标准宽屏旅游风光，自然光影诗意，支持真人参考图"
+time_period: "Contemporary"
+era: "现代"
+
+# 画幅规格
+aspect_ratio:
+  default: "16:9"  # 标准宽屏
+  alternatives:
+    - "21:9"  # 超宽画幅（可选）
+
+# 光影预设
+lighting_presets:
+  golden_hour:
+    type: "outdoor_daytime"
+    temperature: 3200
+    description: "golden hour warm light, low angle sunlight, soft shadows, warm orange glow, cinematic lighting"
+    time_of_day: "日出后1小时/日落前1小时"
+    mood: "宁静诗意"
+    keywords:
+      - "golden hour"
+      - "warm sunlight"
+      - "soft shadows"
+      - "orange glow"
+      - "cinematic"
+
+  daytime:
+    type: "outdoor_daytime"
+    temperature: 5600
+    description: "bright daylight, natural sunlight, clear shadows, balanced lighting, high visibility"
+    time_of_day: "白天"
+    mood: "明亮清新"
+    keywords:
+      - "daylight"
+      - "natural light"
+      - "clear shadows"
+      - "balanced exposure"
+      - "vibrant colors"
+
+  blue_hour:
+    type: "outdoor_daytime"
+    temperature: 4500
+    description: "blue hour twilight, soft diffused light, cool blue tones, serene atmosphere, mystical mood"
+    time_of_day: "日出前/日落后30分钟"
+    mood: "静谧温柔"
+    keywords:
+      - "blue hour"
+      - "twilight"
+      - "soft light"
+      - "cool tones"
+      - "serene"
+
+  overcast:
+    type: "outdoor_daytime"
+    temperature: 6500
+    description: "soft overcast light, diffused shadows, even lighting, moody atmosphere, dramatic clouds"
+    time_of_day: "阴天"
+    mood: "沉静内敛"
+    keywords:
+      - "overcast"
+      - "diffused light"
+      - "even lighting"
+      - "moody"
+      - "dramatic sky"
+
+# 构图规则
+composition_rules:
+  figure_scale:
+    min: 0.05  # 5% - 最小人物占比
+    max: 0.15  # 15% - 最大人物占比
+    recommended: 0.08  # 8% - 推荐人物占比
+
+  landscape_ratio: 0.75  # 75%风景占比
+  sky_ratio: [0.15, 0.30]  # 15-30%天空占比
+
+  composition_types:
+    rule_of_thirds:
+      weight: 0.6
+      description: "三分法构图，人物位于交点或线条上，营造平衡感"
+    symmetry:
+      weight: 0.2
+      description: "对称构图，营造庄严平衡感（适用于建筑、桥梁）"
+    negative_space:
+      weight: 0.2
+      description: "大面积留白，强调空间感和诗意氛围"
+
+  figure_orientation:
+    back_view: 0.5  # 背影50% - 眺望远方
+    side_view: 0.3  # 侧影30% - 轮廓剪影
+    front_view: 0.2  # 正脸20% - 情感表达
+
+# 色彩配置
+color_profile:
+  temperature:
+    dominant: "warm"  # 暖色调为主
+    ratio: 0.7  # 70%暖调
+
+  saturation:
+    range: [0.6, 0.8]  # 中高饱和度
+    description: "色彩饱满但不过度，保持自然真实感"
+
+  lightness:
+    range: [0.5, 0.7]  # 中间调
+    description: "避免过暗或过亮，保持舒适观感"
+
+  contrast:
+    range: [0.6, 0.75]  # 中高对比度
+    description: "层次分明，突出光影质感"
+
+  primary_colors:
+    - name: "golden yellow"
+      hex: "#D4AF37"
+      usage: "阳光、建筑、秋季植被"
+    - name: "forest green"
+      hex: "#228B22"
+      usage: "森林、草地、植物"
+    - name: "sky blue"
+      hex: "#87CEEB"
+      usage: "天空、水面"
+    - name: "sunset orange"
+      hex: "#FF8C00"
+      usage: "日落、人工灯光"
+
+  secondary_colors:
+    - name: "earthy brown"
+      hex: "#8B4513"
+      usage: "大地、岩石、木质"
+    - name: "misty white"
+      hex: "#F5F5F5"
+      usage: "云朵、雾气、雪"
+    - name: "mountain grey"
+      hex: "#708090"
+      usage: "山脉、阴天、石质"
+
+# 光影特征
+lighting_characteristics:
+  light_type:
+    natural: 0.85  # 自然光85%
+    artificial: 0.15  # 人工光15%（夜景、室内）
+
+  light_direction:
+    backlight: 0.5  # 逆光/侧逆光50% - 轮廓光、剪影
+    sidelight: 0.3  # 侧光30% - 增强立体感
+    frontlight: 0.2  # 顺光20% - 色彩饱和
+
+  shooting_time:
+    golden_hour: 0.5  # 黄金时刻50%
+    daytime: 0.35  # 白天35%
+    blue_hour: 0.1  # 蓝调时刻10%
+    overcast: 0.05  # 阴天5%
+
+  light_quality:
+    soft: 0.6  # 柔光60% - 云层漫射、黄金时刻
+    hard: 0.4  # 硬光40% - 正午阳光
+
+# 角色模板
+character_templates:
+  traveler_casual:
+    archetype: "旅行者"
+    name_example: "李远"
+    age_range: [20, 40]
+    gender: "male"
+    temperament:
+      - 自由
+      - 探索
+      - 沉静
+      - 热爱自然
+    costume:
+      default: "休闲户外装，冲锋衣，速干裤，登山鞋，登山包"
+      variations:
+        春夏: "轻薄冲锋衣（浅灰/卡其），速干裤（深蓝/卡其），登山鞋，遮阳帽，登山包"
+        秋冬: "保暖冲锋衣（深蓝/黑色），抓绒内胆，户外裤，登山鞋，保暖帽，登山包"
+      accessories:
+        - "登山包（40-60L）"
+        - "遮阳帽/保暖帽"
+        - "太阳镜"
+        - "手表"
+        - "水壶"
+    notes: "人物占比极小（5-15%），服装以功能性为主，颜色与自然协调（中性色调）"
+
+  traveler_female:
+    archetype: "女旅行者"
+    name_example: "林雪"
+    age_range: [20, 35]
+    gender: "female"
+    temperament:
+      - 独立
+      - 勇敢
+      - 温柔
+      - 好奇
+    costume:
+      default: "时尚户外装，防晒衣，长裙/速干裤，登山鞋"
+      variations:
+        春夏: "轻薄防晒衣（白色/浅蓝），长裙（民族风/纯色），登山鞋，草帽"
+        秋冬: "保暖冲锋衣（深红/深蓝），抓绒内胆，户外裤，登山鞋，围巾"
+      accessories:
+        - "相机包"
+        - "草帽/毛线帽"
+        - "围巾"
+        - "墨镜"
+    notes: "兼顾功能性与美观，色彩可与自然形成对比或协调"
+
+  photographer:
+    archetype: "摄影师"
+    name_example: "王鹏"
+    age_range: [25, 45]
+    gender: "male"
+    temperament:
+      - 专注
+      - 艺术
+      - 寻找
+      - 敬畏自然
+    costume:
+      default: "工装背心，摄影包，三脚架"
+      features:
+        - "单反相机/微单相机"
+        - "多个镜头"
+        - "滤镜"
+        - "三脚架"
+        - "摄影包"
+      accessories:
+        - "工装背心（多口袋）"
+        - "摄影包"
+        - "三脚架"
+    notes: "强调摄影器材，体现旅拍主题"
+
+# 场景类型
+scene_types:
+  natural_landscape:
+    weight: 0.6  # 60%
+    name: "自然风光"
+    examples:
+      - name: "雪山湖泊"
+        description: "碧蓝湖水与雪山倒影，壮美宁静"
+        keywords: ["snow mountain", "pristine lake", "reflection", "majestic"]
+      - name: "森林瀑布"
+        description: "茂密森林与飞流直下的瀑布"
+        keywords: ["dense forest", "waterfall", "lush green", "mist"]
+      - name: "高原草甸"
+        description: "广袤的高原草甸，野花遍地"
+        keywords: ["alpine meadow", "wildflowers", "vast landscape"]
+      - name: "海边悬崖"
+        description: "壮阔的海岸线与悬崖"
+        keywords: ["coastal cliffs", "ocean", "waves", "dramatic"]
+      - name: "沙漠戈壁"
+        description: "金色沙丘与戈壁滩"
+        keywords: ["desert", "sand dunes", "golden sand", "vast"]
+      - name: "峡谷河流"
+        description: "深邃的峡谷与蜿蜒的河流"
+        keywords: ["canyon", "river", "dramatic landscape"]
+    description: "自然风光，强调壮美与宁静，人与自然的和谐"
+
+  cultural_heritage:
+    weight: 0.3  # 30%
+    name: "人文景观"
+    examples:
+      - name: "古镇街巷"
+        description: "青石板路，传统建筑"
+        keywords: ["ancient town", "cobblestone street", "traditional architecture"]
+      - name: "寺庙塔楼"
+        description: "庄严的寺庙与古塔"
+        keywords: ["temple", "pagoda", "sacred", "ancient"]
+      - name: "传统桥梁"
+        description: "石桥、木桥，倒影如画"
+        keywords: ["traditional bridge", "stone bridge", "reflection"]
+      - name: "历史遗迹"
+        description: "古老的遗迹，沧桑感"
+        keywords: ["historical ruins", "ancient", "weathered"]
+    description: "人文景观，体现文化底蕴，旅行中的探索与发现"
+
+  urban_modern:
+    weight: 0.1  # 10%
+    name: "城市建筑"
+    examples:
+      - name: "现代建筑"
+        description: "现代感的建筑设计"
+        keywords: ["modern architecture", "contemporary", "design"]
+      - name: "城市夜景"
+        description: "灯火辉煌的城市夜景"
+        keywords: ["city night", "lights", "urban", "nightlife"]
+      - name: "网红打卡点"
+        description: "热门的打卡地点"
+        keywords: ["instagrammable spot", "trendy", "popular"]
+    description: "城市建筑，现代感与设计感，旅行中的都市体验"
+
+# 氛围基调
+atmosphere_tones:
+  peaceful_poetic:
+    weight: 0.4  # 40%
+    name: "宁静诗意"
+    keywords:
+      - "serene"
+      - "peaceful"
+      - "poetic"
+      - "tranquil"
+      - "meditative"
+    description: "宁静诗意风格，强调内心平静与自然和谐，慢节奏旅行"
+
+  exploration_adventure:
+    weight: 0.3  # 30%
+    name: "探索冒险"
+    keywords:
+      - "adventurous"
+      - "exploration"
+      - "freedom"
+      - "journey"
+      - "discovery"
+    description: "探索冒险风格，体现旅行的动感与激情，未知的前方"
+
+  warm_healing:
+    weight: 0.2  # 20%
+    name: "温暖治愈"
+    keywords:
+      - "healing"
+      - "warm"
+      - "belonging"
+      - "comfort"
+      - "emotional"
+    description: "温暖治愈风格，传递情感共鸣，寻找自我"
+
+  dramatic_epic:
+    weight: 0.1  # 10%
+    name: "壮阔史诗"
+    keywords:
+      - "epic"
+      - "breathtaking"
+      - "majestic"
+      - "grand"
+      - "awe-inspiring"
+    description: "壮阔史诗风格，展现自然的磅礴气势，震撼人心"
+
+# 分镜类型
+shot_types:
+  extreme_wide:
+    name: "超大远景"
+    description: "展现宏大场景，人物占比<5%"
+    aspect_ratio: "16:9"
+    figure_scale: 0.05
+    usage: "展现环境全貌，建立场景"
+
+  wide:
+    name: "远景"
+    description: "展现环境全貌，人物占比5-10%"
+    aspect_ratio: "16:9"
+    figure_scale: 0.08
+    usage: "人物与环境的平衡，建立关系"
+
+  medium_wide:
+    name: "中远景"
+    description: "平衡环境与人物，人物占比10-15%"
+    aspect_ratio: "16:9"
+    figure_scale: 0.12
+    usage: "人物动作清晰，环境仍占主导"
+
+# 质量标准
+quality_standards:
+  visual_style:
+    - "Cinematic landscape photography"
+    - "16:9 aspect ratio, standard widescreen"
+    - "Natural lighting, NOT studio lighting"
+    - "Cinematic color grading, film-like quality"
+    - "Travel documentary style"
+    - "Landscape as main subject"
+    - "Shallow depth of field for figures, deep focus for landscape"
+    - "High resolution, sharp details"
+    - "Rich textures and vibrant colors"
+    - "Film grain for cinematic feel"
+
+  negative:
+    - "过度饱和"
+    - "塑料质感"
+    - "人工光源"
+    - "摆拍感"
+    - "人物占比过大"
+    - "杂乱背景"
+    - "现代物品穿帮（如塑料袋、广告牌）"
+    - "over-saturated"
+    - "plastic texture"
+    - "studio lighting"
+    - "artificial look"
+    - "large figure"
+    - "cluttered background"
+    - "modern objects"
+
+# 英文Prompt模板
+prompt_templates:
+  scene_base: |
+    cinematic landscape photography, 16:9 aspect ratio,
+    {scene_description},
+    {lighting_type}, {time_of_day},
+    {color_mood} color palette, {atmosphere} atmosphere,
+    cinematic color grading, film grain, travel documentary style,
+    landscape as main subject::2,
+    tiny figure in distance::0.1,
+    high resolution, sharp details, vibrant colors,
+    professional travel photography
+
+  figure_template: |
+    {figure_description},
+    {figure_orientation} view,
+    {figure_scale}% of frame,
+    wearing {costume},
+    {pose},
+    shallow depth of field on figure,
+    natural environment background::2,
+    cinematic lighting
+
+  scene_with_figure: |
+    cinematic landscape photography, 16:9 aspect ratio,
+    {scene_description},
+    {lighting_type}, {time_of_day},
+    {color_mood} color palette,
+    {figure_description} in distance, {figure_scale}% of frame,
+    {figure_orientation} view, wearing {costume}, {pose},
+    {atmosphere} atmosphere,
+    landscape as main subject::2, figure as secondary element::0.3,
+    cinematic color grading, film grain, travel documentary style,
+    high resolution, sharp details
+
+  negative_prompt: |
+    --no close-up,medium shot,large figure,studio lighting,
+    artificial light,over-saturated,plastic texture,
+    commercial photography,text,watermark,logo,
+    modern objects,plastic bags,billboards,crowds
+
+  face_reference_prompt: |
+    Generate a character portrait based on this description:
+
+    Name: {character_name}
+    Age: {character_age}
+    Style: {character_style}
+    Costume: {character_costume}
+
+    IMPORTANT: Use the facial features and identity from the reference image provided.
+    Maintain the person's facial structure, features, and likeness while adapting
+    the clothing, setting, and style to match the character description above.
+
+    The result should look like the same person in the reference photo, but in
+    the costume and setting described.
+
+    Style: cinematic travel photography, 16:9 aspect ratio, natural lighting,
+    {lighting_type}, {atmosphere} atmosphere.
+
+# 工作流适配说明
+workflow_adaptations:
+  character_creation:
+    simplified: false  # 不简化，保留完整流程
+    has_face_reference: true  # 支持真人参考图
+    notes: |
+      保留完整的人物创建流程（定妆照 + 三视图）。
+      新增功能：询问用户是否有真人参考图。
+      如果有真人参考图：使用Gemini API进行人脸参考生成。
+      如果没有：按正常流程生成人物。
+    steps:
+      - "收集人物基本信息（姓名、年龄、服装风格）"
+      - "询问是否有真人参考图"
+      - "如果有：上传真人照片，使用人脸参考生成"
+      - "生成定妆照（1-2张）"
+      - "生成三视图（正、侧、背）"
+
+  scene_creation:
+    emphasis: "自然环境"
+    notes: "场景是核心，需要详细的自然景观描述"
+    priority: "high"
+    focus:
+      - "光影时段（黄金时刻、白天、蓝调时刻）"
+      - "自然元素（山脉、湖泊、森林、天空）"
+      - "氛围营造（宁静、壮美、诗意）"
+
+  storyboard_generation:
+    aspect_ratio: "16:9"
+    notes: "标准宽屏画幅，强调横向构图和空间感"
+    grid_layout: "3x3 grid for standard widescreen shots"
+    figure_scale: "5-15%（极小），强调环境"
+
+  video_prompt_generation:
+    focus: "landscape movement"
+    notes: "强调环境动态（云、水、光），人物动作简单（行走、眺望、坐着）"
+    dynamics:
+      - "云的流动"
+      - "水的波纹"
+      - "光影变化"
+      - "风吹草动"
+
+# 触发词
+trigger_words:
+  chinese:
+    - "现代旅游"
+    - "旅游风光"
+    - "旅游影视片"
+    - "现代风光"
+    - "旅游纪录片"
+    - "风光影视片"
+    - "旅游"
+    - "风光"
+  english:
+    - "modern travel"
+    - "travel landscape"
+    - "travel documentary"
+    - "landscape cinematography"
+
+# 真人参考图功能
+face_reference:
+  enabled: true
+  method: "gemini_api"  # 使用Gemini API进行人脸参考生成
+  description: |
+    支持用户提供真人照片作为人脸参考。
+    系统会询问用户是否有真人参考图。
+    如果有，使用Gemini API的图像编辑能力，保持真人脸部特征。
+    如果没有，按正常流程生成角色。
+  advantages:
+    - "无需额外依赖"
+    - "实现简单"
+    - "跨平台兼容"
+    - "易于维护"
+  limitations:
+    - "融合效果60-80%相似度"
+    - "需要API调用费用"
+    - "处理时间10-30秒"
+
+# 地域特色服装配置
+regional_costume:
+  enabled: true
+  default_region: "云南大理"
+
+  # 支持的地域列表
+  available_regions:
+    - "云南大理"
+    - "云南迪庆"
+    - "云南丽江"
+    - "云南西双版纳"
+    - "新疆"
+    - "甘肃敦煌"
+    - "青海"
+    - "苏州"
+    - "杭州"
+    - "乌镇"
+    - "贵州"
+    - "广西"
+    - "内蒙古"
+    - "海南"
+    - "厦门"
+    - "西藏"
+    - "现代通用"
+
+  # 地域选择提示
+  region_selection_prompt: |
+    请选择你的旅拍目的地：
+
+    1. 云南大理（白族扎染风格）
+    2. 云南迪庆（藏族风格）
+    3. 云南丽江（纳西族风格）
+    4. 云南西双版纳（傣族风格）
+    5. 新疆（维吾尔族/哈萨克族风格）
+    6. 甘肃敦煌（飞天壁画风格）
+    7. 青海（热贡唐卡风格）
+    8. 苏州（苏绣风格）
+    9. 杭州（宋韵茶风）
+    10. 乌镇（蓝印花布风格）
+    11. 贵州（苗族/侗族风格）
+    12. 广西（壮族风格）
+    13. 内蒙古（蒙古族风格）
+    14. 海南（黎族/南洋风格）
+    15. 厦门（闽南侨乡风格）
+    16. 西藏（藏传佛教风格）
+
+    或输入"通用"使用现代旅拍通用风格。
+
+  # 文化禁忌
+  cultural_taboos:
+    - "不确定寓意的宗教类图案、文字一律不用"
+    - "不篡改元素文化寓意"
+    - "不刻意丑化/猎奇"
+    - "遵循3:7原则：30%在地元素 + 70%现代基础款"
+    - "全身上下民族符号不超过2个"
+
+  # 角色模板更新（添加地域服装引用）
+  character_templates:
+    traveler_regional:
+      archetype: "在地特色旅行者"
+      name_example: "李远"
+      age_range: [20, 40]
+      gender: "male"
+      temperament:
+        - 自由
+        - 探索
+        - 沉静
+      costume:
+        regional_style: true  # 启用地域服装
+        region: "云南大理"    # 默认地区
+        tags: ["春夏", "休闲"] # 服装标签
+      notes: "根据目的地自动应用在地特色服装（3:7原则）"
+
+# 九宫格分镜模式配置
+storyboard_modes:
+  portrait_focused:
+    name: "人像为主模式"
+    name_en: "Portrait Focused"
+    description: "1近景+1中景+其他远景，人物故事感强，《去有风的地方》风格"
+    reference: "《去有风的地方》"
+
+    # 9镜头设计
+    shot_design:
+      shot1:
+        type: "extreme_wide"
+        figure_scale: 0  # 纯风景
+        composition: "对称构图"
+        description: "俯瞰场景全景，黎明深蓝，远山剪影"
+      shot2:
+        type: "wide"
+        figure_scale: 0  # 纯风景
+        composition: "引导线构图"
+        description: "场景标志性元素，如木栈道延伸"
+      shot3:
+        type: "medium"
+        figure_scale: 0.40  # 中景
+        composition: "侧面轮廓"
+        description: "人物半身像，侧脸轮廓，背景虚化日出"
+      shot4:
+        type: "wide"
+        figure_scale: 0.10
+        composition: "剪影构图"
+        description: "人物站礁石，双臂张开，逆光剪影"
+      shot5:
+        type: "closeup"
+        figure_scale: 0.70  # 近景/特写
+        composition: "脸部特写"
+        description: "人物脸部特写，眼神望向远方，背景完全虚化金色光斑"
+      shot6:
+        type: "wide"
+        figure_scale: 0  # 纯风景
+        composition: "倒影构图"
+        description: "水面倒影，上下对称，环境元素倒影"
+      shot7:
+        type: "wide"
+        figure_scale: 0.15
+        composition: "三分法"
+        description: "人物漫步，裙摆飘动，环境互动"
+      shot8:
+        type: "extreme_wide"
+        figure_scale: 0  # 纯风景
+        composition: "留白构图"
+        description: "苍茫场景，极简留白，回味悠长"
+      shot9:
+        type: "wide"
+        figure_scale: 0  # 纯风景
+        composition: "微距/极简"
+        description: "场景细节特写，如露珠、木桩"
+
+    # 色彩渐变设计（三行分别对应）
+    color_progression:
+      row1: "deep_blue"      # 蓝调时刻
+      row2: "golden_warm"    # 黄金时刻
+      row3: "bright_fresh"   # 明亮清新
+
+    # 特殊元素支持
+    special_elements:
+      seagulls:  # 龙龛码头海鸥
+        enabled: true
+        description: "海鸥群飞，停在栏杆，环绕人物"
+      pier:  # 码头木栈道
+        enabled: true
+        description: "古码头、木栈道延伸、木桩"
+
+  landscape_focused:
+    name: "风景人像混合模式"
+    name_en: "Landscape Focused"
+    description: "人物占比8%以内，风景主导，孤独星球/BBC纪录片风格"
+    reference: "孤独星球、BBC旅游纪录片、国家地理"
+
+    # 9镜头设计（人物占比统一8-12%）
+    shot_design:
+      shot1:
+        type: "extreme_wide"
+        figure_scale: 0.08
+        composition: "三分法+留白"
+        description: "人物远景，仰望星空，极小人物"
+      shot2:
+        type: "wide"
+        figure_scale: 0.10
+        composition: "三分法"
+        description: "人物坐礁石，侧影，环境为主"
+      shot3:
+        type: "medium_wide"
+        figure_scale: 0.12
+        composition: "侧面轮廓"
+        description: "人物侧脸，期待表情，背景虚化"
+      shot4:
+        type: "wide"
+        figure_scale: 0.10
+        composition: "剪影构图"
+        description: "人物张开双臂拥抱日出，逆光剪影"
+      shot5:
+        type: "medium_wide"
+        figure_scale: 0.12
+        composition: "回眸"
+        description: "人物转身回眸微笑，金色阳光"
+      shot6:
+        type: "extreme_wide"
+        figure_scale: 0.08
+        composition: "逆光剪影"
+        description: "人物远景，裙摆飘起，动态剪影"
+      shot7:
+        type: "wide"
+        figure_scale: 0.10
+        composition: "引导线构图"
+        description: "人物漫步湖边，S形引导线"
+      shot8:
+        type: "medium_wide"
+        figure_scale: 0.12
+        composition: "三分法"
+        description: "人物蹲下触摸水面，水波涟漪"
+      shot9:
+        type: "medium_wide"
+        figure_scale: 0.12
+        composition: "正面"
+        description: "人物满足微笑，温暖治愈"
+
+    # 色彩渐变设计
+    color_progression:
+      row1: "deep_blue"      # 蓝调时刻
+      row2: "golden_warm"    # 黄金时刻
+      row3: "bright_fresh"   # 明亮清新
+
+    # 通用场景描述
+    scene_description: "洱海湖面，远山轮廓，天空，宁静诗意"
+
+# 元数据
+metadata:
+  version: "1.0.0"
+  author: "Video Style Replication System"
+  created_date: "2026-03-16"
+  last_updated: "2026-03-16"
+  tags:
+    - "travel"
+    - "landscape"
+    - "documentary"
+    - "cinematic"
+    - "natural"
+    - "modern"
+  references:
+    - "孤独星球 (Lonely Planet)"
+    - "BBC旅游纪录片"
+    - "国家地理 (National Geographic)"
+    - "现代旅游风光影视片"

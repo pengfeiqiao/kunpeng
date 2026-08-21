@@ -1,0 +1,50 @@
+{
+  "brand": "NIO",
+  "model": "ES8",
+  "date_created": "2026-02-15T12:27:59.439106",
+  "images_count": 11,
+  "total_size_mb": 31.41,
+  "images": [
+    "body_front.jpg",
+    "body_rear.jpg",
+    "body_side.jpg",
+    "lights_front.jpg",
+    "lights_rear.jpg",
+    "logo.jpg",
+    "sensor_radar.jpg",
+    "showcase_all_angles.jpg",
+    "showcase_premium.jpg",
+    "showcase_professional.jpg",
+    "wheel.jpg"
+  ],
+  "classification": {
+    "body": 15,
+    "wheel": 5,
+    "lights": 3,
+    "sensor": 5,
+    "logo": 2
+  },
+  "version": "3.0.0",
+  "strategy": "V3极简策略",
+  "quality_score": "4.9/5",
+  "cost": "$0.43",
+  "status": "完全成功",
+  "notes": "完美完成，所有细节准确，车牌已隐藏",
+  "special_features": [
+    "V3极简策略（强化参考图权重）",
+    "灯组细分（前灯组+后灯组）",
+    "车牌黑色覆盖",
+    "专业展示图（后期拼接）"
+  ],
+  "images_detail": {
+    "body_front.jpg": "前视图（16:9, 2K, 2.1MB）",
+    "body_side.jpg": "侧视图（16:9, 2K, 2.2MB）",
+    "body_rear.jpg": "后视图（16:9, 2K, 2.1MB）",
+    "lights_front.jpg": "前灯组（1:1, 2K, 2.0MB）",
+    "lights_rear.jpg": "后灯组（1:1, 2K, 2.1MB）",
+    "wheel.jpg": "轮毂（1:1, 2K, 2.5MB）",
+    "sensor_radar.jpg": "传感器雷达（1:1, 2K, 2.3MB）",
+    "logo.jpg": "车标（1:1, 2K, 2.1MB）",
+    "showcase_premium.jpg": "专业展示图（21:9, 4K, 3.8MB）"
+  }
+}

@@ -1,0 +1,9 @@
+characters: {}
+created_at: '2026-03-20T11:32:10.010218'
+defaults:
+  aspect_ratio: '16:9'
+  costume: 日常常服
+  image_size: 2K
+name: 女主
+scenes: {}
+style: modern_travel

@@ -1,0 +1,13 @@
+{
+  "id": "video-style-replication",
+  "name": "参考片复刻",
+  "icon": "film",
+  "description": "用 Kimi 拉片提取参考片的叙事、镜头、节奏和视觉语法，再适配到用户自己的内容与资产。",
+  "version": "1.0.0",
+  "hasPanel": false,
+  "category": "video",
+  "visibility": "toolbar",
+  "accentColor": "#8b5cf6",
+  "placeholder": "上传参考片，并说明要复刻的内容、平台与时长...",
+  "promptTemplate": "[参考片复刻] 请读取 ~/.kunpeng/skills/video-style-replication/SKILL.md 并按当前工作流执行。优先使用 Kimi 参考视频分析，不使用旧 ConversationGuide 或强制逐张串行规则。\n\n{{userContent}}"
+}

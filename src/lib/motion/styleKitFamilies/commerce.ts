@@ -1,0 +1,122 @@
+/**
+ * styleKits/commerce — 商业品牌族（12 种）。
+ * 面向卖点表达的美学：奢侈品黑金、药妆临床白、快闪促销、母婴柔纱……
+ * 每种对应一类"消费心理"。
+ */
+import type { StyleKit } from '../styleKits';
+
+/* eslint-disable max-len */
+
+export const COMMERCE_KITS: StyleKit[] = [
+  {
+    id: 'luxeblack', family: '商业品牌', label: '奢品黑金',
+    vibe: '曜黑丝绒、金箔细字、鎏金分割线——腕表/珠宝/高客单转化',
+    cssVars: { '--fx-primary': '#0c0b09', '--fx-accent': '#cfa960', '--fx-accent2': '#8a7248', '--fx-text': '#f0e8d8', '--fx-surface': 'rgba(207,169,96,0.07)' },
+    fontPairing: 'luxury',
+    bgCss: 'radial-gradient(ellipse 80% 70% at 50% 30%,#171510 0%,#0a0908 75%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:20%;right:20%;top:20%;height:1px;background:linear-gradient(90deg,transparent,rgba(207,169,96,.55),transparent)"></div><div style="position:absolute;left:32%;right:32%;bottom:18%;height:1px;background:linear-gradient(90deg,transparent,rgba(207,169,96,.4),transparent)"></div><div style="position:absolute;right:-8%;top:-14%;width:700px;height:700px;background:radial-gradient(circle,rgba(207,169,96,.07),transparent 65%)"></div></div>`,
+    motionNotes: '金线仪式：细金线 scaleX 0→1 先展开定调、标题衬线大字距(.3em) blur 显影、shine 一次金光缓扫；动作极少极慢——奢侈是时间的克制',
+  },
+  {
+    id: 'clinicwhite', family: '商业品牌', label: '临床实证白',
+    vibe: '药妆白+医用蓝、成分分子链、数据标注线、无菌感——护肤成分党/保健/口腔',
+    cssVars: { '--fx-primary': '#f6f9fb', '--fx-accent': '#2372c8', '--fx-accent2': '#7cb8e8', '--fx-text': '#1e3a52', '--fx-surface': 'rgba(35,114,200,0.05)' },
+    fontPairing: 'minimal',
+    bgCss: 'linear-gradient(180deg,#f8fbfd 0%,#eef4f9 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;right:4%;top:10%;opacity:.5" width="420" height="380" viewBox="0 0 420 380" fill="none"><circle cx="110" cy="90" r="34" stroke="#2372c8" stroke-width="2"/><circle cx="240" cy="150" r="26" stroke="#2372c8" stroke-width="2"/><circle cx="330" cy="70" r="20" stroke="#7cb8e8" stroke-width="2"/><circle cx="180" cy="270" r="30" stroke="#7cb8e8" stroke-width="2"/><path d="M138 108 L 216 138 M 262 132 L 314 84 M 226 172 L 194 242" stroke="#2372c8" stroke-width="1.8"/></svg><div style="position:absolute;left:6%;bottom:10%;width:280px;height:1.5px;background:#2372c8;opacity:.35"></div><div style="position:absolute;left:6%;bottom:calc(10% + 26px);font-family:'Space Grotesk',monospace;font-size:15px;letter-spacing:.14em;color:rgba(30,58,82,.45)">CLINICALLY TESTED · N=1024</div></div>`,
+    motionNotes: '实证节奏：分子链 lineDraw 连接、百分比 numberRoll（蓝色大数）、标注线 scaleX 精确展开；白蓝纪律、锐利干净 outExpo 0.5s；信任感来自秩序',
+  },
+  {
+    id: 'flashsale', family: '商业品牌', label: '快闪大促',
+    vibe: '高饱红黄、爆炸贴、倒计时翻牌、价格砸落——直播间/秒杀/清仓',
+    cssVars: { '--fx-primary': '#d7241e', '--fx-accent': '#ffe14d', '--fx-accent2': '#7a0f0c', '--fx-text': '#fff8e8', '--fx-surface': 'rgba(255,225,77,0.14)' },
+    fontPairing: 'variety',
+    bgCss: 'radial-gradient(ellipse 80% 70% at 50% 35%,#e83a30 0%,#c21b16 75%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;inset:0;background:repeating-conic-gradient(from 0deg at 50% 42%,rgba(255,225,77,.12) 0deg 12deg,transparent 12deg 24deg)"></div><div style="position:absolute;left:6%;top:10%;width:130px;height:130px;background:#ffe14d;clip-path:polygon(50% 0,58% 30%,88% 12%,72% 42%,100% 50%,72% 58%,88% 88%,58% 70%,50% 100%,42% 70%,12% 88%,28% 58%,0 50%,28% 42%,12% 12%,42% 30%);transform:rotate(-10deg)"></div></div>`,
+    css: `.kit-sale-price{-webkit-text-stroke:3px #7a0f0c;text-shadow:6px 6px 0 rgba(122,15,12,.85)}`,
+    motionNotes: '砸价三连：价格 kit-sale-price scale 2.6→1 inExpo 砸落+shake amp 16+flash；放射底 rotate 缓转全程；倒计时 numberRoll 快滚；爆炸贴 spring 弹出；快猛炸',
+  },
+  {
+    id: 'softmama', family: '商业品牌', label: '母婴柔纱',
+    vibe: '奶杏粉纱、云朵弧线、绒毛质感、小星星——母婴/儿童教育/温柔种草',
+    cssVars: { '--fx-primary': '#fbf2ea', '--fx-accent': '#e8a48f', '--fx-accent2': '#a8c8d8', '--fx-text': '#6b5648', '--fx-surface': 'rgba(255,255,255,0.75)' },
+    fontPairing: 'variety',
+    bgCss: 'linear-gradient(170deg,#fdf5ee 0%,#f7e9de 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;left:-4%;bottom:-6%;opacity:.9" width="700" height="260" viewBox="0 0 700 260" fill="#fff"><ellipse cx="160" cy="200" rx="150" ry="90"/><ellipse cx="360" cy="170" rx="170" ry="100"/><ellipse cx="560" cy="210" rx="140" ry="85"/></svg><div style="position:absolute;right:10%;top:12%;width:26px;height:26px;background:#f2c94c;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);opacity:.8"></div><div style="position:absolute;right:20%;top:24%;width:16px;height:16px;background:#e8a48f;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);opacity:.7"></div><div style="position:absolute;left:-8%;top:-12%;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(168,200,216,.2),transparent 65%);filter:blur(20px)"></div></div>`,
+    motionNotes: '摇篮节奏：云朵 x 极慢漂、星星 rotate+闪烁；卡片圆角 ≥28px spring 软弹（damping 12 不过分）；字圆体奶咖色；轻柔安心，忌快忌锐',
+  },
+  {
+    id: 'gourmetdark', family: '商业品牌', label: '深夜食堂暗调',
+    vibe: '炭黑底暖橙食光、油脂高光、蒸汽、手写菜单粉笔——美食暗调/烧烤/日料',
+    cssVars: { '--fx-primary': '#171310', '--fx-accent': '#f2953d', '--fx-accent2': '#c85a2e', '--fx-text': '#f7ecdd', '--fx-surface': 'rgba(242,149,61,0.09)' },
+    fontPairing: 'literary',
+    bgCss: 'radial-gradient(ellipse 70% 65% at 50% 45%,#241c14 0%,#14100c 80%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:50%;top:40%;width:800px;height:600px;transform:translate(-50%,-50%);background:radial-gradient(ellipse,rgba(242,149,61,.14),transparent 65%)"></div><div style="position:absolute;left:30%;top:16%;width:60px;height:220px;background:linear-gradient(0deg,transparent,rgba(247,236,221,.14));filter:blur(10px);transform:rotate(-6deg)"></div><div style="position:absolute;left:62%;top:12%;width:50px;height:190px;background:linear-gradient(0deg,transparent,rgba(247,236,221,.1));filter:blur(9px);transform:rotate(5deg)"></div><div class="kp-noise" style="position:absolute;inset:0;opacity:.7"></div></div>`,
+    foregroundHtml: `<div class="kp-vignette" style="position:absolute;inset:0"></div>`,
+    motionNotes: '食欲光晕：中心暖光 scale/opacity 呼吸如炉火、蒸汽 y 上飘循环；菜名衬线暖白字+价格橙色手写感斜体；shine 油脂高光一闪；温热的慢',
+  },
+  {
+    id: 'fintech', family: '商业品牌', label: '信任金融蓝',
+    vibe: '藏蓝渐变、上升折线、盾牌徽标感、利率大数——理财/保险/B 端获客',
+    cssVars: { '--fx-primary': '#0e2242', '--fx-accent': '#4d9fff', '--fx-accent2': '#38d996', '--fx-text': '#eaf2fc', '--fx-surface': 'rgba(77,159,255,0.08)' },
+    fontPairing: 'minimal',
+    bgCss: 'linear-gradient(160deg,#123054 0%,#0a1c38 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;left:0;right:0;bottom:0;opacity:.4" width="1920" height="420" viewBox="0 0 1920 420" preserveAspectRatio="none" fill="none"><path d="M0 360 L 240 320 L 480 340 L 720 260 L 960 290 L 1200 190 L 1440 220 L 1680 120 L 1920 90" stroke="#38d996" stroke-width="3"/><path d="M0 360 L 240 320 L 480 340 L 720 260 L 960 290 L 1200 190 L 1440 220 L 1680 120 L 1920 90 V 420 H 0 Z" fill="url(#fin)" opacity=".35"/><defs><linearGradient id="fin" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#38d996" stop-opacity=".6"/><stop offset="1" stop-color="#38d996" stop-opacity="0"/></linearGradient></defs></svg><div class="kp-dots" style="position:absolute;inset:0;opacity:.3"></div></div>`,
+    motionNotes: '稳中有升：折线 lineDraw 从左向右升、收益率 numberRoll 绿色+↑箭头 spring 轻弹；蓝底绿涨纪律（涨绿跌红按国内习惯可反转）；稳健 outExpo，忌浮夸',
+  },
+  {
+    id: 'sneakerdrop', family: '商业品牌', label: '球鞋发售',
+    vibe: '水泥灰底荧光橙 SOLD OUT、鞋盒撕标、条码、限量编号——潮鞋/限量/抽签发售',
+    cssVars: { '--fx-primary': '#c4c2bd', '--fx-accent': '#ff5310', '--fx-accent2': '#1a1a1a', '--fx-text': '#1a1a1a', '--fx-surface': '#f2f0ec' },
+    fontPairing: 'tech',
+    bgCss: 'linear-gradient(170deg,#c9c7c2 0%,#b5b3ae 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:1.1"></div><div style="position:absolute;right:6%;top:10%;width:220px;height:80px;background:#f2f0ec;box-shadow:0 8px 20px rgba(26,26,26,.25);transform:rotate(4deg)"><div style="position:absolute;left:12px;top:12px;right:12px;height:34px;background:repeating-linear-gradient(90deg,#1a1a1a 0 3px,transparent 3px 7px,#1a1a1a 7px 8px,transparent 8px 13px)"></div><div style="position:absolute;left:12px;bottom:8px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#1a1a1a">SKU 042-KP</div></div><div style="position:absolute;left:-3%;bottom:14%;width:520px;height:110px;background:#ff5310;transform:rotate(-5deg)"></div></div>`,
+    motionNotes: '发售张力：橙条 maskReveal left 快扫入、大字黑色工业感（letter-spacing 紧）撞入+shake；条码标 spring 拍上；限量编号 typewriter；街头利落快',
+  },
+  {
+    id: 'perfumemist', family: '商业品牌', label: '香雾光影',
+    vibe: '琥珀玻璃瓶光斑、雾面纱幔、金尘颗粒——香水/香薰/氛围美学',
+    cssVars: { '--fx-primary': '#2b2018', '--fx-accent': '#d9a86a', '--fx-accent2': '#8a6a4a', '--fx-text': '#f2e6d4', '--fx-surface': 'rgba(217,168,106,0.08)' },
+    fontPairing: 'luxury',
+    bgCss: 'linear-gradient(165deg,#332619 0%,#221810 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:14%;top:-10%;width:340px;height:900px;background:linear-gradient(180deg,rgba(217,168,106,.16),transparent 70%);transform:rotate(14deg);filter:blur(22px)"></div><div style="position:absolute;right:18%;top:20%;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle at 38% 32%,rgba(242,230,212,.3),rgba(217,168,106,.1) 60%,transparent 75%);filter:blur(6px)"></div><div style="position:absolute;left:30%;bottom:20%;width:4px;height:4px;border-radius:50%;background:rgba(217,168,106,.9);box-shadow:90px -60px 0 -1px rgba(217,168,106,.6),200px -140px 0 -2px rgba(217,168,106,.45),320px -40px 0 -1px rgba(217,168,106,.55),430px -180px 0 -2px rgba(217,168,106,.35)"></div><div class="kp-noise" style="position:absolute;inset:0;opacity:.6"></div></div>`,
+    motionNotes: '香雾弥散：光柱 opacity 呼吸、金尘颗粒 y 极慢上浮+闪烁；品名衬线大字距 blur 显影（2s 级）；shine 玻璃反光一次；一切如香气般缓慢扩散',
+  },
+  {
+    id: 'esportsarena', family: '商业品牌', label: '电竞战队',
+    vibe: '暗底斜切队旗色、六边形装甲、战绩数据条、金属队徽——电竞/开黑/赛事复盘',
+    cssVars: { '--fx-primary': '#0d1117', '--fx-accent': '#ffb020', '--fx-accent2': '#8a5cff', '--fx-text': '#f0f4fa', '--fx-surface': 'rgba(255,176,32,0.08)' },
+    fontPairing: 'tech',
+    bgCss: 'linear-gradient(155deg,#12161f 0%,#0a0d13 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:-6%;top:0;width:480px;height:1080px;background:linear-gradient(135deg,rgba(255,176,32,.14),transparent 60%);clip-path:polygon(0 0,100% 0,55% 100%,0 100%)"></div><svg style="position:absolute;right:5%;top:8%;opacity:.5" width="340" height="300" viewBox="0 0 340 300" fill="none"><path d="M85 10 L 170 10 L 212 82 L 170 154 L 85 154 L 43 82 Z" stroke="#8a5cff" stroke-width="2.5"/><path d="M170 154 L 255 154 L 297 226 L 255 298 L 170 298 L 128 226 Z" stroke="#ffb020" stroke-width="2"/></svg></div>`,
+    css: `.kit-esports-hex{clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)}`,
+    motionNotes: 'MVP 出场：斜切旗色 maskReveal 快扫、KDA 数据 numberRoll、六边形徽章 kit-esports-hex scale+rotate 弹定；胜利瞬间 flash 金+shake；竞技快节奏卡点',
+  },
+  {
+    id: 'realestate', family: '商业品牌', label: '空间样板间',
+    vibe: '暖白大理石、户型线稿、飘窗光、尺寸标注——房产/家装/空间改造',
+    cssVars: { '--fx-primary': '#efe9e2', '--fx-accent': '#a8764a', '--fx-accent2': '#6b7268', '--fx-text': '#3d3830', '--fx-surface': 'rgba(61,56,48,0.05)' },
+    fontPairing: 'minimal',
+    bgCss: 'linear-gradient(170deg,#f2ece4 0%,#e6ded2 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;right:5%;top:10%;opacity:.55" width="440" height="380" viewBox="0 0 440 380" fill="none"><path d="M20 20 H 420 V 360 H 20 Z M 20 190 H 240 M 240 20 V 250 M 240 250 H 420" stroke="#3d3830" stroke-width="2.5"/><path d="M 100 190 A 60 60 0 0 1 160 130" stroke="#a8764a" stroke-width="2"/><path d="M 20 300 h 60 M 50 270 v 60" stroke="#6b7268" stroke-width="1.5"/></svg><div style="position:absolute;left:-6%;top:-10%;width:600px;height:700px;background:linear-gradient(155deg,rgba(255,250,238,.9),transparent 65%);filter:blur(24px)"></div></div>`,
+    motionNotes: '空间生成：户型线 lineDraw 层层绘出（墙→门→家具）、面积数字 numberRoll+㎡ 单位；光从飘窗方向 shine 缓扫；标注线精确展开；从容中速',
+  },
+  {
+    id: 'coffeecraft', family: '商业品牌', label: '手冲咖啡馆',
+    vibe: '浓缩棕奶泡白、拉花线条、咖啡渍圆环、牛皮标签——咖啡/慢闪店/职人',
+    cssVars: { '--fx-primary': '#efe6d9', '--fx-accent': '#6b4226', '--fx-accent2': '#b08a5e', '--fx-text': '#422c1a', '--fx-surface': 'rgba(107,66,38,0.06)' },
+    fontPairing: 'editorial',
+    bgCss: 'linear-gradient(170deg,#f2eadc 0%,#e6dac6 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:.8"></div><svg style="position:absolute;right:8%;top:12%;opacity:.5" width="300" height="300" viewBox="0 0 300 300" fill="none"><circle cx="150" cy="150" r="130" stroke="#6b4226" stroke-width="10" opacity=".25"/><circle cx="150" cy="150" r="128" stroke="#6b4226" stroke-width="2" opacity=".4" stroke-dasharray="6 14"/></svg><svg style="position:absolute;left:8%;bottom:10%;opacity:.6" width="360" height="140" viewBox="0 0 360 140" fill="none"><path d="M10 70 C 70 10 130 130 190 70 S 310 10 350 70" stroke="#6b4226" stroke-width="4" stroke-linecap="round"/></svg></div>`,
+    motionNotes: '拉花手感：曲线 lineDraw 如奶泡入杯（inOutCubic 1.2s）；咖啡渍环 opacity 淡入做印记；标签卡牛皮色 rotate -2° 贴上；手作温度的中慢速',
+  },
+  {
+    id: 'petjoy', family: '商业品牌', label: '萌宠爪印',
+    vibe: '奶黄爪印路径、骨头饼干、毛绒边框、尾巴摇摆感——宠物/萌宠好物/日常',
+    cssVars: { '--fx-primary': '#fdf3e0', '--fx-accent': '#f2994a', '--fx-accent2': '#8fbfa8', '--fx-text': '#5c4630', '--fx-surface': 'rgba(255,255,255,0.7)' },
+    fontPairing: 'variety',
+    bgCss: 'linear-gradient(170deg,#fef6e6 0%,#f9ecd2 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden">${[[12, 72, -18], [20, 60, 8], [29, 70, -6], [38, 58, 14]].map(([x, y, r]) => `<svg style="position:absolute;left:${x}%;top:${y}%;transform:rotate(${r}deg);opacity:.5" width="60" height="60" viewBox="0 0 60 60" fill="#f2994a"><ellipse cx="30" cy="40" rx="14" ry="11"/><circle cx="14" cy="24" r="6"/><circle cx="26" cy="17" r="6"/><circle cx="38" cy="19" r="6"/><circle cx="48" cy="28" r="5"/></svg>`).join('')}<div style="position:absolute;right:10%;top:12%;width:130px;height:52px;background:#fff;border-radius:26px;box-shadow:0 8px 20px rgba(92,70,48,.15);transform:rotate(10deg)"></div><div style="position:absolute;right:calc(10% - 24px);top:calc(12% + 4px);width:44px;height:44px;border-radius:50%;background:#fff;box-shadow:0 8px 20px rgba(92,70,48,.12)"></div><div style="position:absolute;right:calc(10% + 118px);top:calc(12% + 4px);width:44px;height:44px;border-radius:50%;background:#fff;box-shadow:0 8px 20px rgba(92,70,48,.12)"></div></div>`,
+    motionNotes: '爪印走路：爪印 stagger 0.3 依次盖上（scale 1.3→1 快拍）如小狗跑过；骨头卡 spring 摇两下（rotate ±4 往复）；圆体橙字弹跳；活泼软萌',
+  },
+];

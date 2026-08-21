@@ -1,0 +1,12 @@
+{
+  "name": "film-master",
+  "displayName": "电影大师",
+  "description": "专为 BananaPro 图像生成模型设计的电影视觉提示词工程 + 生图执行技能。用户选择景别/布光/色光/构图等参数，自动构建符合电影学规范的结构化提示词，并调用 BananaPro API 生成电影感画面。支持单镜头模式和九宫格三幕叙事分镜模式。",
+  "emoji": "🎬",
+  "version": "1.0.0",
+  "entrypoint": "SKILL.md",
+  "scripts": {
+    "generate": "main.py"
+  },
+  "apiKeys": ["bananaProApiKey"]
+}

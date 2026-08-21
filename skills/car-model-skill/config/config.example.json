@@ -1,0 +1,12 @@
+{
+  "gemini_api_key": "your-gemini-api-key-here",
+  "doubao_api_key": "your-doubao-api-key-here",
+  "base_url": "https://www.dmxapi.cn",
+  "default_image_size": "2K",
+  "default_aspect_ratio": "16:9",
+  "max_reference_images": 6,
+  "enable_quality_check": true,
+  "enable_auto_optimization": true,
+  "output_directory": "output",
+  "database_directory": "car_database"
+}

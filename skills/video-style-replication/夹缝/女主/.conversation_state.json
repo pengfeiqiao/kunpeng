@@ -1,0 +1,66 @@
+{
+  "project_path": "夹缝/女主",
+  "phase": "project_setup",
+  "step": 3,
+  "project_name": "女主",
+  "project_style": "modern_travel",
+  "project_location": "夹缝",
+  "characters": {},
+  "current_character": null,
+  "character_count": 0,
+  "scenes": {},
+  "current_scene": null,
+  "scene_count": 0,
+  "current_workflow_step": null,
+  "workflow_results": {},
+  "pending_confirmation": null,
+  "recent_messages": [
+    {
+      "role": "user",
+      "content": "我想做一个阿勒泰旅游的分镜",
+      "timestamp": "2026-03-20T11:19:55.311659"
+    },
+    {
+      "role": "user",
+      "content": "现代旅游风光影视片",
+      "timestamp": "2026-03-20T11:19:55.311737"
+    },
+    {
+      "role": "user",
+      "content": "夹缝-阿勒泰",
+      "timestamp": "2026-03-20T11:19:55.374611"
+    },
+    {
+      "role": "user",
+      "content": "确认",
+      "timestamp": "2026-03-20T11:19:55.374638"
+    },
+    {
+      "role": "user",
+      "content": "确认",
+      "timestamp": "2026-03-20T11:19:55.374655"
+    },
+    {
+      "role": "user",
+      "content": "1",
+      "timestamp": "2026-03-20T11:32:09.982057"
+    },
+    {
+      "role": "user",
+      "content": "女主",
+      "timestamp": "2026-03-20T11:32:09.982067"
+    },
+    {
+      "role": "user",
+      "content": "夹缝",
+      "timestamp": "2026-03-20T11:32:09.982099"
+    },
+    {
+      "role": "user",
+      "content": "确认",
+      "timestamp": "2026-03-20T11:32:09.982110"
+    }
+  ],
+  "created_at": "2026-03-20T11:19:55.311651",
+  "updated_at": "2026-03-20T11:32:09.982111"
+}

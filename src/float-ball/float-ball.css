@@ -1,0 +1,95 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 64px;
+  height: 64px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+.kp-float-shell {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.kp-float-ball {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.75), transparent 28%),
+    linear-gradient(145deg, #f8fbff 0%, #dbeafe 48%, #7c9cff 100%);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.32);
+  animation: kp-float-idle 3s ease-in-out infinite;
+  transition: transform 150ms ease, box-shadow 260ms ease, filter 260ms ease;
+  will-change: transform, box-shadow;
+}
+
+.kp-float-logo {
+  display: block;
+  width: 76%;
+  height: 76%;
+  margin: 12%;
+  object-fit: cover;
+  object-position: 50% 36%;
+  border-radius: 38%;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+}
+
+.kp-float-ball:hover {
+  transform: translateY(-1px) scale(1.08);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.38);
+}
+
+.kp-float-ball.is-pressed {
+  transform: scale(0.9) !important;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.26);
+  filter: saturate(0.92);
+}
+
+.kp-float-ball.is-working {
+  animation: kp-float-working 2.6s ease-in-out infinite;
+  box-shadow: 0 0 0 5px rgba(96, 165, 250, 0.16), 0 0 22px rgba(59, 130, 246, 0.58);
+}
+
+.kp-float-ball.is-working:hover {
+  box-shadow: 0 0 0 6px rgba(96, 165, 250, 0.2), 0 0 28px rgba(59, 130, 246, 0.72);
+}
+
+.kp-float-ball.is-error {
+  box-shadow: 0 0 0 5px rgba(248, 113, 113, 0.14), 0 0 18px rgba(239, 68, 68, 0.55);
+}
+
+@keyframes kp-float-idle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes kp-float-working {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.12), 0 0 18px rgba(59, 130, 246, 0.46);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.04);
+    box-shadow: 0 0 0 8px rgba(96, 165, 250, 0.06), 0 0 30px rgba(99, 102, 241, 0.68);
+  }
+}

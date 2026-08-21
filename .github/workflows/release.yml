@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 构建并发布 macOS DMG
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 准备 dsh-runtime/node（内嵌 Node.js v24.19.0）
+        # dsh-runtime/node 是 gitignored 的本地下载件，发布构建需先准备
+        run: |
+          mkdir -p dsh-runtime/node
+          curl -fsSL -o /tmp/node.tar.xz https://nodejs.org/dist/v24.19.0/node-v24.19.0-darwin-arm64.tar.xz
+          tar -xJf /tmp/node.tar.xz -C /tmp
+          cp -R /tmp/node-v24.19.0-darwin-arm64/ dsh-runtime/node/
+          test -x dsh-runtime/node/bin/node
+          dsh-runtime/node/bin/node --version
+
+      - name: 安装依赖
+        run: |
+          npm ci
+          npm --prefix dsh-runtime ci
+
+      - name: 构建 Tauri 应用（公共构建为纯净版）
+        run: npm run tauri:build
+        env:
+          CI: true
+
+      - name: 上传 DMG 到 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

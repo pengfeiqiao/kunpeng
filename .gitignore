@@ -1,0 +1,43 @@
+node_modules/
+dist/
+src-tauri/target/
+.DS_Store
+
+# ── 运行时/产物（可再生成或体积过大，不入库）──
+.local-browsers/
+dsh-runtime/node/
+tmp/
+output/
+*.zip
+
+# ── 环境与密钥 ──
+.env
+.env.*
+!.env.example
+
+# ── 私人覆盖层（开源仓库绝不包含，见 docs/开源计划 06）──
+private.defaults.json
+private/
+
+# ── 个人内容与内部文档 ──
+AGENT.md
+DEVLOG.md*
+HANDOFF-*.md
+aigc-memory/MEMORY.md
+aigc-memory/projects/
+aigc-memory/project-bibles/
+aigc-memory/project-status/
+aigc-memory/generation-log/
+aigc-memory/lessons-learned/
+aigc-memory/director-dna/
+aigc-memory/theme-arcs/
+skills/xiaozhi-moss-mcp/
+skills/video-script-writer/
+skills/digital-human-skill/
+.claude/
+.agents/
+.kimi-*
+.codex-*
+
+# 内部文档
+AIGC_MEMORY_ARCHITECTURE.md

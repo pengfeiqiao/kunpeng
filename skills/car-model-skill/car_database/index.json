@@ -1,0 +1,13 @@
+{
+  "cars": [
+    {
+      "brand": "NIO",
+      "model": "ES8",
+      "path": "NIO\\ES8",
+      "date_created": "2026-02-15T12:27:59.439106",
+      "images_count": 11,
+      "total_size_mb": 31.41
+    }
+  ],
+  "last_updated": "2026-02-15T12:27:59.440394"
+}

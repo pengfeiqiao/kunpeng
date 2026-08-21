@@ -1,0 +1,988 @@
+{
+  "$comment": "鲲鹏 Midjourney 专属风格库 · 12 内置风格。schema 对齐 src/lib/midjourney/promptSystem.ts 的 MjStylePreset；thumbnailPath 指向本包 02-风格案例/封面/ 下的案例图（实施时打包进 app resources）。所有提示词均为实测出图的原始 prompt（APIMart 通道，relax）。",
+  "defaults": {
+    "version": "v8.2",
+    "stylize": 300,
+    "chaos": 0,
+    "raw": false,
+    "speed": "relax",
+    "_note": "V8.2 不传 --q（该版本已移除 quality 参数）；V8.1 通道才传 q=1"
+  },
+  "styles": [
+    {
+      "id": "mecha-ruin",
+      "name": "战损机甲",
+      "nameEn": "Weathered Mecha Ruins",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/01-战损机甲.png",
+      "visualDNA": "巨物机甲 × 废墟尺度 × 岁月侵蚀。剥落白漆、锈迹、油污、混凝土断壁，低角度仰拍制造压迫感，自然硬光下的真实材质。",
+      "cameraLanguage": "低角度仰拍 / 广角 / 浅景深前景遮挡 / 硬光",
+      "promptTemplate": "a colossal battle-worn {subject} covered in rust and peeling paint, amid collapsed concrete ruins, dust and debris floating in the air, low angle shot, harsh midday sunlight, photorealistic weathered textures, cinematic film still",
+      "promptSuffix": "weathered textures, rust, battle damage, dust, ruins, photorealistic",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "gilded-oriental",
+      "name": "鎏金国风",
+      "nameEn": "Gilded Oriental",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/02-鎏金国风.png",
+      "visualDNA": "极繁东方宫廷美学。鎏金凤冠、红金刺绣、珠玉堆叠，暗背景 + 戏剧性明暗（chiaroscuro），hyper-detail 工艺感。",
+      "cameraLanguage": "特写/半身肖像 / 暗背景 / 戏剧性侧光",
+      "promptTemplate": "{subject} wearing an ornate gilded phoenix headdress and red-gold embroidered hanfu, intricate jewelry and jade ornaments, dark background, dramatic chiaroscuro lighting, hyper-detailed, cinematic portrait",
+      "promptSuffix": "gilded, ornate, intricate jewelry, red and gold, hyper-detailed, dark background",
+      "mjParams": {
+        "stylize": 400,
+        "chaos": 0,
+        "ar": "9:16"
+      }
+    },
+    {
+      "id": "oriental-fantasy",
+      "name": "东方玄幻",
+      "nameEn": "Oriental Fantasy",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/03-东方玄幻.png",
+      "visualDNA": "仙侠史诗。云海之上的浮空宫殿、金色符文、白衣修士剪影，巨物比例与万丈霞光，ethereal 空灵光感。",
+      "cameraLanguage": "超广角大远景 / 人物剪影点景 / 逆光",
+      "promptTemplate": "a lone figure in flowing white robes standing on a cliff before {subject}, a sea of clouds at sunset, glowing golden runes drifting in the air, epic scale, ethereal light, cinematic wide shot",
+      "promptSuffix": "sea of clouds, golden runes, epic scale, ethereal light, floating palace",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "wuxia-rain",
+      "name": "武侠雨夜",
+      "nameEn": "Wuxia Rain",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/04-武侠雨夜.png",
+      "visualDNA": "武侠电影质感。雨夜庭院、灯笼暖光对蓝灰冷调、剑舞动作模糊、石板反光，写意与力量感并存。",
+      "cameraLanguage": "中全景动作 / 慢门动作模糊 / 暖冷对比光",
+      "promptTemplate": "{subject} in a rain-soaked ancient Chinese courtyard at night, sword dance motion blur, warm lantern light against blue-grey tones, wet stone reflections, cinematic wuxia film still",
+      "promptSuffix": "rain, motion blur, lantern light, blue-grey palette, wet reflections, wuxia",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "dark-knight",
+      "name": "暗夜骑士",
+      "nameEn": "Dark Knight",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/05-暗夜骑士.png",
+      "visualDNA": "暗黑史诗。黑色繁复铠甲、单色红光辉光、红雾弥漫、巨像阴影，极端对比与戏剧性轮廓光。",
+      "cameraLanguage": "背影全景 / 极低饱和度+单色辉光 / 戏剧性 rim light",
+      "promptTemplate": "{subject} in ornate black armor holding a glowing red energy sword, red mist swirling, shadowy ancient statues in the background, extreme contrast, dramatic rim lighting, dark fantasy film still",
+      "promptSuffix": "black armor, red glow, mist, high contrast, dark fantasy, rim light",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "9:16"
+      }
+    },
+    {
+      "id": "raw-portrait",
+      "name": "质感人像",
+      "nameEn": "Raw Editorial Portrait",
+      "category": "photoreal",
+      "thumbnailPath": "02-风格案例/封面/06-质感人像.png",
+      "visualDNA": "编辑类真实感人像。雀斑、毛孔、碎发等真实肌理，方向性柔光，胶片颗粒，拒绝磨皮 AI 感。必须 --style raw。",
+      "cameraLanguage": "特写 / 浅景深 / 窗光柔光",
+      "promptTemplate": "close-up portrait of {subject}, freckles and windswept hair, intense gaze, natural skin texture, soft directional window light, editorial photography, shot on Kodak Portra 400",
+      "promptSuffix": "natural skin texture, freckles, editorial photography, Kodak Portra 400, film grain",
+      "mjParams": {
+        "stylize": 150,
+        "chaos": 0,
+        "raw": true,
+        "ar": "4:5"
+      }
+    },
+    {
+      "id": "desert-epic",
+      "name": "沙漠史诗",
+      "nameEn": "Desert Epic",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/07-沙漠史诗.png",
+      "visualDNA": "沙丘式巨物美学。金色霾雾、巨型沙丘/巨物剪影、人物渺小如豆，单色调金色 palette，史诗尺度。",
+      "cameraLanguage": "21:9 超宽画幅 / 大远景 / 剪影点景",
+      "promptTemplate": "two tiny figures on the ridge of a massive golden sand dune at dusk, {subject} emerging in the atmospheric haze, epic scale, golden monochrome palette, cinematic film still",
+      "promptSuffix": "golden haze, epic scale, tiny figures, atmospheric, monochrome gold, dune",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "21:9"
+      }
+    },
+    {
+      "id": "dream-pastoral",
+      "name": "梦幻田园",
+      "nameEn": "Dream Pastoral",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/08-梦幻田园.png",
+      "visualDNA": "梦境油画。发光花海、白马、巨月、雪山，印象派笔触与 ethereal 光感，现实与梦境交叠。",
+      "cameraLanguage": "广角风景 / 油画质感 / 月光逆光",
+      "promptTemplate": "{subject} galloping through a luminous meadow of glowing white flowers, a crystal river winding through the valley, snow-capped mountains under a giant moon, dreamy oil painting, ethereal light, impressionist style",
+      "promptSuffix": "glowing flowers, giant moon, dreamy, oil painting, ethereal light, impressionist",
+      "mjParams": {
+        "stylize": 400,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "cyber-neon",
+      "name": "赛博霓虹",
+      "nameEn": "Cyber Neon",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/09-赛博霓虹.png",
+      "visualDNA": "赛博都市雨夜。霓虹广告牌、湿滑路面反射、青与品红撞色、透明雨伞剪影，孤独感都市氛围。",
+      "cameraLanguage": "竖屏街景 / 背影 / 霓虹反射前景",
+      "promptTemplate": "{subject} walking through a rain-soaked neon-lit street at night, transparent umbrella, vivid reflections on wet pavement, towering cyberpunk billboards, teal and magenta palette, cinematic atmosphere",
+      "promptSuffix": "neon, rain, wet reflections, teal and magenta, cyberpunk, night street",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "9:16"
+      }
+    },
+    {
+      "id": "anime-sky",
+      "name": "云海青春动画",
+      "nameEn": "Luminous Anime Sky",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/10-新海诚动画.png",
+      "visualDNA": "当代光影动画。积雨云夕阳、镜头光晕、高饱和渐变天空、日常物件的诗意，niji7 通道。",
+      "cameraLanguage": "广角天空占比 70% / 人物小剪影 / 镜头光晕",
+      "promptTemplate": "{subject} watching a breathtaking sunset sky with towering cumulonimbus clouds, lens flare, vibrant colors, luminous contemporary anime film style anime illustration",
+      "promptSuffix": "cumulonimbus, sunset sky, lens flare, vibrant, luminous contemporary anime film style, anime",
+      "mjParams": {
+        "version": "niji7",
+        "stylize": 200,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "minimal-product",
+      "name": "极简产品",
+      "nameEn": "Minimal Product",
+      "category": "commercial",
+      "thumbnailPath": "02-风格案例/封面/11-极简产品.png",
+      "visualDNA": "高级产品摄影。粗粝石座/几何台、柔和渐变背景、戏剧性侧光长影，less is more。低 stylize 保真。",
+      "cameraLanguage": "1:1 居中构图 / 影棚侧光 / 长阴影",
+      "promptTemplate": "{subject} on a rough stone pedestal, soft beige gradient background, dramatic side lighting with long shadows, minimalist product photography, studio shot",
+      "promptSuffix": "minimalist, product photography, studio lighting, soft gradient, stone pedestal",
+      "mjParams": {
+        "stylize": 50,
+        "chaos": 0,
+        "ar": "1:1"
+      }
+    },
+    {
+      "id": "film-street",
+      "name": "胶片街头",
+      "nameEn": "Film Street Documentary",
+      "category": "photoreal",
+      "thumbnailPath": "02-风格案例/封面/12-胶片街头.png",
+      "visualDNA": "纪实胶片。雾中渔港、晨曦、劳作的人，Kodak Portra 400 暖调，人文纪实人文摄影。必须 --style raw。",
+      "cameraLanguage": "3:2 纪实构图 / 晨雾逆光 / 抓拍感",
+      "promptTemplate": "{subject} at dawn in the mist, candid documentary photography, muted warm tones, Kodak Portra 400, humanist documentary photography",
+      "promptSuffix": "documentary, candid, misty, dawn light, Kodak Portra 400, muted warm tones",
+      "mjParams": {
+        "stylize": 150,
+        "chaos": 0,
+        "raw": true,
+        "ar": "3:2"
+      }
+    },
+    {
+      "id": "ink-wash",
+      "name": "水墨丹青",
+      "nameEn": "Ink Wash",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/13-水墨丹青.png",
+      "visualDNA": "传统水墨。宣纸墨韵、大笔触、大面积留白，墨色浓淡 + 淡青点缀，写意山水渔舟。",
+      "cameraLanguage": "横构图大远景 / 留白构图 / 平面化",
+      "promptTemplate": "traditional Chinese ink wash painting of {subject}, sumi-e, visible black ink brush strokes on xuan rice paper, ink bleed texture, generous negative space, minimal composition",
+      "promptSuffix": "ink wash, sumi-e, brush strokes, xuan paper, negative space",
+      "negativeHints": "photo, photorealistic, 3D, color photography",
+      "mjParams": {
+        "stylize": 400,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "dunhuang",
+      "name": "敦煌飞天",
+      "nameEn": "Dunhuang Fresco",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/14-敦煌飞天.png",
+      "visualDNA": "敦煌壁画。飞天飘带、矿物色（赭红/石绿/青金）、金箔、斑驳洞窟肌理，平面装饰线描。",
+      "cameraLanguage": "全身立像 / 平面装饰 / 斑驳肌理",
+      "promptTemplate": "weathered Dunhuang fresco mural depicting {subject}, flat decorative line art, mineral pigments of ochre red, malachite green and lapis blue, gold leaf details, mottled cave wall texture, ancient mural craft",
+      "promptSuffix": "Dunhuang fresco, mineral pigments, gold leaf, weathered cave wall, flat decorative",
+      "negativeHints": "oil painting, realistic skin, photography",
+      "mjParams": {
+        "stylize": 400,
+        "chaos": 0,
+        "ar": "9:16"
+      }
+    },
+    {
+      "id": "cyber-guochao",
+      "name": "赛博国潮",
+      "nameEn": "Cyber Guochao",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/15-赛博国潮.png",
+      "visualDNA": "赛博×国潮。霓虹中文招牌、现代汉服、红灯笼与全息锦鲤，东方夜市未来感。注意：画面文字可能出现伪汉字，正式出图建议 --no text 或后期修字。",
+      "cameraLanguage": "竖屏街景 / 霓虹打光 / 中近景",
+      "promptTemplate": "{subject} under glowing neon signs, cyberpunk Chinese street, modern hanfu, red lanterns and holographic koi fish, guochao style, cinematic atmosphere",
+      "promptSuffix": "cyberpunk, guochao, neon, red lanterns, holographic koi, night street",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "9:16"
+      }
+    },
+    {
+      "id": "imperial-snow",
+      "name": "紫禁初雪",
+      "nameEn": "Imperial Snow",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/16-紫禁初雪.png",
+      "visualDNA": "故宫雪景。红墙金瓦覆雪、护城河倒影、一点红伞人影，静谧冬日晨光。",
+      "cameraLanguage": "大远景对称 / 晨雾柔光 / 冷调暖点",
+      "promptTemplate": "{subject} covered in fresh snow at dawn, red walls and golden glazed roofs, a lone figure with a red umbrella, serene winter atmosphere, cinematic photography",
+      "promptSuffix": "snow, red walls, golden roofs, serene, winter dawn, Forbidden City",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "paper-cut",
+      "name": "中国剪纸",
+      "nameEn": "Paper Cut",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/17-中国剪纸.png",
+      "visualDNA": "平面剪纸。单色红镂空剪影、蕾丝级细纹、白底，民间工艺的对称与吉祥题材。",
+      "cameraLanguage": "正面平铺 / 对称构图 / 无透视",
+      "promptTemplate": "flat 2D traditional Chinese paper-cut art depicting {subject}, single-color red hollow-out silhouette, delicate lace-like cutout patterns on plain white background, folk paper cutting, symmetrical",
+      "promptSuffix": "paper-cut, red silhouette, hollow-out, folk art, flat 2D",
+      "negativeHints": "3D, shadow, gradient, realistic, paper sculpture, depth",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "1:1"
+      }
+    },
+    {
+      "id": "su-embroidery",
+      "name": "苏绣",
+      "nameEn": "Su Embroidery",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/18-苏绣.png",
+      "visualDNA": "苏绣工艺。丝线光泽、针脚走向清晰、素缎绣地，翠鸟荷花等雅致题材。",
+      "cameraLanguage": "微距特写 / 柔光 / 绸缎肌理",
+      "promptTemplate": "{subject}, Suzhou embroidery art, silk threads with subtle sheen, intricate stitching texture, elegant Chinese textile art, macro detail",
+      "promptSuffix": "embroidery, silk threads, stitching texture, textile art, macro",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "1:1"
+      }
+    },
+    {
+      "id": "porcelain",
+      "name": "青花瓷",
+      "nameEn": "Blue White Porcelain",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/19-青花瓷.png",
+      "visualDNA": "青花瓷。钴蓝缠枝龙纹、白瓷釉面、明代器型，博物馆级静物布光。低 stylize 保器型准确。",
+      "cameraLanguage": "静物正中构图 / 影棚柔光 / 灰底",
+      "promptTemplate": "{subject}, blue and white porcelain, Ming dynasty qinghua style, cobalt blue patterns on white ceramic, soft studio lighting, elegant still life photography",
+      "promptSuffix": "blue and white porcelain, cobalt blue, qinghua, ceramic, still life",
+      "mjParams": {
+        "stylize": 150,
+        "chaos": 0,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "space-opera",
+      "name": "太空歌剧",
+      "nameEn": "Space Opera",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/20-太空歌剧.png",
+      "visualDNA": "太空史诗。巨舰、带环气态巨行星、宇航员剪影的尺度对比，星云光，21:9 宽画幅。",
+      "cameraLanguage": "21:9 超宽 / 巨物尺度对比 / 剪影",
+      "promptTemplate": "{subject} drifting past a ringed gas giant, a tiny astronaut floating in the foreground, nebula light, epic space opera, cinematic wide shot",
+      "promptSuffix": "space opera, gas giant, nebula, epic scale, starship",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "21:9"
+      }
+    },
+    {
+      "id": "post-apocalypse",
+      "name": "末日废土",
+      "nameEn": "Post Apocalypse",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/21-末日废土.png",
+      "visualDNA": "末日重生。藤蔓吞没的摩天楼、旅人与狗、远处鹿群、晨雾，静谧而非血腥的废土。",
+      "cameraLanguage": "广角纵深 / 晨雾柔光 / 人与自然尺度对比",
+      "promptTemplate": "{subject} walking through an overgrown abandoned city street, nature reclaiming skyscrapers, deer grazing in the distance, morning mist, cinematic film still",
+      "promptSuffix": "post-apocalyptic, overgrown ruins, nature reclaiming, morning mist",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "noir",
+      "name": "黑色电影",
+      "nameEn": "Film Noir",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/22-黑色电影.png",
+      "visualDNA": "40 年代黑色电影。纯黑白、雨夜路灯、百叶窗条纹阴影、香烟烟雾，极端明暗对比。",
+      "cameraLanguage": "低调照明 / 高反差 / 阴影切割构图",
+      "promptTemplate": "{subject} under a street lamp in the rain, venetian blind shadows, swirling cigarette smoke, black and white film noir, extreme contrast, 1940s atmosphere",
+      "promptSuffix": "film noir, black and white, venetian blind shadows, high contrast, rain",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "wes-anderson",
+      "name": "粉彩对称叙事",
+      "nameEn": "Pastel Symmetry",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/23-韦斯安德森.png",
+      "visualDNA": "粉彩对称叙事。粉彩配色、完美对称、正面平拍、复古道具细节，童话般的秩序感。",
+      "cameraLanguage": "严格居中对称 / 正面平拍 / 粉彩",
+      "promptTemplate": "{subject}, perfectly centered symmetrical composition, flat frontal view, pastel color palette, whimsical, retro details, pastel symmetrical storybook direction",
+      "promptSuffix": "symmetrical, pastel, flat frontal, whimsical, pastel symmetrical storybook direction",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "underwater",
+      "name": "深海幻境",
+      "nameEn": "Underwater Dream",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/24-深海幻境.png",
+      "visualDNA": "水下梦境。白裙少女悬浮、发光水母群、穿透深蓝的光束、上升气泡，ethereal 空灵。",
+      "cameraLanguage": "竖屏全身 / 顶光光束 / 深蓝调",
+      "promptTemplate": "{subject} floating underwater among glowing jellyfish, sun rays piercing the deep blue water, rising bubbles, ethereal dreamlike, cinematic",
+      "promptSuffix": "underwater, glowing jellyfish, light rays, bubbles, ethereal",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "9:16"
+      }
+    },
+    {
+      "id": "fashion-editorial",
+      "name": "时尚大片",
+      "nameEn": "Fashion Editorial",
+      "category": "photoreal",
+      "thumbnailPath": "02-风格案例/封面/25-时尚大片.png",
+      "visualDNA": "高级时尚 editorial。雕塑感礼服、极简混凝土空间、戏剧性光影切割，高级时尚杂志构图。",
+      "cameraLanguage": "全身/七分身 / 硬光阴影 / 负空间",
+      "promptTemplate": "{subject} in an avant-garde sculptural gown posing in a minimalist concrete space, dramatic shadow play, high fashion editorial, high-fashion magazine photography",
+      "promptSuffix": "fashion editorial, avant-garde, sculptural gown, dramatic shadows, high-fashion magazine",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "golden-portrait",
+      "name": "黄金时刻",
+      "nameEn": "Golden Hour Portrait",
+      "category": "photoreal",
+      "thumbnailPath": "02-风格案例/封面/26-黄金时刻.png",
+      "visualDNA": "黄金时刻人文人像。暖金窗光、劳作的手、岁月肌理，photojournalism 真实感。必须 raw。",
+      "cameraLanguage": "近景 / 浅景深 / 侧逆暖光",
+      "promptTemplate": "portrait of {subject}, golden hour window light, warm tones, shallow depth of field, photojournalism, weathered hands and textures",
+      "promptSuffix": "golden hour, warm tones, shallow depth of field, photojournalism",
+      "mjParams": {
+        "stylize": 150,
+        "chaos": 0,
+        "raw": true,
+        "ar": "4:5"
+      }
+    },
+    {
+      "id": "food-macro",
+      "name": "美食微距",
+      "nameEn": "Food Macro",
+      "category": "commercial",
+      "thumbnailPath": "02-风格案例/封面/27-美食微距.png",
+      "visualDNA": "米其林美食摄影。微距质感、暗调背景、冷雾/蒸汽、油润光泽。低 stylize 保食材真实。",
+      "cameraLanguage": "微距特写 / 暗调 / 侧光",
+      "promptTemplate": "{subject}, macro food photography, dark moody background, glistening texture, wisps of mist, michelin star plating",
+      "promptSuffix": "macro food photography, dark background, glistening, michelin plating",
+      "mjParams": {
+        "stylize": 100,
+        "chaos": 0,
+        "ar": "1:1"
+      }
+    },
+    {
+      "id": "architecture-light",
+      "name": "建筑光影",
+      "nameEn": "Architecture Light",
+      "category": "photoreal",
+      "thumbnailPath": "02-风格案例/封面/28-建筑光影.png",
+      "visualDNA": "建筑摄影。清水混凝土、几何构成、一束光切割空间，锐利明暗。",
+      "cameraLanguage": "仰拍/俯拍几何 / 光束 / 极简",
+      "promptTemplate": "{subject}, a beam of sunlight cutting through the space, geometric shadows, minimalist concrete architecture, architectural photography",
+      "promptSuffix": "architecture, concrete, light beam, geometric shadows, minimalist",
+      "mjParams": {
+        "stylize": 200,
+        "chaos": 0,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "ghibli",
+      "name": "手绘田园动画",
+      "nameEn": "Hand-painted Pastoral",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/29-手绘田园动画田园.png",
+      "visualDNA": "手绘田园动画背景。夏日积雨云、绿草坡、乡村与毛茸茸精灵，赛璐璐上色。niji7 通道。",
+      "cameraLanguage": "广角风景 / 人物点景 / 手绘质感",
+      "promptTemplate": "{subject} on a grassy hill overlooking a rural village, towering summer clouds, lush greenery, hand-painted pastoral animation, hand-painted animation background",
+      "promptSuffix": "hand-painted pastoral animation, hand-painted, summer clouds, lush greenery, anime background",
+      "mjParams": {
+        "version": "niji7",
+        "stylize": 200,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "guochao-illustration",
+      "name": "国潮插画",
+      "nameEn": "Guochao Illustration",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/30-国潮插画.png",
+      "visualDNA": "国潮装饰插画。仙鹤、描金云纹、青山金浪，矿物色 + 金线，现代中式海报。",
+      "cameraLanguage": "平面装饰 / 描金线 / 横构图",
+      "promptTemplate": "{subject}, Chinese guochao flat vector illustration, bold gold outline work, decorative swirling clouds, rich mineral color palette, modern Chinese decorative poster art",
+      "promptSuffix": "guochao, flat illustration, gold outlines, decorative clouds, mineral colors",
+      "negativeHints": "realistic, photography, japanese, mount fuji, ukiyo-e",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "ukiyo-e",
+      "name": "浮世绘",
+      "nameEn": "Ukiyo-e",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/31-浮世绘.png",
+      "visualDNA": "浮世绘木版画。巨浪、富士山、粗轮廓线与平涂色块，葛饰北斋风。落款文字可能为伪字，可 --no text。",
+      "cameraLanguage": "平面构图 / 粗轮廓 / 平涂",
+      "promptTemplate": "{subject}, Japanese ukiyo-e woodblock print, Hokusai style, bold outlines and flat color areas",
+      "promptSuffix": "ukiyo-e, woodblock print, Hokusai style, bold outlines, flat colors",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "3:2"
+      }
+    },
+    {
+      "id": "pixel-art",
+      "name": "像素艺术",
+      "nameEn": "Pixel Art",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/32-像素艺术.png",
+      "visualDNA": "16-bit 像素。有限调色板 + 抖动、雨夜小店暖窗，复古游戏画面感。",
+      "cameraLanguage": "横版场景 / 像素颗粒 / 有限调色板",
+      "promptTemplate": "{subject}, pixel art, 16-bit retro game style, warm glowing windows, detailed pixel sprites",
+      "promptSuffix": "pixel art, 16-bit, retro game, limited palette, dithering",
+      "mjParams": {
+        "stylize": 200,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "watercolor",
+      "name": "水彩童话",
+      "nameEn": "Watercolor Fairytale",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/33-水彩童话.png",
+      "visualDNA": "水彩绘本。柔和晕染、蘑菇与狐狸的童话叙事，温暖故事书质感。",
+      "cameraLanguage": "中景叙事 / 柔和晕染 / 暖色",
+      "promptTemplate": "whimsical watercolor storybook illustration of {subject}, translucent pigment blooms, soft color washes, visible paper texture",
+      "promptSuffix": "watercolor, soft washes, whimsical, storybook illustration",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "double-exposure",
+      "name": "双重曝光",
+      "nameEn": "Double Exposure",
+      "category": "creative",
+      "thumbnailPath": "02-风格案例/封面/34-双重曝光.png",
+      "visualDNA": "双重曝光艺术。人物轮廓与森林/飞鸟融合，虚实交叠，fine art 摄影。",
+      "cameraLanguage": "肖像轮廓 / 融合叠加 / 高调背景",
+      "promptTemplate": "double exposure portrait of {subject} merged with a misty pine forest and flying birds, silhouette blend, ethereal, fine art photography",
+      "promptSuffix": "double exposure, silhouette blend, ethereal, fine art",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "raw": true,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "miniature",
+      "name": "微缩世界",
+      "nameEn": "Miniature World",
+      "category": "creative",
+      "thumbnailPath": "02-风格案例/封面/35-微缩世界.png",
+      "visualDNA": "移轴微缩。桌面小人国、夜市灯笼、浅景深 diorama 效果，玩具感。",
+      "cameraLanguage": "移轴俯拍 / 极浅景深 / 暖光斑",
+      "promptTemplate": "a miniature diorama of {subject}, tilt-shift photography, tiny glowing lanterns, shallow depth of field, warm bokeh",
+      "promptSuffix": "miniature, tilt-shift, diorama, shallow depth of field, bokeh",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "claymation",
+      "name": "黏土动画",
+      "nameEn": "Claymation",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/36-黏土动画.png",
+      "visualDNA": "黏土定格动画。手工黏土颗粒、哑光质感、可爱角色，手工定格幽默。",
+      "cameraLanguage": "中景 / 影棚柔光 / 手工质感",
+      "promptTemplate": "handcrafted claymation stop-motion scene of {subject}, visible clay fingerprints, matte miniature set, soft studio lighting, playful physical performance",
+      "promptSuffix": "claymation, stop motion, clay texture, handmade, playful handcrafted stop-motion",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "tang-beauty",
+      "name": "唐风仕女",
+      "nameEn": "Tang Beauty",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/37-唐风仕女.png",
+      "visualDNA": "盛唐仕女。高髻花钿、丝绸襦裙、团扇、朱砂金配色，丰腴华贵的唐人审美。",
+      "cameraLanguage": "半身肖像 / 暖调 / 华贵细节",
+      "promptTemplate": "{subject}, Tang dynasty court style, elaborate high bun and floral forehead ornament, flowing silk ruqun, rich vermilion and gold palette, classical Chinese aesthetics, cinematic portrait",
+      "promptSuffix": "Tang dynasty, silk ruqun, vermilion and gold, floral ornament, classical Chinese",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "9:16"
+      }
+    },
+    {
+      "id": "song-minimal",
+      "name": "宋代极简",
+      "nameEn": "Song Minimalism",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/38-宋代极简.png",
+      "visualDNA": "宋代美学。青瓷、梅枝、大量留白、雅致低饱和，简至极处即是美。",
+      "cameraLanguage": "静物一隅 / 大面积留白 / 柔光",
+      "promptTemplate": "{subject}, Song dynasty minimalist aesthetics, celadon and plum blossom, muted elegant tones, vast negative space, refined simplicity, oriental zen",
+      "promptSuffix": "Song dynasty, minimalist, celadon, negative space, zen",
+      "mjParams": {
+        "stylize": 350,
+        "chaos": 0,
+        "ar": "3:2"
+      }
+    },
+    {
+      "id": "shadow-puppet",
+      "name": "皮影戏",
+      "nameEn": "Shadow Puppetry",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/39-皮影戏.png",
+      "visualDNA": "中国皮影。半透明染色皮革镂空人偶、白色幕布暖背光、关节杆控，民间戏台。",
+      "cameraLanguage": "侧面平拍 / 幕布背光 / 剪影",
+      "promptTemplate": "{subject}, traditional Chinese shadow puppetry, flat 2D articulated leather puppets with intricate cut-out patterns, silhouettes projected onto a glowing white linen screen, warm amber backlight shining through translucent dyed leather, folk art",
+      "promptSuffix": "shadow puppetry, translucent leather, cut-out patterns, linen screen, backlight",
+      "negativeHints": "3d render, cinematic, dark background, smoke, battlefield, photorealistic",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "cloisonne",
+      "name": "景泰蓝",
+      "nameEn": "Cloisonne",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/40-景泰蓝.png",
+      "visualDNA": "景泰蓝工艺。铜胎掐丝珐琅、宝蓝釉地配金线、缠枝莲纹，宫廷奢华。",
+      "cameraLanguage": "静物微距 / 釉面光泽 / 暗底",
+      "promptTemplate": "{subject}, cloisonne enamel, imperial blue and gold, copper wire inlay, intricate lotus scroll patterns, luxurious Chinese craftsmanship, macro detail, museum photography",
+      "promptSuffix": "cloisonne, enamel, imperial blue and gold, copper inlay, museum",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "1:1"
+      }
+    },
+    {
+      "id": "jade-carving",
+      "name": "玉雕",
+      "nameEn": "Jade Carving",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/41-玉雕.png",
+      "visualDNA": "和田玉雕。半透明玉质、镂空雕龙、内敛莹光，博物馆静物。",
+      "cameraLanguage": "静物特写 / 暗背景衬光 / 透光",
+      "promptTemplate": "{subject}, translucent white jade carving, Hetian jade, soft inner glow, intricate openwork carving, elegant museum still life, dark background",
+      "promptSuffix": "jade carving, translucent, Hetian jade, openwork, museum still life",
+      "mjParams": {
+        "stylize": 200,
+        "chaos": 0,
+        "ar": "1:1"
+      }
+    },
+    {
+      "id": "ink-wuxia",
+      "name": "水墨武侠",
+      "nameEn": "Ink Wuxia",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/42-水墨武侠.png",
+      "visualDNA": "泼墨武侠。飞白笔触、竹林对决、红色印章点缀，黑白张力中的动感爆发。",
+      "cameraLanguage": "动态瞬间 / 泼墨飞白 / 留白",
+      "promptTemplate": "{subject}, expressive Chinese ink splash painting, dynamic black brushstrokes with red accent seals, dramatic motion, wuxia ink art",
+      "promptSuffix": "ink splash, brushstrokes, wuxia, red seal, dynamic",
+      "mjParams": {
+        "stylize": 400,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "tang-banquet",
+      "name": "唐宫夜宴",
+      "nameEn": "Tang Banquet",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/43-唐宫夜宴.png",
+      "visualDNA": "盛唐夜宴。水袖舞者、烛火金器、朱红大殿，富丽堂皇的宫廷气象。",
+      "cameraLanguage": "广角群像 / 烛光暖调 / 纵深",
+      "promptTemplate": "{subject}, grand Tang dynasty palace night banquet, dancers in flowing silk, candles and golden vessels, rich vermilion hall, cinematic wide shot, opulent atmosphere",
+      "promptSuffix": "Tang dynasty, palace banquet, dancers, candlelight, vermilion, opulent",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "zen-tea",
+      "name": "禅意茶室",
+      "nameEn": "Zen Tea Room",
+      "category": "oriental",
+      "thumbnailPath": "02-风格案例/封面/44-禅意茶室.png",
+      "visualDNA": "侘寂茶室。粗陶壶、蒸汽、竹影映窗，晨光中的静寂。",
+      "cameraLanguage": "静物近景 / 柔光 / 低饱和",
+      "promptTemplate": "{subject}, rustic tea room, clay teapot with steam rising, bamboo shadows on shoji screen, wabi-sabi zen atmosphere, soft morning light, tranquil still life",
+      "promptSuffix": "zen, tea room, wabi-sabi, bamboo shadows, morning light",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "3:2"
+      }
+    },
+    {
+      "id": "western",
+      "name": "西部荒野",
+      "nameEn": "Western",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/45-西部荒野.png",
+      "visualDNA": "西部片。纪念碑谷台地、骑马牛仔剪影、巨大橙色落日、尘土，变形宽银幕。",
+      "cameraLanguage": "21:9 超宽 / 大远景剪影 / 暖橙",
+      "promptTemplate": "{subject} silhouetted against a massive orange sunset, Monument Valley mesas, dust in the air, epic western film still, anamorphic widescreen",
+      "promptSuffix": "western, Monument Valley, cowboy silhouette, sunset, anamorphic",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "21:9"
+      }
+    },
+    {
+      "id": "war-epic",
+      "name": "史诗战争",
+      "nameEn": "War Epic",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/46-史诗战争.png",
+      "visualDNA": "古代史诗战争。千军万马、战旗箭雨、黎明烽火，宏大场面调度。",
+      "cameraLanguage": "21:9 超宽全景 / 俯拍 / 烟尘",
+      "promptTemplate": "{subject} on a vast battlefield at dawn, thousands of ancient soldiers, war banners and arrows in the sky, dust and fire, epic historical war film, cinematic wide shot",
+      "promptSuffix": "epic war, battlefield, banners, arrows, dawn, cinematic",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "21:9"
+      }
+    },
+    {
+      "id": "steampunk",
+      "name": "蒸汽朋克",
+      "nameEn": "Steampunk",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/47-蒸汽朋克.png",
+      "visualDNA": "蒸汽朋克工坊。黄铜齿轮、蒸汽管道、护目镜皮围裙发明家，爱迪生灯泡暖光。",
+      "cameraLanguage": "中景环境人像 / 暖光 / 繁复机械细节",
+      "promptTemplate": "{subject} in a cluttered workshop full of brass gears and steam pipes, goggles and leather apron, warm Edison bulb light, intricate mechanical details, steampunk",
+      "promptSuffix": "steampunk, brass gears, steam pipes, Edison bulbs, workshop",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "aurora",
+      "name": "极光秘境",
+      "nameEn": "Aurora",
+      "category": "photoreal",
+      "thumbnailPath": "02-风格案例/封面/48-极光秘境.png",
+      "visualDNA": "极地极光。绿紫光帘、雪松林、孤独小屋暖窗、星空长曝。",
+      "cameraLanguage": "广角夜景 / 长曝 / 冷暖对比",
+      "promptTemplate": "{subject} under a spectacular green and purple aurora borealis, snow-covered pine forest, starry sky, long exposure night photography, serene arctic wilderness",
+      "promptSuffix": "aurora borealis, starry sky, snow, long exposure, night",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "crystal-cave",
+      "name": "水晶洞穴",
+      "nameEn": "Crystal Cave",
+      "category": "cinematic",
+      "thumbnailPath": "02-风格案例/封面/49-水晶洞穴.png",
+      "visualDNA": "水晶巨洞。紫水晶簇折射光、探险者火把、神秘纵深，奇幻史诗。",
+      "cameraLanguage": "广角纵深 / 点光源对比 / 巨物尺度",
+      "promptTemplate": "{subject} entering a colossal cave of giant glowing amethyst crystals, light refracting through crystal facets, mystical atmosphere, epic scale",
+      "promptSuffix": "crystal cave, amethyst, light refraction, glowing, epic scale",
+      "mjParams": {
+        "stylize": 350,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "night-portrait",
+      "name": "夜景人像",
+      "nameEn": "Night Portrait",
+      "category": "photoreal",
+      "thumbnailPath": "02-风格案例/封面/50-夜景人像.png",
+      "visualDNA": "夜景霓虹人像。85mm 浅景深、霓虹招牌光斑、面部锐利，都市氛围。必须 raw。",
+      "cameraLanguage": "85mm 特写 / 大光圈光斑 / 霓虹补光",
+      "promptTemplate": "portrait of {subject} lit by neon shop signs at night, bokeh city lights background, cinematic night photography, 85mm lens, shallow depth of field",
+      "promptSuffix": "night portrait, neon, bokeh, 85mm, cinematic",
+      "mjParams": {
+        "stylize": 200,
+        "chaos": 0,
+        "raw": true,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "sports-action",
+      "name": "运动瞬间",
+      "nameEn": "Sports Action",
+      "category": "photoreal",
+      "thumbnailPath": "02-风格案例/封面/51-运动瞬间.png",
+      "visualDNA": "高速运动摄影。起跑爆发、颗粒飞溅、凝固瞬间，体育场戏剧性灯光。必须 raw。",
+      "cameraLanguage": "低角度 / 高速快门 / 动感颗粒",
+      "promptTemplate": "{subject}, frozen motion with flying particles, dramatic stadium lighting, professional sports photography, high shutter speed",
+      "promptSuffix": "sports photography, frozen motion, stadium lighting, high shutter speed",
+      "mjParams": {
+        "stylize": 150,
+        "chaos": 0,
+        "raw": true,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "wildlife",
+      "name": "野生动物",
+      "nameEn": "Wildlife",
+      "category": "photoreal",
+      "thumbnailPath": "02-风格案例/封面/52-野生动物.png",
+      "visualDNA": "野生动物摄影。雪豹岩壁黄昏、长焦压缩、金色轮廓光，国家地理级。必须 raw。",
+      "cameraLanguage": "长焦特写 / 轮廓光 / 浅景深",
+      "promptTemplate": "{subject}, telephoto wildlife photography, natural-history editorial, golden rim light, shallow depth of field",
+      "promptSuffix": "wildlife, telephoto, natural-history editorial, rim light",
+      "mjParams": {
+        "stylize": 150,
+        "chaos": 0,
+        "raw": true,
+        "ar": "3:2"
+      }
+    },
+    {
+      "id": "aerial-land",
+      "name": "航拍大地",
+      "nameEn": "Aerial Landscape",
+      "category": "photoreal",
+      "thumbnailPath": "02-风格案例/封面/53-航拍大地.png",
+      "visualDNA": "航拍风光。梯田曲线、晨雾流动、日出金光、人兽点景，无人机视角。",
+      "cameraLanguage": "俯视航拍 / 曲线构成 / 晨雾",
+      "promptTemplate": "aerial view of {subject} at sunrise, mist flowing between the curves, drone photography, layered green and gold",
+      "promptSuffix": "aerial, drone photography, sunrise, mist, terraced fields",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "still-flower",
+      "name": "古典花卉",
+      "nameEn": "Classic Floral",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/54-古典花卉.png",
+      "visualDNA": "荷兰黄金时代静物油画。暗背景花卉、花瓣水珠、戏剧性侧光、油画肌理。",
+      "cameraLanguage": "静物正中 / 暗背景 / 侧光",
+      "promptTemplate": "{subject}, dark moody still life, Dutch Golden Age painting style, water droplets on petals, dramatic side light, oil painting texture",
+      "promptSuffix": "floral still life, Dutch Golden Age, dark background, oil painting",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "flat-vector",
+      "name": "扁平矢量",
+      "nameEn": "Flat Vector",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/55-扁平矢量.png",
+      "visualDNA": "扁平矢量插画。大胆几何色块、暖渐变、极简线条，几何编辑插画优雅。媒介词必须置首。",
+      "cameraLanguage": "平面构成 / 色块渐变 / 无阴影",
+      "promptTemplate": "flat vector illustration of {subject}, 2D flat design, bold geometric shapes, flat color blocks with warm gradient palette, minimalist clean lines, no shading, vector art, with bold geometric editorial elegance",
+      "promptSuffix": "flat vector, geometric shapes, gradient, minimalist, bold geometric editorial style",
+      "negativeHints": "photorealistic, 3d render, cinematic lighting, realistic texture, photograph",
+      "mjParams": {
+        "stylize": 250,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "children-book",
+      "name": "儿童绘本",
+      "nameEn": "Children Book",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/56-儿童绘本.png",
+      "visualDNA": "儿童绘本。水粉厚涂、可爱动物角色、温暖叙事场景，柔和治愈。",
+      "cameraLanguage": "中景叙事 / 水粉肌理 / 暖色",
+      "promptTemplate": "hand-painted children book gouache illustration of {subject}, warm simple shapes, tactile paper, gentle storybook staging",
+      "promptSuffix": "children book, gouache, whimsical, warm, storybook",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "4:3"
+      }
+    },
+    {
+      "id": "line-art",
+      "name": "极简线稿",
+      "nameEn": "Line Art",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/57-极简线稿.png",
+      "visualDNA": "单线艺术。一笔连绵构成人物与花，米色纸黑线，tattoo 设计感。",
+      "cameraLanguage": "居中平面 / 单线 / 留白",
+      "promptTemplate": "minimal single-line ink illustration of {subject}, clean negative space, elegant continuous contour, white paper",
+      "promptSuffix": "single line, line art, minimalist, black on cream, tattoo design",
+      "mjParams": {
+        "stylize": 200,
+        "chaos": 0,
+        "ar": "1:1"
+      }
+    },
+    {
+      "id": "dark-fantasy-art",
+      "name": "暗黑幻想",
+      "nameEn": "Dark Fantasy Art",
+      "category": "anime",
+      "thumbnailPath": "02-风格案例/封面/58-暗黑幻想.png",
+      "visualDNA": "暗黑幻想油画。血月、巨龙、哥特残塔、厚涂肌理，超现实暗黑不祥氛围。",
+      "cameraLanguage": "仰视巨物 / 厚涂 / 暗调红光",
+      "promptTemplate": "{subject}, dark fantasy oil painting, blood moon, rich impasto texture, ominous atmosphere, crumbling gothic architecture, haunting surreal dark-fantasy tradition",
+      "promptSuffix": "dark fantasy, oil painting, blood moon, impasto, ominous",
+      "mjParams": {
+        "stylize": 400,
+        "chaos": 0,
+        "ar": "2:3"
+      }
+    },
+    {
+      "id": "glitch",
+      "name": "故障艺术",
+      "nameEn": "Glitch Art",
+      "category": "creative",
+      "thumbnailPath": "02-风格案例/封面/59-故障艺术.png",
+      "visualDNA": "故障艺术。古典雕像 RGB 碎片化、扫描线、数字伪影，蒸汽波配色。",
+      "cameraLanguage": "中景 / 数字失真 / 粉青撞色",
+      "promptTemplate": "{subject} fragmenting into RGB glitch distortion, digital artifacts and scan lines, vaporwave aesthetic, glitch art",
+      "promptSuffix": "glitch art, RGB distortion, scan lines, vaporwave, digital artifacts",
+      "mjParams": {
+        "stylize": 300,
+        "chaos": 0,
+        "ar": "16:9"
+      }
+    },
+    {
+      "id": "knolling",
+      "name": "平铺摄影",
+      "nameEn": "Knolling",
+      "category": "commercial",
+      "thumbnailPath": "02-风格案例/封面/60-平铺摄影.png",
+      "visualDNA": "平铺收纳摄影。物件直角网格排列、俯拍、均匀间距，治愈强迫症。低 stylize 保物件真实。",
+      "cameraLanguage": "正俯视 / 网格排列 / 均光",
+      "promptTemplate": "{subject} neatly arranged in a flat lay grid, knolling photography, top-down view, every object at right angles, warm natural light",
+      "promptSuffix": "knolling, flat lay, top-down, grid arrangement, organized",
+      "mjParams": {
+        "stylize": 100,
+        "chaos": 0,
+        "ar": "1:1"
+      }
+    }
+  ]
+}

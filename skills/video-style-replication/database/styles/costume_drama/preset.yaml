@@ -1,0 +1,101 @@
+# 古装剧风格 - 知否/清平乐风格
+name: "古装剧 - 知否/清平乐风格"
+name_en: "Costume Drama"
+description: "宋代古装剧质感，电影级光影，写实主义"
+time_period: "Northern Song Dynasty"
+era: "宋代"
+
+# 光影预设
+lighting_presets:
+  indoor_daytime:
+    temperature: 5500
+    description: "neutral natural daylight (5000K-5600K), NOT warm/golden light"
+  indoor_nighttime:
+    temperature: 2800
+    description: "warm candlelight (2800K amber), soft amber glow"
+  outdoor_daytime:
+    temperature: 5600
+    description: "bright outdoor sunlight"
+  outdoor_nighttime:
+    temperature: 4800
+    description: "cool moonlight (4800K blue-white)"
+  dual_lighting:
+    description: "dual lighting - warm lantern light (2800K amber) + cool moonlight (4800K blue-white)"
+
+# 质量标准
+quality_standards:
+  visual_style:
+    - "Photorealistic, NOT illustration"
+    - "Film grain, cinematic color grading"
+    - "Chinese costume drama cinematography"
+    - "Northern Song Dynasty historical accuracy"
+  negative:
+    - "AI 油腻感"
+    - "过度平滑"
+    - "皮肤油亮"
+    - "塑料质感"
+    - "动漫风格"
+    - "现代物品穿帮"
+
+# 角色模板
+character_templates:
+  male_lead_scholar:
+    archetype: "落魄世家公子"
+    name_example: "沈砚舟"
+    age_range: [17, 22]
+    temperament:
+      - 清冷
+      - 孤傲
+      - 隐忍
+    costume:
+      default: "青布长衫，木簪束发"
+      outdoor: "青布长衫，藏青加厚外袍"
+    visual_marks:
+      - feature: "鼻翼痣"
+        description: "观众视角左侧鼻翼上方、紧邻鼻梁下缘处的深褐色小痣"
+        english_prompt: "small dark brown mole on LEFT side of NOSE"
+        criticality: 10
+
+  female_lead_merchant:
+    archetype: "糕团铺老板女儿"
+    name_example: "陶檐"
+    age_range: [16, 20]
+    temperament:
+      - 灵动
+      - 元气
+      - 爽利
+      - 市井烟火气
+    costume:
+      default: "姜黄色短打，深青色围裙，栀子花发饰"
+    visual_marks:
+      - feature: "梨涡"
+        description: "笑时双侧梨涡清晰显现"
+        english_prompt: "symmetric DIMPLES on BOTH cheeks - MUST BE CLEARLY VISIBLE when smiling"
+        criticality: 10
+
+# 分镜类型
+shot_types:
+  wide:
+    description: "Wide shot showing full scene and characters"
+    aspect_ratio: "16:9"
+  medium:
+    description: "Medium shot showing characters from waist up"
+    aspect_ratio: "16:9"
+  closeup:
+    description: "Close-up shot showing face details"
+    aspect_ratio: "16:9"
+  extreme_closeup:
+    description: "Extreme close-up showing specific details"
+    aspect_ratio: "16:9"
+
+# 场景类型
+scene_types:
+  indoor:
+    - "糕团铺前厅"
+    - "糕团铺后厨"
+    - "柴房"
+    - "书院"
+  outdoor:
+    - "石桥"
+    - "街道"
+    - "竹林"

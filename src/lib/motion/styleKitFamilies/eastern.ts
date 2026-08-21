@@ -1,0 +1,123 @@
+/**
+ * styleKits/eastern — 东方美学族（12 种）。
+ * 每种 = 手写的完整美学人格。参照真实的美术传统：敦煌矿物色、青花釉色、
+ * 宋代青绿、浮世绘版画、侘寂物哀……装饰层全部 Chromium 渲染安全。
+ */
+import type { StyleKit } from '../styleKits';
+
+/* eslint-disable max-len */
+
+export const EASTERN_KITS: StyleKit[] = [
+  {
+    id: 'dunhuang', family: '东方美学', label: '敦煌壁画',
+    vibe: '土红石绿矿物色、飞天飘带弧线、斑驳壁面、鎏金细节——文化/历史/国潮重磅感',
+    cssVars: { '--fx-primary': '#3d2b1f', '--fx-accent': '#c8842c', '--fx-accent2': '#4a7a6d', '--fx-text': '#f0e2c8', '--fx-surface': 'rgba(200,132,44,0.1)' },
+    fontPairing: 'literary',
+    bgCss: 'radial-gradient(ellipse 90% 80% at 50% 30%,#4a3527 0%,#38271b 60%,#2b1e14 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:1"></div><svg style="position:absolute;right:-6%;top:-10%;opacity:.5" width="800" height="800" viewBox="0 0 800 800" fill="none"><circle cx="400" cy="400" r="330" stroke="#c8842c" stroke-width="2" opacity=".5"/><circle cx="400" cy="400" r="256" stroke="#c8842c" stroke-width="1" opacity=".35"/><path d="M120 560 Q 400 380 690 520" stroke="#4a7a6d" stroke-width="3" opacity=".45" fill="none"/><path d="M80 620 Q 420 440 720 590" stroke="#b3552e" stroke-width="2" opacity=".4" fill="none"/></svg><div style="position:absolute;left:0;bottom:0;right:0;height:220px;background:linear-gradient(0deg,rgba(20,12,6,.6),transparent)"></div></div>`,
+    foregroundHtml: `<div style="position:absolute;left:6%;top:8%;width:52px;height:8px;background:#c8842c;opacity:.75"></div><div style="position:absolute;left:6%;top:calc(8% + 16px);width:28px;height:8px;background:#b3552e;opacity:.6"></div>`,
+    motionNotes: '庄重慢速（outQuart 1.2s+），maskReveal dir:center 如洞窟光照亮；飘带元素用 pathMove 大弧线；鎏金字 kp-serif+#c8842c；忌快切忌弹簧',
+  },
+  {
+    id: 'qinghua', family: '东方美学', label: '青花瓷',
+    vibe: '白瓷底钴蓝纹样、缠枝莲边框、釉面高光——雅致/茶器/传统工艺',
+    cssVars: { '--fx-primary': '#f4f6f3', '--fx-accent': '#1e4d8c', '--fx-accent2': '#6d8fbd', '--fx-text': '#16365f', '--fx-surface': 'rgba(30,77,140,0.06)' },
+    fontPairing: 'literary',
+    bgCss: 'radial-gradient(ellipse 100% 90% at 50% 20%,#fbfcfa 0%,#eef2ec 70%,#e3e9e2 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;left:-140px;top:-140px;opacity:.6" width="560" height="560" viewBox="0 0 560 560" fill="none"><circle cx="280" cy="280" r="235" stroke="#1e4d8c" stroke-width="2.5" opacity=".5"/><path d="M280 60 q 60 90 0 170 q -60 90 0 170" stroke="#1e4d8c" stroke-width="2.5" fill="none" opacity=".55"/><circle cx="280" cy="145" r="17" fill="#1e4d8c" opacity=".38"/><circle cx="280" cy="405" r="12" fill="#1e4d8c" opacity=".3"/></svg><svg style="position:absolute;right:-120px;bottom:-160px;opacity:.5" width="620" height="620" viewBox="0 0 620 620" fill="none"><circle cx="310" cy="310" r="265" stroke="#1e4d8c" stroke-width="2" opacity=".45"/><path d="M110 310 q 100 -66 200 0 t 200 0" stroke="#1e4d8c" stroke-width="2.5" fill="none" opacity=".5"/></svg><div style="position:absolute;left:0;top:0;right:0;height:6px;background:repeating-linear-gradient(90deg,#1e4d8c 0 34px,transparent 34px 50px);opacity:.4"></div></div>`,
+    motionNotes: '如釉面流转：lineDraw 描缠枝纹、maskReveal center 如拉坯成形、shine 一次扫过做釉光；速度中等（outCubic 0.7s）；蓝只此一色，靠深浅分层',
+  },
+  {
+    id: 'redwall', family: '东方美学', label: '朱红宫墙',
+    vibe: '故宫红墙金瓦、垂直构图、门钉阵列、琉璃金——大气/仪式/新年',
+    cssVars: { '--fx-primary': '#8c1f1a', '--fx-accent': '#e8b04a', '--fx-accent2': '#4a1512', '--fx-text': '#f7ead2', '--fx-surface': 'rgba(74,21,18,0.35)' },
+    fontPairing: 'literary',
+    bgCss: 'linear-gradient(180deg,#9c2620 0%,#872019 55%,#701a14 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:.8"></div><div style="position:absolute;left:0;right:0;top:64px;height:3px;background:linear-gradient(90deg,transparent,rgba(232,176,74,.65),transparent)"></div><div style="position:absolute;left:0;right:0;bottom:110px;height:2px;background:rgba(232,176,74,.4)"></div><div style="position:absolute;left:8%;bottom:130px;display:flex;gap:110px">${Array.from({ length: 8 }).map(() => '<div style="width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 34% 30%,#f3cd7c,#b3771f 70%);box-shadow:0 3px 8px rgba(0,0,0,.4)"></div>').join('')}</div></div>`,
+    foregroundHtml: `<div class="kp-vignette" style="position:absolute;inset:0;opacity:.7"></div>`,
+    motionNotes: '开阔仪式感：camera 缓慢横移(x 0→-40)如沿墙而行；标题金色 kp-serif 大字 maskReveal bottom 升起；门钉可 stagger 亮起（opacity 轨道）；慢稳',
+  },
+  {
+    id: 'shanshui', family: '东方美学', label: '水墨山水',
+    vibe: '远山淡墨近山浓、云雾留白、一叶扁舟——诗意/意境/文人气',
+    cssVars: { '--fx-primary': '#eef0ec', '--fx-accent': '#3a4440', '--fx-accent2': '#7c8a84', '--fx-text': '#2c3330', '--fx-surface': 'rgba(58,68,64,0.07)' },
+    fontPairing: 'literary',
+    bgCss: 'linear-gradient(180deg,#f2f4f0 0%,#e6eae4 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;left:0;right:0;bottom:0" width="1920" height="620" viewBox="0 0 1920 620" preserveAspectRatio="none" fill="none"><path d="M0 480 Q 240 300 480 430 T 960 400 T 1440 450 T 1920 380 V 620 H 0 Z" fill="#7c8a84" opacity=".28"/><path d="M0 540 Q 320 400 640 500 T 1280 490 T 1920 520 V 620 H 0 Z" fill="#3a4440" opacity=".34"/><path d="M0 600 Q 480 520 960 575 T 1920 590 V 620 H 0 Z" fill="#2c3330" opacity=".4"/></svg><div style="position:absolute;left:0;right:0;top:38%;height:130px;background:linear-gradient(180deg,transparent,rgba(238,240,236,.9) 50%,transparent);filter:blur(8px)"></div><div class="kp-noise" style="position:absolute;inset:0;opacity:.7"></div></div>`,
+    motionNotes: '云雾呼吸：雾带 opacity 0.6↔1 极慢轨道；山峦各层 parallax(0.3/0.5/0.7) 配 camera 极缓横移；文字如题跋居右上 kp-vert；blur 显影入场；全程无快动作',
+  },
+  {
+    id: 'ukiyoe', family: '东方美学', label: '浮世绘',
+    vibe: '神奈川浪线、扁平色块、木刻轮廓、朱印——日式/复古/波普东方',
+    cssVars: { '--fx-primary': '#e9e2cf', '--fx-accent': '#1f4a6e', '--fx-accent2': '#c0392b', '--fx-text': '#22303a', '--fx-surface': 'rgba(31,74,110,0.08)' },
+    fontPairing: 'literary',
+    bgCss: '#e9e2cf',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;left:-2%;bottom:-4%;opacity:.85" width="1000" height="480" viewBox="0 0 1000 480" fill="none"><path d="M0 420 Q 120 260 280 320 Q 260 250 350 230 Q 330 160 440 170 Q 480 100 560 150 Q 600 200 560 260 Q 660 240 680 330 Q 800 300 860 400 L 1000 480 L 0 480 Z" fill="#1f4a6e" opacity=".82"/><path d="M300 322 q 26 -34 60 -20 M 420 240 q 30 -30 62 -14 M 545 265 q 28 -26 56 -12" stroke="#e9e2cf" stroke-width="7" fill="none" stroke-linecap="round"/></svg><div style="position:absolute;right:9%;top:12%;width:130px;height:130px;border-radius:50%;background:#c0392b;opacity:.88"></div><div class="kp-noise" style="position:absolute;inset:0;opacity:.8"></div></div>`,
+    foregroundHtml: `<div style="position:absolute;right:6%;bottom:9%;padding:10px 13px;background:#c0392b;color:#e9e2cf;font-family:'Noto Serif SC',serif;font-size:26px;font-weight:700;writing-mode:vertical-rl;letter-spacing:.14em;opacity:.9">浮世</div>`,
+    motionNotes: '版画拓印感：maskReveal linear 0.4s 如刷墨拓出；浪可 pathMove 缓慢起伏；色块扁平入场无渐变透明（opacity 0→1 快切 0.2s）；kp-serif 粗衬线',
+  },
+  {
+    id: 'wabisabi', family: '东方美学', label: '侘寂素朴',
+    vibe: '亚麻灰陶土色、粗陶质感、不对称留白、枯枝一线——极简东方/器物/慢生活',
+    cssVars: { '--fx-primary': '#d9d2c5', '--fx-accent': '#8a6f55', '--fx-accent2': '#a89e8c', '--fx-text': '#42392e', '--fx-surface': 'rgba(66,57,46,0.06)' },
+    fontPairing: 'literary',
+    bgCss: 'linear-gradient(165deg,#ddd6c9 0%,#d2cabb 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:1.4"></div><div style="position:absolute;right:16%;top:0;bottom:0;width:1.5px;background:rgba(66,57,46,.2)"></div><svg style="position:absolute;right:10%;top:14%;opacity:.6" width="220" height="320" viewBox="0 0 220 320" fill="none"><path d="M110 320 C 100 220 130 160 90 90 M 90 130 C 60 110 50 80 55 50 M 95 180 C 130 165 150 140 152 110" stroke="#42392e" stroke-width="3" fill="none" stroke-linecap="round"/></svg><div style="position:absolute;left:8%;bottom:12%;width:180px;height:6px;border-radius:3px;background:rgba(138,111,85,.4)"></div></div>`,
+    motionNotes: '几乎静止的美：全场只允许 2 个动作——blur 显影入场(1.4s)与一条线 scaleX 生长；大量留白，文字小而精（kp-h3 以下）；忌任何弹跳与光效',
+  },
+  {
+    id: 'zenink', family: '东方美学', label: '禅意圆相',
+    vibe: '一笔圆相、大面积留白、枯山水耙痕——冥想/哲思/极简中的极简',
+    cssVars: { '--fx-primary': '#f2f0ea', '--fx-accent': '#1d1b17', '--fx-accent2': '#9b968a', '--fx-text': '#1d1b17', '--fx-surface': 'rgba(29,27,23,0.05)' },
+    fontPairing: 'literary',
+    bgCss: '#f2f0ea',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);opacity:.9" width="620" height="620" viewBox="0 0 620 620" fill="none"><path d="M 310 40 A 270 270 0 1 1 262 46" stroke="#1d1b17" stroke-width="26" fill="none" stroke-linecap="round" opacity=".85"/></svg><div style="position:absolute;left:0;right:0;bottom:8%;height:80px;background:repeating-linear-gradient(0deg,transparent 0 16px,rgba(155,150,138,.25) 16px 18px)"></div></div>`,
+    motionNotes: '一个动作的克制：圆相用 lineDraw(dur 1.8, inOutCubic) 一笔画成——这是全场唯一主动画；文字之后 opacity 缓现；配乐感留白 ≥40% 画面；绝对忌多元素',
+  },
+  {
+    id: 'kintsugi', family: '东方美学', label: '金缮裂纹',
+    vibe: '墨陶底金线裂纹、破碎与修复的叙事——高级黑金东方版/品牌/情感转折',
+    cssVars: { '--fx-primary': '#1c1a17', '--fx-accent': '#d4a843', '--fx-accent2': '#8a7a55', '--fx-text': '#ece5d8', '--fx-surface': 'rgba(212,168,67,0.08)' },
+    fontPairing: 'literary',
+    bgCss: 'radial-gradient(ellipse 85% 75% at 45% 40%,#242119 0%,#181613 75%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:.9"></div><svg style="position:absolute;inset:0" width="1920" height="1080" viewBox="0 0 1920 1080" fill="none"><path d="M -20 300 L 340 380 L 520 340 L 700 480 M 520 340 L 660 200 M 1920 760 L 1560 700 L 1380 780 L 1150 720 M 1380 780 L 1320 940" stroke="#d4a843" stroke-width="3.5" fill="none" opacity=".7" stroke-linejoin="round"/><path d="M 340 380 L 380 520 M 1560 700 L 1620 560" stroke="#d4a843" stroke-width="2" fill="none" opacity=".45"/></svg></div>`,
+    motionNotes: '裂纹金线用 lineDraw(stagger 0.3) 逐条愈合——叙事就是动画；标题金色衬线 blur 显影；shine 一次沿裂纹方向扫过；慢稳庄重',
+  },
+  {
+    id: 'bamboo', family: '东方美学', label: '竹林新雨',
+    vibe: '青竹翠影、晨光斜射、雨点涟漪——清新/茶/山野生活',
+    cssVars: { '--fx-primary': '#e8efe2', '--fx-accent': '#3e6b47', '--fx-accent2': '#94b08a', '--fx-text': '#26372b', '--fx-surface': 'rgba(62,107,71,0.08)' },
+    fontPairing: 'literary',
+    bgCss: 'linear-gradient(170deg,#edf3e7 0%,#dde8d4 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;left:4%;top:-6%;opacity:.5" width="300" height="1200" viewBox="0 0 300 1200" fill="none"><path d="M80 0 V 1200 M 80 200 h 10 M 80 430 h 10 M 80 660 h 10 M 80 900 h 10" stroke="#3e6b47" stroke-width="16" stroke-linecap="round"/><path d="M200 0 V 1200 M 200 320 h 8 M 200 580 h 8 M 200 840 h 8" stroke="#94b08a" stroke-width="10" stroke-linecap="round" opacity=".8"/><path d="M90 240 q 70 -30 120 10 M 90 470 q 60 -40 110 -6 M 210 350 q 50 -34 90 4" stroke="#3e6b47" stroke-width="4" fill="none" opacity=".65"/></svg><div style="position:absolute;right:-10%;top:-30%;width:900px;height:900px;background:radial-gradient(circle,rgba(255,252,235,.8),transparent 65%)"></div><div class="kp-noise" style="position:absolute;inset:0;opacity:.5"></div></div>`,
+    motionNotes: '轻风拂动：竹影层 rotate ±0.6° 极慢摇（tracks 往复关键帧）；标题从右侧 maskReveal；雨滴感可用小圆 lineDraw 涟漪扩散；速度轻快但柔（outCubic 0.6s）',
+  },
+  {
+    id: 'desertdusk', family: '东方美学', label: '大漠孤烟',
+    vibe: '丝路黄沙、落日长河、驼铃剪影地平线——旅行/史诗/西域',
+    cssVars: { '--fx-primary': '#c9853d', '--fx-accent': '#f2c063', '--fx-accent2': '#7a3b22', '--fx-text': '#fdf3e0', '--fx-surface': 'rgba(122,59,34,0.28)' },
+    fontPairing: 'literary',
+    bgCss: 'linear-gradient(180deg,#e09a4a 0%,#c67f38 45%,#9c5a28 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:50%;top:30%;width:300px;height:300px;transform:translateX(-50%);border-radius:50%;background:radial-gradient(circle,#ffe4a8 20%,#f2c063 60%,transparent 75%)"></div><svg style="position:absolute;left:0;right:0;bottom:0" width="1920" height="380" viewBox="0 0 1920 380" preserveAspectRatio="none" fill="none"><path d="M0 240 Q 480 140 960 220 T 1920 190 V 380 H 0 Z" fill="#7a3b22" opacity=".85"/><path d="M0 320 Q 640 250 1280 300 T 1920 290 V 380 H 0 Z" fill="#5c2b18"/></svg><div class="kp-noise" style="position:absolute;inset:0;opacity:.7"></div></div>`,
+    foregroundHtml: `<div class="kp-vignette" style="position:absolute;inset:0;opacity:.65"></div>`,
+    motionNotes: '史诗横移：camera x 缓慢平移全程 + 沙丘 parallax 分层；标题大衬线金字从地平线 maskReveal bottom 升起；热浪感可加极轻 blur 1↔0 呼吸；慢',
+  },
+  {
+    id: 'songgreen', family: '东方美学', label: '青绿山水',
+    vibe: '千里江山图石青石绿、矿物撞色、金线勾勒——国潮高级/文化 IP/大制作感',
+    cssVars: { '--fx-primary': '#0e2c33', '--fx-accent': '#3fa08a', '--fx-accent2': '#c8a24a', '--fx-text': '#e7f2ec', '--fx-surface': 'rgba(63,160,138,0.1)' },
+    fontPairing: 'literary',
+    bgCss: 'linear-gradient(180deg,#10333b 0%,#0c262c 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;left:0;right:0;bottom:0" width="1920" height="700" viewBox="0 0 1920 700" preserveAspectRatio="none" fill="none"><path d="M0 460 Q 200 200 420 380 Q 560 160 760 340 Q 900 240 1080 400 T 1920 340 V 700 H 0 Z" fill="#1d5c54" opacity=".85"/><path d="M0 460 Q 200 200 420 380 Q 560 160 760 340 Q 900 240 1080 400 T 1920 340" stroke="#c8a24a" stroke-width="2.5" fill="none" opacity=".75"/><path d="M0 580 Q 320 430 640 540 T 1280 520 T 1920 560 V 700 H 0 Z" fill="#3fa08a" opacity=".7"/><path d="M0 580 Q 320 430 640 540 T 1280 520 T 1920 560" stroke="#c8a24a" stroke-width="2" fill="none" opacity=".6"/></svg><div class="kp-noise" style="position:absolute;inset:0;opacity:.6"></div></div>`,
+    motionNotes: '如展开手卷：camera x 从 60 缓移到 -60 全程；金线山脊 lineDraw(dur 1.6) 先勾勒、山体 opacity 后填色——先线后色是核心叙事；标题金色竖排',
+  },
+  {
+    id: 'lanternnight', family: '东方美学', label: '灯笼夜市',
+    vibe: '暖红灯笼虚化光斑、深夜蓝底、烟火气——市集/美食/年味/夜生活',
+    cssVars: { '--fx-primary': '#141b2b', '--fx-accent': '#f2603d', '--fx-accent2': '#f5b942', '--fx-text': '#fdeee2', '--fx-surface': 'rgba(242,96,61,0.1)' },
+    fontPairing: 'literary',
+    bgCss: 'linear-gradient(180deg,#16203440 0%,#101827 100%),#111a2a',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:8%;top:10%;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(242,96,61,.85),rgba(242,96,61,.15) 70%);filter:blur(6px)"></div><div style="position:absolute;left:22%;top:22%;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,rgba(245,185,66,.8),transparent 70%);filter:blur(8px)"></div><div style="position:absolute;right:14%;top:8%;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,rgba(242,96,61,.7),transparent 70%);filter:blur(10px)"></div><div style="position:absolute;right:28%;top:30%;width:64px;height:64px;border-radius:50%;background:radial-gradient(circle,rgba(245,185,66,.6),transparent 70%);filter:blur(9px)"></div><div style="position:absolute;left:0;right:0;bottom:0;height:200px;background:linear-gradient(0deg,rgba(6,9,16,.8),transparent)"></div></div>`,
+    motionNotes: '灯火摇曳：光斑各自 y ±6px 慢漂 + opacity 0.8↔1 呼吸（错开相位）；文字暖金描边（kp-stroke）弹入可带一点 spring；烟火气允许 1 次 flash 暖色闪',
+  },
+];

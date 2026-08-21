@@ -1,0 +1,2432 @@
+{
+  "regional_modern_costume_db": {
+    "云南大理": {
+      "region_full_name": "云南大理白族地区",
+      "culture": "白族",
+      "core_anchors": [
+        "扎染",
+        "蓝白配色"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "苍山蓝",
+          "洱海白",
+          "本主庙朱红"
+        ],
+        "patterns": [
+          "扎染冰裂纹",
+          "小蝴蝶",
+          "洱海水波纹",
+          "简化三塔轮廓"
+        ],
+        "materials": [
+          "手织棉",
+          "亚麻"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "扎染休闲装",
+            "description": "短款扎染罩衫（内搭白吊带）+ 白色阔腿裤",
+            "tags": [
+              "春夏",
+              "休闲",
+              "日常"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "洱海日出 - 浪漫邂逅",
+            "description": "白色蕾丝吊带背心 + 蓝色扎染半身长裙 + 白色凉鞋",
+            "tags": [
+              "春夏",
+              "浪漫",
+              "洱海"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款",
+            "design_details": {
+              "silhouette": {
+                "type": "A型",
+                "description": "上身修身，下摆自然扩散",
+                "visual_weight": "上轻下重"
+              },
+              "fabric_layers": [
+                {
+                  "layer": "base",
+                  "item": "蕾丝吊带背心",
+                  "material": "蕾丝",
+                  "color": "白色",
+                  "texture": "蕾丝花边",
+                  "fit": "修身",
+                  "design_details": "细肩带，蕾丝花边装饰"
+                },
+                {
+                  "layer": "outer",
+                  "item": "扎染半身长裙",
+                  "material": "棉麻",
+                  "color": "蓝色",
+                  "texture": "自然冰裂纹肌理",
+                  "pattern": "小面积几何扎染",
+                  "fit": "A字型",
+                  "special_treatment": "不规则开衩设计"
+                }
+              ],
+              "structure_breaks": [
+                {
+                  "type": "不规则裙摆",
+                  "location": "裙摆",
+                  "description": "不规则开衩，增加设计感"
+                }
+              ],
+              "texture_details": [
+                {
+                  "type": "蕾丝",
+                  "location": "上身",
+                  "description": "蕾丝材质增加女性化"
+                }
+              ],
+              "layering_logic": {
+                "base_visibility": "上身露出",
+                "outer_dominance": "视觉占比70%",
+                "color_interaction": "白底提亮扎染蓝"
+              },
+              "cultural_integration": {
+                "elements": [
+                  "扎染工艺"
+                ],
+                "application": "仅用于半裙，小面积几何图案",
+                "ratio": "30%民族元素（半裙） + 70%现代款（背心）"
+              }
+            },
+            "outfit_combination": {
+              "theme": "洱海日出的浪漫邂逅",
+              "upper": {
+                "item": "白色蕾丝吊带背心",
+                "fit": "修身",
+                "material": "蕾丝",
+                "color": "白色",
+                "design": "细肩带，蕾丝花边装饰"
+              },
+              "lower": {
+                "item": "蓝色扎染半身长裙",
+                "fit": "A字型",
+                "material": "棉麻",
+                "color": "蓝色",
+                "design": "不规则开衩，小面积几何扎染"
+              },
+              "accessories": [
+                "白色宽边草帽",
+                "蓝色贝壳项链",
+                "白色编织手袋"
+              ],
+              "footwear": "白色凉鞋"
+            },
+            "color_scheme": {
+              "primary": "白色（70%）",
+              "secondary": "蓝色（20%）",
+              "accent": "黄色（10%）",
+              "description": "蓝白配色，白色为主，蓝色为辅"
+            },
+            "styling": {
+              "overall_look": "清新浪漫，展现洱海日出的唯美氛围",
+              "fashion_elements": [
+                "蕾丝材质（增加女性化）",
+                "不规则裙摆（增加设计感）",
+                "贝壳项链（呼应洱海元素）"
+              ],
+              "local_elements": [
+                "扎染工艺（30%，小面积几何图案）",
+                "蓝白配色（大理白族传统配色）"
+              ]
+            },
+            "scene_adaptation": {
+              "scene": "洱海日出",
+              "mood": "清新、浪漫",
+              "photo_tips": "迎着日出站立，拍剪影效果",
+              "lighting": "黄金时刻（日出后1小时）",
+              "poses": [
+                "坐在海边",
+                "站在礁石上"
+              ]
+            }
+          },
+          {
+            "name": "稻田风光 - 清新少女",
+            "description": "黄色纯棉短袖衬衫 + 白色百褶短裙 + 白色帆布鞋",
+            "tags": [
+              "春夏",
+              "清新",
+              "稻田"
+            ],
+            "fusion_ratio": "30%自然元素 + 70%现代基础款",
+            "design_details": {
+              "silhouette": {
+                "type": "H型",
+                "description": "宽松舒适，自然休闲",
+                "visual_weight": "上下平衡"
+              },
+              "fabric_layers": [
+                {
+                  "layer": "base",
+                  "item": "纯棉短袖衬衫",
+                  "material": "纯棉",
+                  "color": "黄色",
+                  "texture": "哑光",
+                  "fit": "宽松",
+                  "design_details": "卷边袖口，小蝴蝶结领口"
+                },
+                {
+                  "layer": "outer",
+                  "item": "百褶短裙",
+                  "material": "棉质",
+                  "color": "白色",
+                  "texture": "百褶质感",
+                  "fit": "短裙",
+                  "special_treatment": "百褶设计"
+                }
+              ],
+              "structure_breaks": [],
+              "texture_details": [
+                {
+                  "type": "百褶",
+                  "location": "裙摆",
+                  "description": "百褶设计增加层次感"
+                }
+              ],
+              "layering_logic": {
+                "base_visibility": "上身露出",
+                "outer_dominance": "视觉占比50%",
+                "color_interaction": "黄白配色，呼应稻田绿色背景"
+              },
+              "cultural_integration": {
+                "elements": [
+                  "稻田自然元素"
+                ],
+                "application": "配色呼应场景，不使用民族图案",
+                "ratio": "30%自然元素（配色） + 70%现代款"
+              }
+            },
+            "outfit_combination": {
+              "theme": "稻田里的清新少女",
+              "upper": {
+                "item": "黄色纯棉短袖衬衫",
+                "fit": "宽松",
+                "material": "纯棉",
+                "color": "黄色",
+                "design": "卷边袖口，小蝴蝶结领口"
+              },
+              "lower": {
+                "item": "白色百褶短裙",
+                "fit": "短裙",
+                "material": "棉质",
+                "color": "白色",
+                "design": "百褶设计"
+              },
+              "accessories": [
+                "草编帽子",
+                "黄色发带",
+                "白色帆布包"
+              ],
+              "footwear": "白色帆布鞋"
+            },
+            "color_scheme": {
+              "primary": "黄色（60%）",
+              "secondary": "白色（30%）",
+              "accent": "绿色（10%，背景色）",
+              "description": "黄白配色，黄色为亮点，白色为基础"
+            },
+            "styling": {
+              "overall_look": "元气清新，与稻田绿色背景呼应",
+              "fashion_elements": [
+                "卷边袖口（增加层次感）",
+                "百褶短裙（增加活力）",
+                "发带（增加少女感）"
+              ],
+              "local_elements": [
+                "稻田自然元素（30%，通过配色呼应）"
+              ]
+            },
+            "scene_adaptation": {
+              "scene": "稻田风光",
+              "mood": "田园、清新",
+              "photo_tips": "在稻田中奔跑、跳跃，捕捉动态美",
+              "lighting": "自然光",
+              "poses": [
+                "走在田埂上",
+                "弯腰抚摸稻谷",
+                "奔跑",
+                "跳跃"
+              ]
+            }
+          },
+          {
+            "name": "古城街拍 - 复古韵味",
+            "description": "黑色中式立领衬衫 + 灰色麻质阔腿裤 + 黑色皮鞋",
+            "tags": [
+              "秋冬",
+              "复古",
+              "古城"
+            ],
+            "fusion_ratio": "30%古城元素 + 70%现代基础款",
+            "design_details": {
+              "silhouette": {
+                "type": "H型",
+                "description": "修身直筒，稳重大气",
+                "visual_weight": "上下平衡"
+              },
+              "fabric_layers": [
+                {
+                  "layer": "base",
+                  "item": "中式立领衬衫",
+                  "material": "丝绸",
+                  "color": "黑色",
+                  "texture": "丝绸光泽",
+                  "fit": "修身",
+                  "design_details": "立领、盘扣"
+                },
+                {
+                  "layer": "outer",
+                  "item": "麻质阔腿裤",
+                  "material": "麻质",
+                  "color": "灰色",
+                  "texture": "麻质肌理",
+                  "fit": "阔腿",
+                  "special_treatment": "裤脚收边"
+                }
+              ],
+              "structure_breaks": [],
+              "texture_details": [
+                {
+                  "type": "盘扣",
+                  "location": "衬衫前襟",
+                  "description": "传统盘扣设计"
+                }
+              ],
+              "layering_logic": {
+                "base_visibility": "上身露出",
+                "outer_dominance": "视觉占比50%",
+                "color_interaction": "黑灰配色，经典稳重"
+              },
+              "cultural_integration": {
+                "elements": [
+                  "古城建筑元素"
+                ],
+                "application": "中式立领、盘扣，与古城建筑风格融合",
+                "ratio": "30%古城元素（中式设计） + 70%现代款（剪裁）"
+              }
+            },
+            "outfit_combination": {
+              "theme": "古城里的复古韵味",
+              "upper": {
+                "item": "黑色中式立领衬衫",
+                "fit": "修身",
+                "material": "丝绸",
+                "color": "黑色",
+                "design": "立领、盘扣"
+              },
+              "lower": {
+                "item": "灰色麻质阔腿裤",
+                "fit": "阔腿",
+                "material": "麻质",
+                "color": "灰色",
+                "design": "裤脚收边"
+              },
+              "accessories": [
+                "黑色礼帽",
+                "木质手串",
+                "黑色皮革手包"
+              ],
+              "footwear": "黑色皮鞋"
+            },
+            "color_scheme": {
+              "primary": "黑色（60%）",
+              "secondary": "灰色（30%）",
+              "accent": "蓝色（10%，点缀色）",
+              "description": "黑灰配色，经典稳重"
+            },
+            "styling": {
+              "overall_look": "复古优雅，与古城建筑风格融合",
+              "fashion_elements": [
+                "中式立领（增加文化感）",
+                "盘扣（传统工艺）",
+                "阔腿裤（现代剪裁）"
+              ],
+              "local_elements": [
+                "古城建筑元素（30%，通过设计呼应）"
+              ]
+            },
+            "scene_adaptation": {
+              "scene": "古城街拍",
+              "mood": "古朴、典雅",
+              "photo_tips": "在古城街道、古墙边拍摄，展现复古韵味",
+              "lighting": "自然光",
+              "poses": [
+                "靠在古墙边",
+                "走在石板路上"
+              ]
+            }
+          },
+          {
+            "name": "喜洲古镇 - 复古文艺",
+            "description": "米白色针织开衫 + 卡其色工装裤 + 棕色马丁靴",
+            "tags": [
+              "春季",
+              "复古",
+              "文艺",
+              "古镇",
+              "帅气"
+            ],
+            "design_details": {
+              "silhouette": {
+                "type": "H型",
+                "description": "宽松舒适，文艺复古",
+                "visual_weight": "上下平衡"
+              },
+              "fabric_layers": [
+                {
+                  "layer": "base",
+                  "item": "白色衬衫",
+                  "material": "纯棉",
+                  "color": "白色",
+                  "texture": "哑光",
+                  "fit": "宽松",
+                  "design_details": "小立领，灯笼袖"
+                },
+                {
+                  "layer": "outer",
+                  "item": "针织开衫",
+                  "material": "羊毛混纺",
+                  "color": "米白色",
+                  "texture": "针织肌理",
+                  "fit": "宽松",
+                  "special_treatment": "薄款，V领设计"
+                },
+                {
+                  "layer": "lower",
+                  "item": "工装裤",
+                  "material": "棉质",
+                  "color": "卡其色",
+                  "texture": "哑光",
+                  "pattern": "无图案",
+                  "fit": "直筒宽松",
+                  "special_treatment": "多口袋设计，侧边大口袋"
+                }
+              ],
+              "structure_breaks": [],
+              "texture_details": [
+                {
+                  "type": "针织",
+                  "location": "开衫",
+                  "description": "细腻针织纹理"
+                },
+                {
+                  "type": "皮带",
+                  "location": "腰间",
+                  "description": "复古棕色皮带，提升腰线"
+                }
+              ],
+              "layering_logic": {
+                "base_visibility": "领口、袖口、下摆露出",
+                "outer_dominance": "视觉占比40%",
+                "color_interaction": "米白+白色+蓝色，层次分明"
+              },
+              "cultural_integration": {
+                "elements": [
+                  "扎染工艺",
+                  "蓝白配色"
+                ],
+                "application": "仅用于长裙，上衣保持现代基础款",
+                "ratio": "30%民族元素（长裙） + 70%现代款（开衫+衬衫）"
+              }
+            },
+            "outfit_combination": {
+              "theme": "喜洲古镇里的复古文艺少女",
+              "upper": {
+                "item": "米白色针织开衫（内搭白色衬衫）",
+                "fit": "宽松",
+                "material": "羊毛混纺",
+                "color": "米白色",
+                "design": "V领，薄款针织，内搭白色小立领衬衫"
+              },
+              "lower": {
+                "item": "卡其色工装裤",
+                "fit": "直筒宽松",
+                "material": "棉质",
+                "color": "卡其色",
+                "design": "多口袋设计，侧边大口袋，裤脚可卷边"
+              },
+              "accessories": [
+                "复古棕色皮带",
+                "草编单肩包",
+                "复古圆框墨镜",
+                "复古手表"
+              ],
+              "footwear": "棕色马丁靴"
+            },
+            "color_scheme": {
+              "primary": "米白色（40%）",
+              "secondary": "卡其色（40%）",
+              "accent": "棕色（20%）",
+              "description": "米白+卡其+棕色，自然大地色系"
+            },
+            "styling": {
+              "overall_look": "复古文艺，温婉知性，与古镇氛围完美融合",
+              "fashion_elements": [
+                "针织开衫（增加层次感）",
+                "小立领衬衫（增加复古感）",
+                "工装裤（增加帅气）",
+                "多口袋设计（增加实用性）"
+              ],
+              "local_elements": [
+                "古镇建筑元素（20%，通过配色呼应）",
+                "草编包（手工编制）"
+              ]
+            },
+            "scene_adaptation": {
+              "scene": "喜洲古镇",
+              "mood": "古朴、文艺、温婉",
+              "photo_tips": "在古镇街巷、白族民居前拍摄，展现复古文艺与帅气结合的气质",
+              "lighting": "自然光，下午3-4点光线柔和",
+              "poses": [
+                "靠在民居墙边",
+                "走在古镇小巷",
+                "站在转角处",
+                "坐在石阶上"
+              ]
+            }
+          },
+          {
+            "name": "龙龛码头 - 法式优雅",
+            "description": "米色宽松西装外套 + 白色衬衫（内搭）+ 直筒牛仔裤 + 黑白格纹丝巾",
+            "tags": [
+              "春夏",
+              "优雅",
+              "法式",
+              "洱海"
+            ],
+            "design_details": {
+              "silhouette": {
+                "type": "H型",
+                "description": "宽松直筒，法式优雅",
+                "visual_weight": "上下平衡"
+              },
+              "fabric_layers": [
+                {
+                  "layer": "base",
+                  "item": "白色衬衫",
+                  "material": "纯棉",
+                  "color": "白色",
+                  "texture": "哑光",
+                  "pattern": "无图案",
+                  "fit": "修身",
+                  "special_treatment": "小立领设计，前襟简约"
+                },
+                {
+                  "layer": "outer",
+                  "item": "宽松西装外套",
+                  "material": "亚麻混纺",
+                  "color": "米色",
+                  "texture": "哑光质感",
+                  "fit": "宽松过臀",
+                  "special_treatment": "法式剪裁，落肩设计"
+                },
+                {
+                  "layer": "lower",
+                  "item": "直筒牛仔裤",
+                  "material": "牛仔布",
+                  "color": "深蓝色",
+                  "texture": "水洗质感",
+                  "fit": "直筒九分",
+                  "special_treatment": "卷边设计"
+                }
+              ],
+              "structure_breaks": [
+                {
+                  "type": "层次叠穿",
+                  "location": "上身",
+                  "description": "条纹T恤内搭 + 西装外套，露出领口和下摆"
+                }
+              ],
+              "texture_details": [
+                {
+                  "type": "条纹图案",
+                  "location": "T恤",
+                  "description": "经典蓝白条纹，呼应洱海配色"
+                },
+                {
+                  "type": "黑白格纹丝巾",
+                  "location": "颈部",
+                  "description": "经典黑白格纹，简约法式风格"
+                }
+              ],
+              "layering_logic": {
+                "base_visibility": "领口、下摆露出3-5cm",
+                "outer_dominance": "视觉占比50%",
+                "color_interaction": "米色+蓝白条纹+深蓝，层次分明"
+              },
+              "cultural_integration": {
+                "elements": [
+                  "蓝白配色",
+                  "洱海元素"
+                ],
+                "application": "通过条纹T恤呼应洱海蓝白配色",
+                "ratio": "20%在地元素（配色） + 80%法式优雅"
+              }
+            },
+            "outfit_combination": {
+              "theme": "洱海边的法式优雅女孩",
+              "upper": {
+                "item": "米色宽松西装外套 + 白色衬衫（内搭）",
+                "fit": "西装宽松过臀 + 衬衫修身",
+                "material": "亚麻混纺 + 纯棉",
+                "color": "米色 + 白色",
+                "design": "法式落肩西装，内搭简约白色小立领衬衫"
+              },
+              "lower": {
+                "item": "深蓝色直筒牛仔裤",
+                "fit": "直筒九分",
+                "material": "牛仔布",
+                "color": "深蓝色",
+                "design": "水洗质感，卷边设计"
+              },
+              "accessories": [
+                "宽檐草编帽（米色）",
+                "黑白格纹丝巾（简单款式）",
+                "棕色单肩皮包",
+                "复古圆框墨镜"
+              ],
+              "footwear": "白色帆布鞋"
+            },
+            "color_scheme": {
+              "primary": "米色（50%）",
+              "secondary": "深蓝色（25%）",
+              "accent": "白色（15%）+ 黑白格纹（10%）",
+              "description": "米色+深蓝+白色+黑白格纹，法式优雅配色（更简洁）"
+            },
+            "styling": {
+              "overall_look": "法式优雅，随性慵懒，与洱海氛围完美融合",
+              "fashion_elements": [
+                "宽松西装（增加优雅气质）",
+                "白色衬衫（经典法式基础款）",
+                "直筒牛仔裤（休闲随性）",
+                "黑白格纹丝巾（简约法式元素）"
+              ],
+              "local_elements": [
+                "蓝白配色（呼应洱海配色，20%）",
+                "草编帽（手工编制，在地元素）"
+              ]
+            },
+            "scene_adaptation": {
+              "scene": "龙龛码头洱海边",
+              "mood": "优雅、慵懒、法式",
+              "photo_tips": "在洱海边漫步、坐在岸边、背对洱海拍摄，展现法式优雅气质",
+              "lighting": "自然光，黄金时刻或蓝调时刻",
+              "poses": [
+                "漫步洱海边",
+                "坐在岸边吹风",
+                "背对洱海回眸",
+                "靠在栏杆上"
+              ]
+            }
+          },
+          {
+            "name": "S弯稻田 - 法式田园",
+            "description": "卡其黄碎花连衣裙 + 同色系草编包 + 平底凉鞋",
+            "tags": [
+              "春夏",
+              "田园",
+              "少女",
+              "稻田"
+            ],
+            "design_details": {
+              "silhouette": {
+                "type": "A型",
+                "description": "收腰A字型，法式田园",
+                "visual_weight": "上紧下松"
+              },
+              "fabric_layers": [
+                {
+                  "layer": "outer",
+                  "item": "碎花连衣裙",
+                  "material": "雪纺",
+                  "color": "卡其黄色底+小碎花",
+                  "texture": "轻盈飘逸",
+                  "pattern": "小碎花（卡其黄+白色+淡绿色）",
+                  "fit": "收腰A字型",
+                  "special_treatment": "V领设计（加深），微泡泡袖（精致），裙摆飘逸"
+                }
+              ],
+              "structure_breaks": [
+                {
+                  "type": "收腰设计",
+                  "location": "腰部",
+                  "description": "高腰收腰，提升腰线，拉长腿部比例"
+                },
+                {
+                  "type": "微泡泡袖",
+                  "location": "袖口",
+                  "description": "法式微泡泡袖，精致优雅，增加复古气质"
+                },
+                {
+                  "type": "深V领",
+                  "location": "领口",
+                  "description": "法式深V领，修饰脸型，增加优雅感"
+                }
+              ],
+              "texture_details": [
+                {
+                  "type": "碎花图案",
+                  "location": "全身",
+                  "description": "小碎花（黄色+白色+淡绿色），清新田园风"
+                },
+                {
+                  "type": "裙摆设计",
+                  "location": "下摆",
+                  "description": "及踝A字裙摆，走动时飘逸灵动"
+                }
+              ],
+              "layering_logic": {
+                "base_visibility": "连衣裙单穿",
+                "outer_dominance": "视觉占比100%",
+                "color_interaction": "奶黄色底+小碎花点缀，清新温柔"
+              },
+              "cultural_integration": {
+                "elements": [
+                  "田园元素",
+                  "稻田配色"
+                ],
+                "application": "碎花配色呼应稻田绿色和黄色，自然融合",
+                "ratio": "30%自然元素（配色） + 70%法式少女风"
+              }
+            },
+            "outfit_combination": {
+              "theme": "稻田里的法式田园少女",
+              "upper": {
+                "item": "卡其黄碎花连衣裙（全身）",
+                "fit": "收腰A字型",
+                "material": "雪纺",
+                "color": "卡其黄色底+小碎花",
+                "design": "法式深V领，微泡泡袖，收腰，及踝裙摆"
+              },
+              "lower": {
+                "item": "同款连衣裙（连体设计）",
+                "fit": "及踝A字型",
+                "material": "雪纺",
+                "color": "奶黄色底+小碎花",
+                "design": "飘逸裙摆，走动时灵动"
+              },
+              "accessories": [
+                "卡其黄草编包（同色系）",
+                "珍珠发夹（增加优雅感）",
+                "细链条项链",
+                "草编宽檐帽（可选）"
+              ],
+              "footwear": "白色平底凉鞋（绑带设计）"
+            },
+            "color_scheme": {
+              "primary": "卡其黄色（60%）",
+              "secondary": "白色（20%）",
+              "accent": "淡绿色碎花点缀（20%）",
+              "description": "卡其黄（更棕）+白色+淡绿色，法式田园配色"
+            },
+            "styling": {
+              "overall_look": "法式田园，优雅甜美，与稻田风光完美融合",
+              "fashion_elements": [
+                "碎花图案（经典法式田园元素）",
+                "微泡泡袖（法式优雅感）",
+                "深V领（增加法式气质）",
+                "收腰设计（优化身材比例）",
+                "飘逸裙摆（增加灵动感）"
+              ],
+              "local_elements": [
+                "田园配色（呼应稻田黄绿配色，30%）",
+                "草编包（手工编制，田园元素）"
+              ]
+            },
+            "scene_adaptation": {
+              "scene": "S弯稻田",
+              "mood": "田园、清新、甜美",
+              "photo_tips": "在稻田中奔跑、走在田埂上、弯腰抚摸稻谷，展现田园少女气质",
+              "lighting": "自然光，黄金时刻光线柔和",
+              "poses": [
+                "在稻田中奔跑",
+                "走在田埂上",
+                "弯腰抚摸稻谷",
+                "转圈裙摆飞扬"
+              ]
+            }
+          },
+          {
+            "name": "洱海边 - 清新扎染",
+            "description": "水蓝色扎染收腰碎花连衣裙 + 米色针织开衫 + 黑色马丁靴/平底德训鞋",
+            "tags": [
+              "春夏",
+              "清新",
+              "扎染",
+              "洱海"
+            ],
+            "design_details": {
+              "silhouette": {
+                "type": "A型",
+                "description": "收腰A字型，优雅飘逸",
+                "visual_weight": "上紧下松"
+              },
+              "fabric_layers": [
+                {
+                  "layer": "outer",
+                  "item": "水蓝色扎染碎花连衣裙",
+                  "material": "棉麻",
+                  "color": "水蓝色（扎染渐变）",
+                  "texture": "自然冰裂纹肌理",
+                  "pattern": "水蓝色扎染+小碎花（白色+淡蓝色）",
+                  "fit": "收腰A字型",
+                  "special_treatment": "V领，微泡泡袖，及踝裙摆"
+                },
+                {
+                  "layer": "outer_2",
+                  "item": "米色针织开衫",
+                  "material": "羊毛混纺",
+                  "color": "米色",
+                  "texture": "细腻针织肌理",
+                  "fit": "宽松薄款",
+                  "special_treatment": "可披肩穿，增加层次感"
+                }
+              ],
+              "structure_breaks": [
+                {
+                  "type": "收腰设计",
+                  "location": "腰部",
+                  "description": "高腰收腰，提升腰线，拉长腿部比例"
+                },
+                {
+                  "type": "微泡泡袖",
+                  "location": "袖口",
+                  "description": "法式微泡泡袖，增加优雅气质"
+                }
+              ],
+              "texture_details": [
+                {
+                  "type": "扎染图案",
+                  "location": "连衣裙全身",
+                  "description": "水蓝色渐变扎染，与洱海配色呼应"
+                },
+                {
+                  "type": "碎花点缀",
+                  "location": "裙摆",
+                  "description": "小碎花（白色+淡蓝色），增加田园感"
+                }
+              ],
+              "layering_logic": {
+                "base_visibility": "连衣裙单穿或外搭开衫",
+                "outer_dominance": "连衣裙视觉占比70%",
+                "color_interaction": "水蓝色+米色，清新温柔"
+              },
+              "cultural_integration": {
+                "elements": [
+                  "水蓝色扎染",
+                  "蓝白配色"
+                ],
+                "application": "水蓝色扎染连衣裙，呼应洱海配色",
+                "ratio": "50%在地元素（扎染+配色） + 50%法式优雅剪裁"
+              }
+            },
+            "outfit_combination": {
+              "theme": "洱海边的清新扎染少女",
+              "upper": {
+                "item": "水蓝色扎染碎花连衣裙 + 米色针织开衫（外搭）",
+                "fit": "收腰A字型 + 宽松薄款",
+                "material": "棉麻 + 羊毛混纺",
+                "color": "水蓝色扎染 + 米色",
+                "design": "V领，微泡泡袖，收腰，及踝裙摆，外搭米色针织开衫"
+              },
+              "lower": {
+                "item": "同款连衣裙（连体设计）",
+                "fit": "及踝A字型",
+                "material": "棉麻",
+                "color": "水蓝色扎染",
+                "design": "飘逸裙摆，走动时灵动"
+              },
+              "accessories": [
+                "水蓝色草编包（同色系）",
+                "复古圆框墨镜",
+                "珍珠发夹",
+                "细链条项链"
+              ],
+              "footwear": "黑色马丁靴（帅气）或 平底德训鞋（休闲）- 任选其一"
+            },
+            "color_scheme": {
+              "primary": "水蓝色（50%）",
+              "secondary": "白色（30%）",
+              "accent": "米色点缀（20%）",
+              "description": "水蓝色+白色+米色，清新扎染配色"
+            },
+            "styling": {
+              "overall_look": "清新扎染风，优雅帅气，与洱海配色完美融合",
+              "fashion_elements": [
+                "水蓝色扎染（在地元素）",
+                "微泡泡袖（法式优雅气质）",
+                "收腰设计（优化身材比例）",
+                "针织开衫（增加层次感）",
+                "马丁靴/德训鞋（帅气休闲）"
+              ],
+              "local_elements": [
+                "水蓝色扎染（白族传统工艺，50%）",
+                "蓝白配色（大理白族传统配色）",
+                "草编包（手工编制）"
+              ]
+            },
+            "scene_adaptation": {
+              "scene": "洱海边、龙龛码头",
+              "mood": "清新、优雅、帅气",
+              "photo_tips": "在洱海边漫步、坐在岸边、背对洱海拍摄，展现清新扎染气质",
+              "lighting": "自然光，黄金时刻或蓝调时刻",
+              "poses": [
+                "在洱海边漫步",
+                "坐在岸边吹风",
+                "背对洱海回眸",
+                "靠在栏杆上"
+              ]
+            }
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "蓝白扎染发带",
+          "description": "细款，替代厚重白族包头",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "银质苍山雪耳钉",
+          "description": "简约设计，呼应苍山雪景",
+          "tags": [
+            "首饰",
+            "通用"
+          ]
+        },
+        {
+          "name": "绣小蝴蝶的草编包",
+          "description": "手工草编，绣有小蝴蝶图案",
+          "tags": [
+            "包袋",
+            "通用"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "喜洲扎染作坊",
+          "description": "挂布背景，下午4点侧光拍蓝白层次最出片",
+          "time": "下午4点",
+          "lighting": "侧光"
+        },
+        {
+          "name": "龙龛码头洱海",
+          "description": "洱海水面，黄金时刻光线柔和",
+          "time": "黄金时刻",
+          "lighting": "自然光"
+        },
+        {
+          "name": "S弯稻田",
+          "description": "稻田曲线，自然风光",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "双廊白族民居",
+          "description": "青瓦白墙民居，传统建筑背景",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "尊重白族禁忌，不确定寓意的宗教类图案不用"
+    },
+    "云南迪庆": {
+      "region_full_name": "云南迪庆藏族自治州",
+      "culture": "藏族",
+      "core_anchors": [
+        "藏袍元素",
+        "高原配色"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "高原红",
+          "牦牛黑",
+          "奶白",
+          "经幡蓝",
+          "经幡黄",
+          "经幡绿"
+        ],
+        "patterns": [
+          "简化吉祥结",
+          "小牦牛头纹",
+          "八吉祥浅绣"
+        ],
+        "materials": [
+          "厚棉",
+          "仿氆氇",
+          "短毛绒边"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "藏式坎肩装",
+            "description": "短款藏式毛呢坎肩（内搭白高领/黑紧身衣）+ 高腰牛仔阔腿裤",
+            "tags": [
+              "秋冬",
+              "休闲",
+              "日常"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "藏式半裙装",
+            "description": "短款藏式毛呢坎肩 + 及踝开衩藏式半裙",
+            "tags": [
+              "秋冬",
+              "休闲",
+              "日常"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "编发加红毛线",
+          "description": "1-2根编发加红毛线装饰",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "细款蜜蜡串项链",
+          "description": "蜜蜡串珠，简约设计",
+          "tags": [
+            "首饰",
+            "通用"
+          ]
+        },
+        {
+          "name": "棕色厚底马丁靴",
+          "description": "牛皮短靴，厚底设计",
+          "tags": [
+            "鞋履",
+            "通用"
+          ]
+        },
+        {
+          "name": "绣吉祥结的毛绒耳罩",
+          "description": "冬季保暖，民族元素",
+          "tags": [
+            "头部配饰",
+            "冬季",
+            "通用"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "松赞林寺",
+          "description": "黄墙红门，上午10点顺光拍色彩最正",
+          "time": "上午10点",
+          "lighting": "顺光"
+        },
+        {
+          "name": "纳帕海草原",
+          "description": "草原公路，自然风光",
+          "time": "黄金时刻",
+          "lighting": "自然光"
+        },
+        {
+          "name": "普达措原始森林",
+          "description": "森林景观，自然背景",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "独克宗古城",
+          "description": "大转经筒下，人文景观",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "禁用严肃宗教祭祀图案，拒绝荧光高饱和色"
+    },
+    "云南丽江": {
+      "region_full_name": "云南丽江纳西族地区",
+      "culture": "纳西族",
+      "core_anchors": [
+        "东巴文化",
+        "羊皮披肩"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "纳西黑",
+          "纳西红",
+          "纳西白",
+          "东巴石青",
+          "东巴土黄"
+        ],
+        "patterns": [
+          "简化东巴象形文",
+          "七星简化圆绣"
+        ],
+        "materials": [
+          "棉麻",
+          "仿熟羊皮",
+          "粗纺毛呢"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "仿羊皮坎肩装",
+            "description": "短款仿羊皮坎肩（后背绣3个小七星圆绣）+ 卡其色工装裤",
+            "tags": [
+              "秋冬",
+              "休闲",
+              "日常"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "仿羊皮坎肩长裙",
+            "description": "短款仿羊皮坎肩 + 白色及踝长裙",
+            "tags": [
+              "秋冬",
+              "休闲",
+              "日常"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "刻东巴文的银手链",
+          "description": "东巴文吉祥字款",
+          "tags": [
+            "首饰",
+            "通用"
+          ]
+        },
+        {
+          "name": "黑红格纹细发带",
+          "description": "替代厚重纳西包头",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "复古马丁靴",
+          "description": "百搭鞋履",
+          "tags": [
+            "鞋履",
+            "通用"
+          ]
+        },
+        {
+          "name": "绣东巴文的针织帽",
+          "description": "冬季保暖配饰",
+          "tags": [
+            "头部配饰",
+            "冬季",
+            "通用"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "白沙古镇东巴壁画墙",
+          "description": "上午人少景干净",
+          "time": "上午",
+          "lighting": "自然光"
+        },
+        {
+          "name": "玉龙雪山蓝月谷",
+          "description": "雪山湖泊背景",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "玉湖村石头房",
+          "description": "传统石头建筑",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "丽江古城四方街",
+          "description": "石板路人文景观",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "选寓意明确的简化东巴象形文（如「平安」「喜」「自由」），禁用祭祀类文字"
+    },
+    "云南西双版纳": {
+      "region_full_name": "云南西双版纳傣族地区",
+      "culture": "傣族",
+      "core_anchors": [
+        "筒裙",
+        "傣绣花纹"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "芒果黄",
+          "缅栀子白",
+          "孔雀绿",
+          "傣楼朱红"
+        ],
+        "patterns": [
+          "简化孔雀羽纹",
+          "缅桂花",
+          "小象纹",
+          "傣锦几何纹"
+        ],
+        "materials": [
+          "雪纺",
+          "薄棉",
+          "真丝"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "傣绣休闲装",
+            "description": "简约傣绣图案衬衫 + 休闲短裤",
+            "tags": [
+              "春夏",
+              "休闲",
+              "热带"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "改良筒裙装",
+            "description": "短款傣绣吊带上衣（胸口绣小朵缅桂花）+ 改良开衩筒裙（长度到膝盖下2cm）",
+            "tags": [
+              "春夏",
+              "休闲",
+              "热带"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "细银腰链",
+          "description": "简约银链腰带",
+          "tags": [
+            "首饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "鸡蛋花发夹",
+          "description": "缅桂花发饰",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "竹编小挎包",
+          "description": "手工竹编包",
+          "tags": [
+            "包袋",
+            "通用"
+          ]
+        },
+        {
+          "name": "细带夹脚凉鞋",
+          "description": "热带风格凉鞋",
+          "tags": [
+            "鞋履",
+            "通用"
+          ]
+        },
+        {
+          "name": "细银脚链",
+          "description": "增加灵动感",
+          "tags": [
+            "首饰",
+            "女性"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "曼听公园傣楼",
+          "description": "红墙背景，傍晚暖光拍色彩最柔和",
+          "time": "傍晚",
+          "lighting": "暖光"
+        },
+        {
+          "name": "中科院植物园王莲池",
+          "description": "热带植物景观",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "告庄大金塔",
+          "description": "佛教建筑背景",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "曼掌村椰林",
+          "description": "热带椰林风光",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "禁用佛像类严肃图案，筒裙不要短过大腿根，进入寺庙拍摄时主动遮盖肩腿"
+    },
+    "新疆": {
+      "region_full_name": "新疆维吾尔族哈萨克族地区",
+      "culture": "维吾尔族、哈萨克族",
+      "core_anchors": [
+        "艾德莱斯纹理",
+        "游牧刺绣"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "戈壁赭石",
+          "胡杨金",
+          "土城褐",
+          "草原绿"
+        ],
+        "patterns": [
+          "艾德莱斯纹理",
+          "游牧刺绣纹样"
+        ],
+        "materials": [
+          "艾德莱斯绸",
+          "羊毛",
+          "棉麻"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "艾德莱斯休闲装",
+            "description": "艾德莱斯图案衬衫 + 卡其色休闲裤",
+            "tags": [
+              "春夏",
+              "休闲",
+              "日常"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "艾德莱斯连衣裙",
+            "description": "艾德莱斯绸连衣裙，现代剪裁",
+            "tags": [
+              "春夏",
+              "休闲",
+              "日常"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "哈萨克羽毛刺绣宽檐帽",
+          "description": "民族特色帽饰",
+          "tags": [
+            "头部配饰",
+            "通用"
+          ]
+        },
+        {
+          "name": "松石银胸坠",
+          "description": "绿松石银饰",
+          "tags": [
+            "首饰",
+            "通用"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "喀什老城巴扎拱门",
+          "description": "传统建筑拱门",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "那拉提草原野花甸",
+          "description": "草原野花景观",
+          "time": "黄金时刻",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "避免宗教敏感图案，选择生活化元素"
+    },
+    "甘肃敦煌": {
+      "region_full_name": "甘肃敦煌地区",
+      "culture": "敦煌文化",
+      "core_anchors": [
+        "飞天纹样",
+        "壁画矿物色"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "矿物青",
+          "矿物绿",
+          "朱砂红",
+          "泥黄"
+        ],
+        "patterns": [
+          "飞天纹样",
+          "九色鹿纹",
+          "敦煌花纹"
+        ],
+        "materials": [
+          "丝绸",
+          "棉麻",
+          "纱罗"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "敦煌风休闲装",
+            "description": "敦煌配色衬衫 + 休闲长裤",
+            "tags": [
+              "春夏",
+              "休闲",
+              "文化"
+            ],
+            "fusion_ratio": "30%文化元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "复原款飞天襦裙",
+            "description": "现代改良飞天襦裙，简化设计",
+            "tags": [
+              "春夏",
+              "文化",
+              "艺术"
+            ],
+            "fusion_ratio": "30%文化元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "九色鹿纹披帛",
+          "description": "轻盈披帛，九色鹿图案",
+          "tags": [
+            "配饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "泥黄调绣花鞋",
+          "description": "敦煌配色绣花鞋",
+          "tags": [
+            "鞋履",
+            "女性"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "鸣沙山月牙泉",
+          "description": "沙脊线条，沙漠景观",
+          "time": "黄金时刻",
+          "lighting": "侧光"
+        },
+        {
+          "name": "莫高窟外崖古道",
+          "description": "石窟外景，文化背景",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "避免宗教祭祀图案，选择艺术化、审美化的元素"
+    },
+    "青海": {
+      "region_full_name": "青海地区",
+      "culture": "藏族、土族",
+      "core_anchors": [
+        "热贡唐卡纹",
+        "盐湖冷调色彩"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "盐湖蓝",
+          "唐卡红",
+          "唐卡金",
+          "矿蓝"
+        ],
+        "patterns": [
+          "热贡唐卡纹",
+          "藏式几何纹"
+        ],
+        "materials": [
+          "氆氇",
+          "羊毛",
+          "棉麻"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "氆氇坎肩装",
+            "description": "氆氇坎肩 + 休闲裤",
+            "tags": [
+              "秋冬",
+              "休闲",
+              "日常"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "矿蓝色宽摆长裙",
+            "description": "盐湖配色宽摆长裙",
+            "tags": [
+              "春夏",
+              "休闲",
+              "艺术"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "珊瑚流苏头带",
+          "description": "珊瑚装饰头带",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "藏式银饰",
+          "description": "传统银饰，简约设计",
+          "tags": [
+            "首饰",
+            "通用"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "茶卡盐湖",
+          "description": "盐湖铁轨旁，天空之镜",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "塔尔寺转经廊",
+          "description": "藏传佛教建筑",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "避免宗教祭祀图案，选择艺术化元素"
+    },
+    "苏州": {
+      "region_full_name": "江苏苏州地区",
+      "culture": "吴文化",
+      "core_anchors": [
+        "苏绣",
+        "宋制风雅"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "青瓷灰蓝",
+          "烟雨米白",
+          "乌瓦黑",
+          "桂花黄"
+        ],
+        "patterns": [
+          "苏绣花卉",
+          "宋锦纹样",
+          "园林窗格纹"
+        ],
+        "materials": [
+          "丝绸",
+          "宋锦",
+          "杭罗"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "宋锦休闲装",
+            "description": "宋锦图案衬衫 + 休闲裤",
+            "tags": [
+              "春夏",
+              "休闲",
+              "雅致"
+            ],
+            "fusion_ratio": "30%传统元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "苏绣双襟宋抹",
+            "description": "苏绣宋抹上衣 + 宋锦百迭裙",
+            "tags": [
+              "春夏",
+              "雅致",
+              "文化"
+            ],
+            "fusion_ratio": "30%传统元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "银质梅花发簪",
+          "description": "梅花造型银簪",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "团扇",
+          "description": "苏绣团扇",
+          "tags": [
+            "道具",
+            "女性"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "拙政园荷花池畔",
+          "description": "园林荷花景观",
+          "time": "夏季",
+          "lighting": "自然光"
+        },
+        {
+          "name": "平江路临河木窗",
+          "description": "水乡古镇街景",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "选择雅致、生活化的苏绣图案"
+    },
+    "杭州": {
+      "region_full_name": "浙江杭州地区",
+      "culture": "南宋文化",
+      "core_anchors": [
+        "杭罗",
+        "宋韵茶风"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "西湖水绿",
+          "龙井茶青",
+          "藕粉",
+          "烟雨灰"
+        ],
+        "patterns": [
+          "西湖十景纹",
+          "茶纹",
+          "莲花纹"
+        ],
+        "materials": [
+          "杭罗",
+          "丝绸",
+          "棉麻"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "杭罗茶风装",
+            "description": "杭罗材质衬衫 + 茶色休闲裤",
+            "tags": [
+              "春夏",
+              "雅致",
+              "茶文化"
+            ],
+            "fusion_ratio": "30%传统元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "杭罗宽袖褙子",
+            "description": "杭罗褙子 + 简约长裙",
+            "tags": [
+              "春夏",
+              "雅致",
+              "宋韵"
+            ],
+            "fusion_ratio": "30%传统元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "西湖十景团扇",
+          "description": "西湖景观团扇",
+          "tags": [
+            "道具",
+            "女性"
+          ]
+        },
+        {
+          "name": "珍珠缠花",
+          "description": "珍珠缠花发饰",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "西湖苏堤烟柳",
+          "description": "西湖柳树景观",
+          "time": "春季",
+          "lighting": "自然光"
+        },
+        {
+          "name": "径山寺茶园石阶",
+          "description": "茶园景观",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "体现宋韵雅致，避免过于华丽"
+    },
+    "乌镇": {
+      "region_full_name": "浙江乌镇水乡",
+      "culture": "江南水乡",
+      "core_anchors": [
+        "蓝印花布",
+        "水乡市井气"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "靛蓝",
+          "本白",
+          "乌黑",
+          "青灰"
+        ],
+        "patterns": [
+          "蓝印花布纹",
+          "蜡染纹",
+          "水波纹"
+        ],
+        "materials": [
+          "蓝印花布",
+          "棉麻",
+          "蜡染布"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "蓝印花布休闲装",
+            "description": "蓝印花布衬衫 + 卡其色休闲裤",
+            "tags": [
+              "春夏",
+              "休闲",
+              "水乡"
+            ],
+            "fusion_ratio": "30%传统元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "蓝印花布斜襟短衫",
+            "description": "蓝印花布斜襟上衣 + 简约长裙",
+            "tags": [
+              "春夏",
+              "休闲",
+              "水乡"
+            ],
+            "fusion_ratio": "30%传统元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "蜡染青花头巾",
+          "description": "蜡染图案头巾",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "木质银扣腰牌",
+          "description": "传统腰饰",
+          "tags": [
+            "配饰",
+            "通用"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "草木本色染坊晒布架",
+          "description": "晒布架景观",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "西栅临水码头",
+          "description": "水乡码头景观",
+          "time": "黄昏",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "体现水乡生活气息，避免影楼风"
+    },
+    "贵州": {
+      "region_full_name": "贵州苗族侗族地区",
+      "culture": "苗族、侗族",
+      "core_anchors": [
+        "蜡染冰纹",
+        "银饰图腾"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "蜡染靛蓝",
+          "苗银白",
+          "绣片朱红",
+          "梯田绿"
+        ],
+        "patterns": [
+          "蜡染冰裂纹",
+          "苗绣几何纹",
+          "蝴蝶妈妈纹"
+        ],
+        "materials": [
+          "蜡染布",
+          "苗绣布",
+          "银饰"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "蜡染休闲装",
+            "description": "蜡染图案上衣 + 休闲裤",
+            "tags": [
+              "春夏",
+              "休闲",
+              "民族"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "百鸟衣刺绣百褶裙",
+            "description": "苗绣上衣 + 百褶裙（简化版）",
+            "tags": [
+              "春夏",
+              "民族",
+              "艺术"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "苗族牛角银冠",
+          "description": "简化版银冠",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "侗族亮布围腰",
+          "description": "传统围腰",
+          "tags": [
+            "配饰",
+            "女性"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "肇兴侗寨鼓楼",
+          "description": "侗族鼓楼建筑",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "千户苗寨吊脚楼群",
+          "description": "苗寨景观台",
+          "time": "黄金时刻",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "避免部族专属图腾，选择公共非遗元素"
+    },
+    "广西": {
+      "region_full_name": "广西壮族地区",
+      "culture": "壮族",
+      "core_anchors": [
+        "壮锦",
+        "铜鼓纹饰"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "壮锦红",
+          "壮锦黄",
+          "壮锦黑",
+          "山水绿"
+        ],
+        "patterns": [
+          "壮锦几何纹",
+          "铜鼓纹",
+          "绣球纹"
+        ],
+        "materials": [
+          "壮锦",
+          "棉麻",
+          "银饰"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "壮锦休闲装",
+            "description": "壮锦图案上衣 + 休闲裤",
+            "tags": [
+              "春夏",
+              "休闲",
+              "民族"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "壮锦镶边对襟衫",
+            "description": "壮锦镶边上衣 + 简约长裙",
+            "tags": [
+              "春夏",
+              "民族",
+              "日常"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "绣球刺绣胸针",
+          "description": "绣球图案胸针",
+          "tags": [
+            "首饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "铜鼓纹银项圈",
+          "description": "铜鼓图案项圈",
+          "tags": [
+            "首饰",
+            "通用"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "漓江竹筏",
+          "description": "漓江山水竹筏",
+          "time": "黄金时刻",
+          "lighting": "自然光"
+        },
+        {
+          "name": "德天瀑布喀斯特峰林",
+          "description": "瀑布峰林景观",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "选择生活化的壮锦图案"
+    },
+    "内蒙古": {
+      "region_full_name": "内蒙古草原地区",
+      "culture": "蒙古族",
+      "core_anchors": [
+        "卷草纹",
+        "游牧皮饰"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "草原绿",
+          "蒙古红",
+          "奶白",
+          "天蓝"
+        ],
+        "patterns": [
+          "卷草纹",
+          "云纹",
+          "蒙古纹样"
+        ],
+        "materials": [
+          "羊毛",
+          "皮革",
+          "棉麻"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "蒙古袍元素装",
+            "description": "蒙古纹样上衣 + 牛仔裤",
+            "tags": [
+              "秋冬",
+              "草原",
+              "游牧"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "镶獭皮边蒙古袍",
+            "description": "简化版蒙古袍（现代剪裁）",
+            "tags": [
+              "秋冬",
+              "草原",
+              "游牧"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "红珊瑚头带",
+          "description": "珊瑚装饰头带",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        },
+        {
+          "name": "压花牛皮马靴",
+          "description": "传统马靴",
+          "tags": [
+            "鞋履",
+            "通用"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "莫日格勒河河曲",
+          "description": "河流弯曲景观",
+          "time": "黄金时刻",
+          "lighting": "自然光"
+        },
+        {
+          "name": "额尔古纳白桦林",
+          "description": "白桦林景观",
+          "time": "秋季",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "不刻意全套蒙古袍，选择1-2个元素点缀"
+    },
+    "海南": {
+      "region_full_name": "海南黎族地区",
+      "culture": "黎族、南洋侨乡",
+      "core_anchors": [
+        "黎锦",
+        "南洋侨风"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "海浪蓝",
+          "椰子绿",
+          "黎锦红",
+          "贝壳白"
+        ],
+        "patterns": [
+          "黎锦几何纹",
+          "椰树纹",
+          "海洋纹"
+        ],
+        "materials": [
+          "黎锦",
+          "棉麻",
+          "贝壳"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "复古南洋花衬衫",
+            "description": "南洋风花衬衫 + 休闲短裤",
+            "tags": [
+              "春夏",
+              "热带",
+              "海岛"
+            ],
+            "fusion_ratio": "30%文化元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "黎锦筒裙",
+            "description": "黎锦筒裙 + 简约上衣",
+            "tags": [
+              "春夏",
+              "热带",
+              "民族"
+            ],
+            "fusion_ratio": "30%民族元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "椰子壳雕项链",
+          "description": "椰壳雕刻项链",
+          "tags": [
+            "首饰",
+            "通用"
+          ]
+        },
+        {
+          "name": "贝壳发夹",
+          "description": "贝壳装饰发夹",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "万宁日月湾",
+          "description": "冲浪板旁海滩",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "三亚椰林吊床",
+          "description": "椰林休闲场景",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "融合南洋侨乡风格，避免过度民族风"
+    },
+    "厦门": {
+      "region_full_name": "福建厦门地区",
+      "culture": "闽南文化、侨乡文化",
+      "core_anchors": [
+        "闽派刺桐纹",
+        "侨乡骑楼风"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "闽南红",
+          "骑楼灰",
+          "海蓝",
+          "刺桐红"
+        ],
+        "patterns": [
+          "刺桐纹",
+          "闽南砖纹",
+          "骑楼窗格纹"
+        ],
+        "materials": [
+          "棉麻",
+          "丝绸",
+          "贝壳"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "闽南休闲装",
+            "description": "简约衬衫 + 休闲裤",
+            "tags": [
+              "春夏",
+              "休闲",
+              "侨乡"
+            ],
+            "fusion_ratio": "30%文化元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "改良惠安女短上衣",
+            "description": "惠安女风格上衣 + 鼓浪屿纹样棉麻长裙",
+            "tags": [
+              "春夏",
+              "侨乡",
+              "文艺"
+            ],
+            "fusion_ratio": "30%文化元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "贝壳发夹",
+          "description": "贝壳装饰发夹",
+          "tags": [
+            "头部配饰",
+            "女性"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "鼓浪屿老别墅台阶",
+          "description": "老别墅建筑",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "集美学村骑楼廊下",
+          "description": "骑楼建筑走廊",
+          "time": "白天",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "体现侨乡文化，避免过度民族化"
+    },
+    "西藏": {
+      "region_full_name": "西藏拉萨地区",
+      "culture": "藏族",
+      "core_anchors": [
+        "藏传佛教纹饰",
+        "氆氇肌理"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "藏红",
+          "藏黄",
+          "藏蓝",
+          "酥油白"
+        ],
+        "patterns": [
+          "藏传佛教纹饰",
+          "八吉祥",
+          "祥云纹"
+        ],
+        "materials": [
+          "氆氇",
+          "羊毛",
+          "丝绸"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "藏式休闲装",
+            "description": "藏式元素上衣 + 休闲裤",
+            "tags": [
+              "秋冬",
+              "高原",
+              "文化"
+            ],
+            "fusion_ratio": "30%文化元素 + 70%现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "藏式红袍",
+            "description": "简化版藏袍（现代剪裁）",
+            "tags": [
+              "秋冬",
+              "高原",
+              "文化"
+            ],
+            "fusion_ratio": "30%文化元素 + 70%现代基础款"
+          }
+        ]
+      },
+      "accessories": [
+        {
+          "name": "九眼天珠项链",
+          "description": "天珠饰品",
+          "tags": [
+            "首饰",
+            "通用"
+          ]
+        },
+        {
+          "name": "牛皮镶银藏靴",
+          "description": "传统藏靴",
+          "tags": [
+            "鞋履",
+            "通用"
+          ]
+        }
+      ],
+      "shooting_scenes": [
+        {
+          "name": "布达拉宫红墙",
+          "description": "红墙背景",
+          "time": "白天",
+          "lighting": "自然光"
+        },
+        {
+          "name": "纳木错经幡",
+          "description": "经幡景观",
+          "time": "黄金时刻",
+          "lighting": "自然光"
+        }
+      ],
+      "cultural_notes": "避免宗教祭祀图案，选择艺术化元素，不刻意丑化/猎奇"
+    },
+    "现代通用": {
+      "region_full_name": "现代通用旅拍",
+      "culture": "现代",
+      "core_anchors": [
+        "低饱和",
+        "大地色"
+      ],
+      "cultural_elements": {
+        "colors": [
+          "米白",
+          "炭灰",
+          "卡其",
+          "军绿"
+        ],
+        "patterns": [],
+        "materials": [
+          "棉",
+          "麻",
+          "速干面料"
+        ]
+      },
+      "costume_solutions": {
+        "male": [
+          {
+            "name": "通用旅拍装",
+            "description": "米白色速干T恤 + 炭灰色立领软壳 + 深橄榄绿工装裤",
+            "tags": [
+              "通用",
+              "休闲"
+            ],
+            "fusion_ratio": "现代基础款"
+          }
+        ],
+        "female": [
+          {
+            "name": "通用旅拍装",
+            "description": "简约休闲装，低饱和配色",
+            "tags": [
+              "通用",
+              "休闲"
+            ],
+            "fusion_ratio": "现代基础款"
+          }
+        ]
+      },
+      "accessories": [],
+      "shooting_scenes": [],
+      "cultural_notes": "适用于未指定地域的旅拍场景"
+    }
+  },
+  "cultural_taboos": {
+    "云南大理": [
+      "本主庙祭祀图案",
+      "婚礼服专属元素",
+      "未简化的宗教符号",
+      "部族专属图腾"
+    ],
+    "云南迪庆": [
+      "六字真言",
+      "法轮",
+      "活佛服饰",
+      "法会专用服饰",
+      "经幡"
+    ],
+    "云南丽江": [
+      "东巴文（未正确使用）",
+      "纳西族宗教神祗图案",
+      "祭天仪式服饰",
+      "神路图"
+    ]
+  },
+  "regional_elements_library": {
+    "云南大理": {
+      "图案元素": [
+        "扎染冰裂纹",
+        "小蝴蝶纹样",
+        "水波纹",
+        "植物纹",
+        "三塔简化轮廓"
+      ],
+      "工艺元素": [
+        "扎染",
+        "手织棉"
+      ],
+      "色彩元素": [
+        "蓝白配色"
+      ]
+    },
+    "云南迪庆": {
+      "图案元素": [
+        "八宝吉祥图案",
+        "莲花纹",
+        "云纹"
+      ],
+      "工艺元素": [
+        "氆氇编织",
+        "藏毯制作"
+      ],
+      "色彩元素": [
+        "藏红",
+        "藏青",
+        "明黄"
+      ]
+    },
+    "云南丽江": {
+      "图案元素": [
+        "东巴象形文字简化图案",
+        "七星羊皮披肩图案"
+      ],
+      "工艺元素": [
+        "东巴造纸",
+        "纳西族刺绣"
+      ],
+      "色彩元素": [
+        "黑",
+        "白",
+        "蓝"
+      ]
+    }
+  }
+}

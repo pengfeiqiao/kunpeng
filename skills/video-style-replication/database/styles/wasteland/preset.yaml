@@ -1,0 +1,92 @@
+# 未来废土风格 - 赛博朋克
+name: "未来废土 - 赛博朋克风格"
+name_en: "Wasteland - Cyberpunk"
+description: "末世废土质感，赛博朋克美学，工业粗犷"
+time_period: "Post-apocalyptic future"
+era: "后末世"
+
+# 光影预设
+lighting_presets:
+  neon_night:
+    temperature: 3000
+    description: "neon lights, cyberpunk glow, vibrant colors against darkness"
+  dusty_day:
+    temperature: 6000
+    description: "hazy sunlight through dust, desaturated colors"
+  sunset_glow:
+    temperature: 3500
+    description: "orange-red sunset, dramatic shadows"
+  bunker_interior:
+    temperature: 4000
+    description: "fluorescent lights, industrial atmosphere"
+
+# 质量标准
+quality_standards:
+  visual_style:
+    - "Gritty, desaturated colors"
+    - "Industrial textures"
+    - "Weathered surfaces"
+    - "Film grain, cinematic look"
+  negative:
+    - "过度干净"
+    - "塑料质感"
+    - "光滑表面"
+    - "鲜艳色彩"
+  atmosphere:
+    - "Dust particles in air"
+    - "Rust and decay"
+    - "Industrial elements"
+    - "Salvaged technology"
+
+# 角色模板
+character_templates:
+  scavenger:
+    archetype: "废土拾荒者"
+    temperament:
+      - 坚韧
+      - 机警
+      - 务实
+    costume:
+      default: "破旧防护服，改装装备"
+      features:
+        - "防尘护目镜"
+        - "改装背包"
+        - "简易武器"
+
+  tech_survivor:
+    archetype: "技术幸存者"
+    temperament:
+      - 冷静
+      - 理性
+      - 神秘
+    costume:
+      default: "赛博义体，机能风服装"
+      features:
+        - "义眼"
+        - "机械臂"
+        - "神经接口"
+
+# 分镜类型
+shot_types:
+  wide:
+    description: "Wide shot of desolate landscapes"
+    aspect_ratio: "16:9"
+  medium:
+    description: "Medium shot of characters in ruins"
+    aspect_ratio: "16:9"
+  closeup:
+    description: "Close-up of weathered faces"
+    aspect_ratio: "16:9"
+
+# 场景类型
+scene_types:
+  outdoor:
+    - "废墟城市"
+    - "荒漠"
+    - "辐射区"
+    - "废品场"
+  indoor:
+    - "地下掩体"
+    - "幸存者营地"
+    - "黑市"
+    - "旧世界遗迹"

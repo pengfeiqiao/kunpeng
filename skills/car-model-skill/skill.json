@@ -1,0 +1,207 @@
+{
+  "name": "car-model-generation",
+  "displayName": "汽车模型生成技能 V3",
+  "version": "3.0.0",
+  "description": "专业的汽车3D模型图片生成技能，使用Gemini API生成高质量汽车展示图片，并通过豆包AI进行质量分析和优化",
+  "author": "Claude Code",
+  "entrypoint": "src/workflows/generate_car_model.py",
+  "requirements": [
+    "python>=3.8",
+    "openai>=1.0.0",
+    "google-genai>=0.1.0",
+    "Pillow>=10.0.0"
+  ],
+  "parameters": {
+    "brand": {
+      "type": "string",
+      "description": "汽车品牌（如：BMW, Mercedes, Audi）",
+      "required": true
+    },
+    "model": {
+      "type": "string",
+      "description": "车型名称（如：X3, A4, Model S）",
+      "required": true
+    },
+    "reference_dir": {
+      "type": "string",
+      "description": "参考图片目录路径",
+      "required": true
+    },
+    "api_key": {
+      "type": "string",
+      "description": "Gemini API密钥",
+      "required": true
+    },
+    "doubao_api_key": {
+      "type": "string",
+      "description": "豆包API密钥（用于质量分析，可选）",
+      "required": false
+    },
+    "output_dir": {
+      "type": "string",
+      "description": "输出目录路径",
+      "required": false,
+      "default": "./output"
+    }
+  },
+  "config": {
+    "api_base_url": "https://www.dmxapi.cn",
+    "gemini_model": "gemini-3-pro-image-preview",
+    "doubao_model": "doubao-seed-2-0-pro-260215",
+    "database_path": "./car_database",
+    "max_reference_images": 6,
+    "default_image_size": "2K"
+  },
+  "capabilities": [
+    "multi-reference-image-fusion",
+    "intelligent-prompt-system",
+    "ai-quality-analysis",
+    "iterative-optimization",
+    "complete-output-generation",
+    "human-intervention-support"
+  ],
+  "outputs": {
+    "base_images": {
+      "count": 8,
+      "types": [
+        "body_front (16:9, 2K)",
+        "body_side (16:9, 2K)",
+        "body_rear (16:9, 2K)",
+        "wheel (1:1, 2K)",
+        "logo (1:1, 2K)",
+        "sensor_radar (1:1, 2K)",
+        "lights_front (1:1, 2K)",
+        "lights_rear (1:1, 2K)"
+      ]
+    },
+    "showcases": {
+      "count": 4,
+      "types": [
+        "bannanapro_showcase (unlimited resolution)",
+        "video_showcase_body (aspect ratio ≤ 3)",
+        "video_showcase_lights (aspect ratio ≤ 3)",
+        "video_showcase_details (aspect ratio ≤ 3)"
+      ],
+      "constraints": {
+        "video_showcase": {
+          "max_file_size": "4.7MB",
+          "max_resolution": "4096x4096",
+          "min_shortest_side": "320px",
+          "max_aspect_ratio": "3:1"
+        }
+      }
+    }
+  },
+  "workflow": {
+    "steps": [
+      {
+        "step": 1,
+        "name": "load-config",
+        "description": "加载配置和提示词"
+      },
+      {
+        "step": 2,
+        "name": "generate-base-images",
+        "description": "生成8张基础图片"
+      },
+      {
+        "step": 3,
+        "name": "quality-check",
+        "description": "使用豆包AI进行质量检查",
+        "optional": true
+      },
+      {
+        "step": 4,
+        "name": "ai-analysis-if-failed",
+        "description": "如果质量检查失败，使用豆包分析问题",
+        "human_intervention": true
+      },
+      {
+        "step": 5,
+        "name": "optimize-prompt",
+        "description": "根据分析结果优化提示词"
+      },
+      {
+        "step": 6,
+        "name": "regenerate-if-needed",
+        "description": "使用优化提示词重新生成"
+      },
+      {
+        "step": 7,
+        "name": "create-showcases",
+        "description": "创建4张展示图"
+      },
+      {
+        "step": 8,
+        "name": "save-to-database",
+        "description": "保存到数据库"
+      }
+    ],
+    "human_intervention_points": [
+      "after-quality-check",
+      "after-ai-analysis",
+      "before-regeneration"
+    ]
+  },
+  "features": {
+    "prompt_system": {
+      "version": "3.0",
+      "strategy": "minimal-universal",
+      "principles": [
+        "通用化：不包含具体品牌特征描述",
+        "参数化：使用{brand}, {model}占位符",
+        "极简化：遵循V3极简策略，避免具体数字",
+        "正向化：优先使用正向指令而非否定式"
+      ],
+      "optimization_support": true
+    },
+    "quality_analysis": {
+      "enabled": true,
+      "provider": "doubao",
+      "dimensions": [
+        "composition (构图)",
+        "design-elements (设计元素)",
+        "details (细节正确性)",
+        "style-consistency (风格一致性)"
+      ],
+      "auto_optimize": true
+    },
+    "optimization": {
+      "max_iterations": 5,
+      "auto_optimize": true,
+      "manual_intervention": true
+    }
+  },
+  "database_structure": {
+    "path": "car_database/{Brand}/{Model}/",
+    "files": {
+      "images/": "8张基础图片",
+      "showcase/": "4张展示图",
+      "metadata.json": "车型元数据"
+    }
+  },
+  "documentation": {
+    "readme": "README_NEW.md",
+    "config_example": "config/config.example.json",
+    "prompts": {
+      "body_views": "config/prompts/body_views.json",
+      "details": "config/prompts/details.json"
+    },
+    "examples": [
+      "examples/bmw_x3_case_study.md"
+    ]
+  },
+  "changelog": {
+    "3.0.0": {
+      "date": "2026-02-22",
+      "changes": [
+        "重构为标准化skill结构",
+        "集成豆包AI质量分析",
+        "优化提示词系统，实现通用化",
+        "新增人工干预流程",
+        "完善文档和示例",
+        "整理目录结构，删除临时文件"
+      ]
+    }
+  }
+}

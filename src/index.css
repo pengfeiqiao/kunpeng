@@ -1,0 +1,621 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .director-icon-btn {
+    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/45 transition-colors hover:bg-white/[0.06] hover:text-white disabled:opacity-25;
+  }
+
+  .director-tool-btn {
+    @apply flex h-8 items-center gap-1.5 rounded-md px-2 text-[9px] text-white/55 transition-colors hover:bg-white/[0.07] hover:text-white;
+  }
+
+  .director-label {
+    @apply mb-1.5 block text-[9px] font-medium text-white/35;
+  }
+
+  .director-input {
+    @apply h-8 w-full rounded-lg border border-white/10 bg-black/20 px-2 text-[10px] text-white/75 outline-none transition-colors hover:border-white/15 focus:border-white/25;
+  }
+}
+
+/* Light mode (default) */
+:root {
+  --sidebar-width: 280px;
+  --header-height: 60px;
+
+  --c-bg: 255 255 255;
+  --c-sidebar: 247 248 250;
+  --c-card: 243 244 246;
+  --c-border: 209 213 219;
+  --c-text: 26 26 26;
+  --c-text-muted: 107 114 128;
+}
+
+/* Dark mode */
+.dark {
+  --c-bg: 28 28 30;
+  --c-sidebar: 22 22 24;
+  --c-card: 44 44 46;
+  --c-border: 58 58 60;
+  --c-text: 245 245 245;
+  --c-text-muted: 142 142 147;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  color: rgb(var(--c-text));
+}
+
+/* Adaptive placeholder */
+input::placeholder,
+textarea::placeholder {
+  color: rgb(var(--c-text-muted));
+  opacity: 0.7;
+}
+
+/* Native select menus can inherit transparency from compact toolbars.
+   Keep the closed control and the OS option list readable in every surface. */
+select {
+  background-color: rgb(var(--c-bg));
+  color: rgb(var(--c-text));
+}
+
+select option,
+select optgroup {
+  background-color: rgb(var(--c-bg));
+  color: rgb(var(--c-text));
+}
+
+.dark select option,
+.dark select optgroup {
+  background-color: rgb(var(--c-card));
+  color: rgb(var(--c-text));
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-border));
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--c-text-muted) / 0.5);
+}
+
+/* Message markdown styles */
+.markdown-content {
+  @apply leading-relaxed;
+}
+
+.markdown-content p {
+  @apply mb-3 last:mb-0;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  @apply font-bold mb-2 mt-4;
+}
+
+.markdown-content h1 { @apply text-xl; }
+.markdown-content h2 { @apply text-lg; }
+.markdown-content h3 { @apply text-base; }
+
+.markdown-content ul,
+.markdown-content ol {
+  @apply pl-4 mb-3;
+}
+
+.markdown-content ul { @apply list-disc; }
+.markdown-content ol { @apply list-decimal; }
+
+.markdown-content li {
+  @apply mb-1;
+}
+
+/* Inline code: use CSS variables so light/dark mode work correctly */
+.markdown-content code:not(pre code) {
+  background-color: rgb(var(--c-card));
+  color: rgb(var(--c-text));
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Code block wrapper */
+.markdown-content pre {
+  background-color: rgb(var(--c-card));
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+}
+
+.markdown-content pre code {
+  @apply text-sm;
+}
+
+.markdown-content blockquote {
+  border-left: 4px solid #6366f1;
+  @apply pl-4 italic opacity-80 mb-3;
+}
+
+.markdown-content a {
+  color: #6366f1;
+  @apply underline;
+}
+.markdown-content a:hover {
+  color: #4f46e5;
+}
+
+/* Table: use CSS variables so headers are readable in both modes */
+.markdown-content table {
+  @apply w-full border-collapse mb-3;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid rgb(var(--c-border));
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.markdown-content th {
+  background-color: rgb(var(--c-card));
+  color: rgb(var(--c-text));
+  font-weight: 600;
+}
+
+/* 深色助手抽屉里的 markdown：紧凑字阶 + 深色代码/表格底色
+   （全局 .markdown-content 是浅色主聊天的字阶与变量） */
+.drawer-md .markdown-content { font-size: 12px; }
+.drawer-md .markdown-content h1 { font-size: 14px; margin-top: 0.6rem; }
+.drawer-md .markdown-content h2 { font-size: 13px; margin-top: 0.6rem; }
+.drawer-md .markdown-content h3 { font-size: 12.5px; margin-top: 0.5rem; }
+.drawer-md .markdown-content h1,
+.drawer-md .markdown-content h2,
+.drawer-md .markdown-content h3 { color: var(--canvas-text-1); }
+.drawer-md .markdown-content p { margin-bottom: 0.5rem; }
+.drawer-md .markdown-content ul,
+.drawer-md .markdown-content ol { margin-bottom: 0.5rem; padding-left: 1rem; }
+.drawer-md .markdown-content code:not(pre code) {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--canvas-text-1);
+  font-size: 11px;
+}
+.drawer-md .markdown-content pre {
+  background-color: rgba(0, 0, 0, 0.35);
+  padding: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+.drawer-md .markdown-content a { color: var(--canvas-text-1); }
+.drawer-md .markdown-content th,
+.drawer-md .markdown-content td {
+  border-color: rgba(255, 255, 255, 0.12);
+  padding: 0.3rem 0.5rem;
+  font-size: 11px;
+}
+.drawer-md .markdown-content th {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--canvas-text-1);
+}
+.drawer-md .markdown-content blockquote { border-left-color: rgba(255, 255, 255, 0.25); }
+
+/* 浅色助手抽屉 markdown（文案工作室 light variant） */
+.drawer-md-light .markdown-content { font-size: 12.5px; line-height: 1.65; color: #374151; }
+.drawer-md-light .markdown-content h1 { font-size: 15px; font-weight: 700; color: #1A1A1A; margin-top: 0.6rem; }
+.drawer-md-light .markdown-content h2 { font-size: 13.5px; font-weight: 600; color: #1A1A1A; margin-top: 0.6rem; }
+.drawer-md-light .markdown-content h3 { font-size: 12.5px; font-weight: 600; color: #374151; margin-top: 0.5rem; }
+.drawer-md-light .markdown-content p { margin-bottom: 0.5rem; }
+.drawer-md-light .markdown-content ul,
+.drawer-md-light .markdown-content ol { margin-bottom: 0.5rem; padding-left: 1rem; }
+.drawer-md-light .markdown-content code:not(pre code) {
+  background-color: rgba(0,0,0,0.05);
+  color: #374151;
+  font-size: 11px;
+}
+.drawer-md-light .markdown-content pre {
+  background-color: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  padding: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+.drawer-md-light .markdown-content pre code { background: none; color: #374151; }
+.drawer-md-light .markdown-content a { color: #374151; text-decoration: underline; }
+.drawer-md-light .markdown-content th,
+.drawer-md-light .markdown-content td {
+  border-color: #E5E7EB;
+  padding: 0.3rem 0.5rem;
+  font-size: 11px;
+}
+.drawer-md-light .markdown-content th {
+  background-color: #F3F4F6;
+  color: #1A1A1A;
+}
+.drawer-md-light .markdown-content blockquote {
+  border-left-color: #D1D5DB;
+  color: #4B5563;
+  background: #F9FAFB;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0 6px 6px 0;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.3);
+    opacity: 0;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+/* Hide scrollbar but keep scrollable */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Canvas asset strips need an always discoverable drag handle when crowded. */
+.canvas-asset-scrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.34) rgba(255, 255, 255, 0.06);
+  scrollbar-gutter: stable;
+}
+.canvas-asset-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.canvas-asset-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+.canvas-asset-scrollbar::-webkit-scrollbar-thumb {
+  min-width: 36px;
+  min-height: 36px;
+  background: rgba(255, 255, 255, 0.34);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+.canvas-asset-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+  background-clip: padding-box;
+}
+
+/* Title bar styles for macOS */
+.titlebar {
+  -webkit-app-region: drag;
+}
+
+.titlebar button {
+  -webkit-app-region: no-drag;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Canvas dark theme — token values lifted from TapNow/LibTV production
+   CSS (see src/lib/canvas/theme.ts for the JS-side mirror; keep in sync).
+   Scoped to .canvas-dark so only the canvas view goes dark.
+   ════════════════════════════════════════════════════════════════════ */
+.canvas-dark {
+  --canvas-bg: #0a0a0a;
+  --canvas-bg-dot: #2a2a2a;
+  --canvas-node-bg: #191e26;
+  --canvas-node-border: #363636;
+  --canvas-node-border-selected: #f2f2f2;
+  --canvas-handle: #86909c;
+  --canvas-edge: #86909c;
+  --canvas-edge-hover: #c0c8d0;
+  --canvas-edge-selected: #e0e4e8;
+  --canvas-panel: #262626;
+  --canvas-panel-elevated: #2e2e2e;
+  --canvas-controls-hover: rgba(255, 255, 255, 0.1);
+  --canvas-controls-active: rgba(255, 255, 255, 0.15);
+  --canvas-text-1: #f4f4f4;
+  --canvas-text-2: #b8b8b8;
+  --canvas-text-3: #858585;
+  --canvas-accent: #1fa2dc;
+  --canvas-danger: #ff6163;
+  --canvas-success: #4ade80;
+  --canvas-warning: #fbbf24;
+  --canvas-selection-bg: rgba(255, 255, 255, 0.06);
+  --canvas-group-fill: rgba(255, 255, 255, 0.1);
+  --canvas-input-border: rgba(255, 255, 255, 0.15);
+  color: var(--canvas-text-1);
+}
+
+/* — Semantic shorthands (the 3 most repeated element kinds) — */
+.canvas-dark .cv-panel {
+  background: var(--canvas-panel);
+  border: 1px solid var(--canvas-node-border);
+  color: var(--canvas-text-1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+.canvas-dark .cv-btn {
+  color: var(--canvas-text-2);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.canvas-dark .cv-btn:hover {
+  background: var(--canvas-controls-hover);
+  color: var(--canvas-text-1);
+}
+.canvas-dark .cv-btn-primary {
+  background: rgba(255, 255, 255, 0.9);
+  color: #141414;
+  transition: background-color 0.12s ease;
+}
+.canvas-dark .cv-btn-primary:hover { background: #ffffff; }
+.canvas-dark .cv-btn-primary:disabled {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--canvas-text-3);
+}
+.canvas-dark .cv-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--canvas-input-border);
+  color: var(--canvas-text-1);
+}
+.canvas-dark .cv-input::placeholder { color: var(--canvas-text-3); }
+
+.canvas-dark select {
+  background-color: var(--canvas-panel);
+  color: var(--canvas-text-1);
+}
+
+.canvas-dark select option,
+.canvas-dark select optgroup {
+  background-color: var(--canvas-panel);
+  color: var(--canvas-text-1);
+}
+
+.canvas-popover-surface {
+  background: var(--canvas-panel, #262626);
+  border-color: var(--canvas-node-border, rgba(255, 255, 255, 0.12));
+  color: var(--canvas-text-1, #e6e6e6);
+}
+
+/* — React Flow built-ins — */
+.canvas-dark .react-flow__handle {
+  width: 12px;
+  height: 12px;
+  background: var(--canvas-handle);
+  border: 2px solid rgba(30, 30, 30, 0.9);
+  border-radius: 50%;
+  transition: width 0.18s ease, height 0.18s ease, background 0.18s ease,
+              border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+  opacity: 0.7;
+  cursor: crosshair;
+}
+/* Larger invisible hit-area so hover triggers earlier */
+.canvas-dark .react-flow__handle::after {
+  content: '';
+  position: absolute;
+  top: -8px; left: -8px; right: -8px; bottom: -8px;
+  border-radius: 50%;
+}
+.canvas-dark .react-flow__handle:hover,
+.canvas-dark .react-flow__handle.connecting {
+  width: 18px;
+  height: 18px;
+  opacity: 1;
+  background: var(--canvas-accent);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 10px 2px rgba(99, 102, 241, 0.45);
+}
+/* During active connection, target handles pulse */
+.canvas-dark .react-flow__handle.connectingto {
+  animation: handle-pulse 0.8s ease infinite alternate;
+}
+@keyframes handle-pulse {
+  from { box-shadow: 0 0 6px 1px rgba(99, 102, 241, 0.3); }
+  to   { box-shadow: 0 0 14px 4px rgba(99, 102, 241, 0.6); }
+}
+.canvas-dark .react-flow__selection,
+.canvas-dark .react-flow__nodesselection-rect {
+  background: var(--canvas-selection-bg);
+  border: 1px dotted rgba(200, 200, 220, 0.8);
+}
+.canvas-dark .react-flow__minimap { border-radius: 8px; overflow: hidden; }
+.canvas-dark .react-flow__resize-control.line { border-color: var(--canvas-node-border-selected); }
+.canvas-dark .react-flow__resize-control.handle {
+  background: var(--canvas-node-border-selected);
+  border-color: #141414;
+}
+.canvas-dark .react-flow__edge-text { fill: var(--canvas-text-2); }
+
+/* — Generation feedback (TapNow patterns) — */
+
+/* Flowing white light around a generating node: two pseudo layers,
+   inner sharp band + outer blurred glow; animates background-position only. */
+.flowing-border { position: relative; }
+.flowing-border::before,
+.flowing-border::after {
+  content: '';
+  position: absolute;
+  border-radius: 18px;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.85) 45%,
+    rgba(255, 255, 255, 1) 50%,
+    rgba(255, 255, 255, 0.85) 55%,
+    transparent 70%
+  );
+  background-size: 200% 200%;
+  animation: flowingLight 2s linear infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+.flowing-border::before { inset: -2px; }
+.flowing-border::after { inset: -6px; border-radius: 21px; filter: blur(8px); opacity: 0.6; }
+@keyframes flowingLight {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* New-result breathing highlight: plays once (~2.5s) then ends itself. */
+.node-new-highlight {
+  animation: nodeNewHighlight 2.5s ease-out 1 forwards;
+  border-radius: 16px;
+}
+@keyframes nodeNewHighlight {
+  0% { outline: 2px solid rgba(59, 130, 246, 0.9); box-shadow: 0 0 16px rgba(59, 130, 246, 0.4); }
+  50% { outline: 2px solid rgba(59, 130, 246, 0.5); box-shadow: 0 0 8px rgba(59, 130, 246, 0.2); }
+  85% { outline: 2px solid rgba(59, 130, 246, 0.7); box-shadow: 0 0 12px rgba(59, 130, 246, 0.3); }
+  100% { outline: 2px solid transparent; box-shadow: 0 0 0 transparent; }
+}
+
+/* Edge flowing toward a generating node. */
+.canvas-dark .edge-generating {
+  stroke: var(--canvas-accent) !important;
+  stroke-dasharray: 5;
+  animation: dashdraw 0.5s linear infinite;
+}
+@keyframes dashdraw {
+  from { stroke-dashoffset: 10; }
+}
+
+/* Minimap pulse for generating nodes. */
+.canvas-dark .react-flow__minimap .mm-pulse {
+  animation: mmPulse 1.5s ease-in-out infinite;
+}
+@keyframes mmPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* Shared shimmer (was duplicated inline in ImageNode/VideoNode).
+   Dark variant uses a dimmer sweep so it reads on #191e26. */
+@keyframes cvShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.cv-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.14) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: cvShimmer 1.5s ease-in-out infinite;
+}
+
+/* ── 文本节点 markdown 暗色样式 ── */
+.cv-md h1 { font-size: 1.25em; font-weight: 700; color: var(--canvas-text-1); margin: 0.5em 0 0.3em; }
+.cv-md h2 { font-size: 1.12em; font-weight: 700; color: var(--canvas-text-1); margin: 0.5em 0 0.25em; }
+.cv-md h3 { font-size: 1.02em; font-weight: 600; color: var(--canvas-text-1); margin: 0.4em 0 0.2em; }
+.cv-md p { margin: 0.3em 0; color: var(--canvas-text-1); }
+.cv-md strong { font-weight: 700; color: #fff; }
+.cv-md em { font-style: italic; }
+.cv-md del { opacity: 0.6; }
+.cv-md ul, .cv-md ol { padding-left: 1.3em; margin: 0.3em 0; }
+.cv-md ul { list-style: disc; }
+.cv-md ol { list-style: decimal; }
+.cv-md li { margin: 0.15em 0; }
+.cv-md code { background: rgba(255,255,255,0.08); padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.88em; }
+.cv-md blockquote { border-left: 2px solid rgba(255,255,255,0.2); padding-left: 0.8em; opacity: 0.8; margin: 0.4em 0; }
+.cv-md hr { border-color: rgba(255,255,255,0.1); margin: 0.6em 0; }
+.cv-md table { border-collapse: collapse; margin: 0.4em 0; font-size: 0.9em; }
+.cv-md th, .cv-md td { border: 1px solid rgba(255,255,255,0.12); padding: 0.25em 0.6em; }
+
+/* Editor property sliders. */
+.kunpeng-prop-slider {
+  height: 4px;
+  border-radius: 999px;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.kunpeng-prop-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid #f7f7f7;
+  background: #f7f7f7;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  cursor: pointer;
+}
+.kunpeng-prop-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid #f7f7f7;
+  background: #f7f7f7;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  cursor: pointer;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Copywriting light theme — scoped to .copywriting-light so the
+   writing view stays light even when the app is in dark mode.
+   ════════════════════════════════════════════════════════════════════ */
+.copywriting-light {
+  --cw-bg: #FFFFFF;
+  --cw-sidebar: #F9FAFB;
+  --cw-card: #F3F4F6;
+  --cw-card-hover: #EDEEF0;
+  --cw-border: #E5E7EB;
+  --cw-text: #1A1A1A;
+  --cw-text-2: #4B5563;
+  --cw-text-muted: #9CA3AF;
+  --cw-accent: #374151;
+  --cw-accent-light: #F3F4F6;
+  --cw-accent-text: #1F2937;
+  --cw-success: #059669;
+  --cw-warning: #D97706;
+  --cw-danger: #DC2626;
+  --cw-shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --cw-shadow-md: 0 2px 8px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --cw-shadow-lg: 0 8px 24px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04);
+  color-scheme: light;
+  color: var(--cw-text);
+}
+
+.copywriting-light *::selection {
+  background: rgba(26, 26, 26, 0.12);
+}
+
+.copywriting-light ::-webkit-scrollbar { width: 6px; height: 6px; }
+.copywriting-light ::-webkit-scrollbar-track { background: transparent; }
+.copywriting-light ::-webkit-scrollbar-thumb { background: var(--cw-border); border-radius: 3px; }
+.copywriting-light ::-webkit-scrollbar-thumb:hover { background: var(--cw-text-muted); }

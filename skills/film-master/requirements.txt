@@ -1,0 +1,5 @@
+# 电影大师技能依赖
+# 仅使用 Python 标准库，无需额外安装
+
+# 标准库：urllib, json, os, sys, time, base64
+# Python >= 3.8

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>鲲鹏</title>
+    <style>
+      html, body, #root {
+        margin: 0; padding: 0; height: 100%; overflow: hidden;
+      }
+
+      /* ── Theme CSS variables ── */
+      :root {
+        --c-bg:      255 255 255;
+        --c-sidebar: 247 248 250;
+        --c-card:    243 244 246;
+        --c-border:  209 213 219;
+        --c-text:    26  26  26;
+        --c-muted:   107 114 128;
+      }
+      .dark {
+        --c-bg:      28  28  30;
+        --c-sidebar: 22  22  24;
+        --c-card:    44  44  46;
+        --c-border:  58  58  60;
+        --c-text:    245 245 245;
+        --c-muted:   142 142 147;
+      }
+      html { color: rgb(var(--c-text)); }
+
+      /* ── Force-override Tailwind compiled dark-* colors ── */
+      /* These use !important to win even if Tailwind CSS wasn't rebuilt */
+      .bg-dark-bg                          { background-color: rgb(var(--c-bg))      !important; }
+      .bg-dark-sidebar                     { background-color: rgb(var(--c-sidebar)) !important; }
+      .bg-dark-card                        { background-color: rgb(var(--c-card))    !important; }
+      .bg-dark-border                      { background-color: rgb(var(--c-border))  !important; }
+      .border-dark-border                  { border-color:     rgb(var(--c-border))  !important; }
+
+      .hover\:bg-dark-border:hover         { background-color: rgb(var(--c-border))       !important; }
+      .hover\:bg-dark-card:hover           { background-color: rgb(var(--c-card))         !important; }
+      .hover\:bg-dark-border\/50:hover     { background-color: rgb(var(--c-border) / 0.5) !important; }
+      .disabled\:bg-dark-border:disabled   { background-color: rgb(var(--c-border))       !important; }
+      .group:hover .group-hover\:opacity-100 { opacity: 1; }
+
+      /* ── Force-override primary (indigo) colors ── */
+      .bg-primary-500                      { background-color: #6366f1 !important; }
+      .bg-primary-600                      { background-color: #4f46e5 !important; }
+      .bg-primary-700                      { background-color: #4338ca !important; }
+      .from-primary-500                    { --tw-gradient-from: #6366f1 !important; }
+      .to-primary-700                      { --tw-gradient-to:   #4338ca !important; }
+      .text-primary-400                    { color: #818cf8 !important; }
+      .text-primary-500                    { color: #6366f1 !important; }
+      .border-primary-500                  { border-color: #6366f1 !important; }
+      .hover\:bg-primary-700:hover         { background-color: #4338ca !important; }
+      .focus-within\:border-primary-500:focus-within { border-color: #6366f1 !important; }
+      .accent-primary-500                  { accent-color: #6366f1 !important; }
+      /* ── New chat button: light mode = indigo-50 tint; dark mode = indigo tint on dark ── */
+      .dark .bg-indigo-50  { background-color: rgb(49 46 129 / 0.25) !important; }
+      .dark .bg-indigo-100 { background-color: rgb(49 46 129 / 0.35) !important; }
+      .dark .border-indigo-200 { border-color: rgb(99 102 241 / 0.4) !important; }
+      .dark .text-indigo-600   { color: #a5b4fc !important; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

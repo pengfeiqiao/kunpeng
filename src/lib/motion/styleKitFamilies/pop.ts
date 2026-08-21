@@ -1,0 +1,128 @@
+/**
+ * styleKits/pop — 潮流活力族（12 种）。
+ * 面向短视频高能量场景：涂鸦、漫画、贴纸、荧光……每种都有明确的"街头出处"。
+ */
+import type { StyleKit } from '../styleKits';
+
+/* eslint-disable max-len */
+
+export const POP_KITS: StyleKit[] = [
+  {
+    id: 'graffiti', family: '潮流活力', label: '街头涂鸦',
+    vibe: '喷漆滴落、马克笔描边、砖墙贴纸层——嘻哈/街舞/球鞋',
+    cssVars: { '--fx-primary': '#1c1a1e', '--fx-accent': '#ffe633', '--fx-accent2': '#ff3d7f', '--fx-text': '#f8f6f0', '--fx-surface': 'rgba(255,230,51,0.09)' },
+    fontPairing: 'variety',
+    bgCss: 'linear-gradient(170deg,#222026 0%,#171519 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:1"></div><svg style="position:absolute;left:4%;top:10%;opacity:.8" width="480" height="360" viewBox="0 0 480 360" fill="none"><path d="M40 180 Q 130 60 260 130 T 460 100" stroke="#ff3d7f" stroke-width="30" stroke-linecap="round" opacity=".7"/><circle cx="70" cy="196" r="7" fill="#ff3d7f" opacity=".7"/><path d="M66 205 q 3 30 -2 52" stroke="#ff3d7f" stroke-width="7" stroke-linecap="round" opacity=".55"/></svg><div style="position:absolute;right:7%;bottom:12%;width:230px;height:90px;background:#ffe633;transform:rotate(-6deg);clip-path:polygon(2% 10%,98% 0,100% 88%,0 100%)"></div></div>`,
+    css: `.kit-graffiti-tag{-webkit-text-stroke:3px #1c1a1e;text-stroke:3px #1c1a1e;text-shadow:5px 5px 0 rgba(0,0,0,.45)}`,
+    motionNotes: '喷罐节奏：大字 kit-graffiti-tag scale 1.6→1 inExpo 喷上+shake 一下；喷漆线 lineDraw 快画（0.4s）；贴纸 spring 拍墙；快、糙、有劲',
+  },
+  {
+    id: 'manga', family: '潮流活力', label: '热血漫画',
+    vibe: '速度线集中线、网点纸、对话气泡框、拟声词——燃向/反转/吐槽',
+    cssVars: { '--fx-primary': '#f4f2ec', '--fx-accent': '#16151a', '--fx-accent2': '#e0312e', '--fx-text': '#16151a', '--fx-surface': '#ffffff' },
+    fontPairing: 'variety',
+    bgCss: '#f4f2ec',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;inset:0;opacity:.55" width="1920" height="1080" viewBox="0 0 1920 1080" fill="none">${Array.from({ length: 22 }).map((_, i) => { const a = (i / 22) * Math.PI * 2; const x = 960 + Math.cos(a) * 1400; const y = 540 + Math.sin(a) * 1400; const x2 = 960 + Math.cos(a) * 430; const y2 = 540 + Math.sin(a) * 430; return `<path d="M ${x.toFixed(0)} ${y.toFixed(0)} L ${x2.toFixed(0)} ${y2.toFixed(0)}" stroke="#16151a" stroke-width="${(2 + (i % 4)).toFixed(0)}"/>`; }).join('')}</svg><div class="kp-dots" style="position:absolute;inset:0;opacity:.5"></div></div>`,
+    css: `.kit-manga-bubble{background:#fff;border:4px solid #16151a;border-radius:26px;box-shadow:6px 6px 0 rgba(22,21,26,.85)}
+.kit-manga-sfx{-webkit-text-stroke:2.5px #16151a;color:#e0312e;transform:skew(-8deg)}`,
+    motionNotes: '分镜爆发：集中线常驻（背景即张力）、拟声词 kit-manga-sfx scale 2.4→1 inExpo 砸入+闪白；气泡 kit-manga-bubble spring 弹出；黑白+一点红，快切狠',
+  },
+  {
+    id: 'stickerbomb', family: '潮流活力', label: '贴纸炸弹',
+    vibe: '满屏重叠贴纸、白描边、爆炸星形、翻页胶带——好物合集/盘点/青少年向',
+    cssVars: { '--fx-primary': '#7ec8e3', '--fx-accent': '#ff5d8f', '--fx-accent2': '#ffd23d', '--fx-text': '#1f2233', '--fx-surface': '#ffffff' },
+    fontPairing: 'variety',
+    bgCss: 'linear-gradient(160deg,#8ed1ea 0%,#6cb8d8 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:6%;top:10%;width:170px;height:170px;background:#ffd23d;border:6px solid #fff;border-radius:26px;transform:rotate(-12deg);box-shadow:0 10px 24px rgba(31,34,51,.2)"></div><div style="position:absolute;right:8%;top:14%;width:150px;height:150px;background:#ff5d8f;border:6px solid #fff;border-radius:50%;transform:rotate(8deg);box-shadow:0 10px 24px rgba(31,34,51,.2)"></div><div style="position:absolute;left:12%;bottom:12%;width:140px;height:140px;background:#8f7bff;border:6px solid #fff;clip-path:polygon(50% 0,63% 33%,98% 35%,71% 57%,80% 92%,50% 72%,20% 92%,29% 57%,2% 35%,37% 33%);transform:rotate(14deg)"></div><div style="position:absolute;right:14%;bottom:16%;width:190px;height:64px;background:#4ade80;border:6px solid #fff;border-radius:999px;transform:rotate(-7deg);box-shadow:0 10px 24px rgba(31,34,51,.2)"></div></div>`,
+    css: `.kit-sticker{border:6px solid #fff;box-shadow:0 12px 28px rgba(31,34,51,.25)}`,
+    motionNotes: '啪啪贴上：每个元素 kit-sticker scale 1.5→1 快拍（inExpo 0.18s）+落点极轻 shake；rotate 各自错位 ±6-14°；stagger 0.12 连环拍；密而欢',
+  },
+  {
+    id: 'riso', family: '潮流活力', label: 'Riso 孔版印',
+    vibe: '荧光粉蓝双色叠印、错版偏移、粗颗粒——独立插画/创意市集/小众品味',
+    cssVars: { '--fx-primary': '#f4f0e6', '--fx-accent': '#ff48b0', '--fx-accent2': '#2b5fff', '--fx-text': '#1f1c33', '--fx-surface': 'rgba(31,28,51,0.05)' },
+    fontPairing: 'minimal',
+    bgCss: '#f4f0e6',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:1.4"></div><div style="position:absolute;left:8%;top:12%;width:380px;height:380px;border-radius:50%;background:#ff48b0;opacity:.5;mix-blend-mode:multiply"></div><div style="position:absolute;left:14%;top:18%;width:380px;height:380px;border-radius:50%;background:#2b5fff;opacity:.45;mix-blend-mode:multiply"></div><div style="position:absolute;right:6%;bottom:8%;width:340px;height:200px;background:repeating-linear-gradient(0deg,#ff48b0 0 10px,transparent 10px 22px);opacity:.55;transform:rotate(-4deg)"></div></div>`,
+    css: `.kit-riso-offset{text-shadow:4px 3px 0 rgba(255,72,176,.65),-3px -2px 0 rgba(43,95,255,.55)}`,
+    motionNotes: '错版是签名：标题 kit-riso-offset 双色错位；入场两个色版先后到位（同元素克隆错 0.1s——用 trail copies:1 lag 0.1 模拟）；印刷咔嚓感 maskReveal linear 快切',
+  },
+  {
+    id: 'sportshype', family: '潮流活力', label: '球场战报',
+    vibe: '斜切色带、大号数、比分板、金属质感边——体育/竞技/比分复盘',
+    cssVars: { '--fx-primary': '#101418', '--fx-accent': '#ffc82e', '--fx-accent2': '#e23b3b', '--fx-text': '#f4f6f8', '--fx-surface': 'rgba(255,200,46,0.08)' },
+    fontPairing: 'tech',
+    bgCss: 'linear-gradient(155deg,#151a20 0%,#0d1014 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:-6%;top:22%;width:1000px;height:130px;background:linear-gradient(90deg,#ffc82e,#e8a80c);transform:skew(-18deg) rotate(-3deg);opacity:.9"></div><div style="position:absolute;left:-4%;top:calc(22% + 140px);width:700px;height:44px;background:#e23b3b;transform:skew(-18deg) rotate(-3deg);opacity:.85"></div><div style="position:absolute;right:0;bottom:0;width:520px;height:400px;background:linear-gradient(135deg,transparent 45%,rgba(255,200,46,.08) 45%)"></div></div>`,
+    css: `.kit-sports-num{font-variant-numeric:tabular-nums;letter-spacing:-0.04em;text-shadow:0 6px 0 rgba(0,0,0,.5)}`,
+    motionNotes: '赛点节奏：比分 numberRoll 快滚 + 定格 shake；色带 maskReveal left skew 快扫入；大数字 kit-sports-num 斜体撞入；快、重、密 beats 卡点',
+  },
+  {
+    id: 'kawaii', family: '潮流活力', label: '奶油甜心',
+    vibe: '奶油粉紫、云朵星星、果冻按钮、颜文字——萌宠/甜品/少女心',
+    cssVars: { '--fx-primary': '#ffeef6', '--fx-accent': '#ff8fc0', '--fx-accent2': '#9d8fff', '--fx-text': '#5c4a66', '--fx-surface': '#ffffff' },
+    fontPairing: 'variety',
+    bgCss: 'linear-gradient(170deg,#fff0f7 0%,#fde4f0 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;left:7%;top:12%;opacity:.9" width="220" height="130" viewBox="0 0 220 130" fill="#fff"><ellipse cx="70" cy="85" rx="60" ry="40"/><ellipse cx="130" cy="70" rx="55" ry="42"/><ellipse cx="170" cy="92" rx="45" ry="34"/></svg><div style="position:absolute;right:10%;top:16%;width:60px;height:60px;background:#ffd23d;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);transform:rotate(-10deg)"></div><div style="position:absolute;right:20%;top:32%;width:34px;height:34px;background:#ff8fc0;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);transform:rotate(14deg)"></div><div style="position:absolute;left:16%;bottom:10%;width:120px;height:60px;border-radius:999px;background:#fff;box-shadow:0 10px 24px rgba(255,143,192,.35)"></div></div>`,
+    css: `.kit-kawaii-jelly{background:linear-gradient(180deg,#ffb3d4,#ff8fc0);border-radius:999px;box-shadow:inset 0 6px 10px rgba(255,255,255,.75),inset 0 -8px 12px rgba(200,80,140,.3),0 14px 30px rgba(255,143,192,.4)}`,
+    motionNotes: '果冻蹦跳：spring(stiffness 300, damping 8) 超弹 + scaleY 压扁回弹感（scaleY 0.8→1.05→1 关键帧）；星星 rotate 慢转+闪烁；云朵慢漂；甜而软',
+  },
+  {
+    id: 'acidrave', family: '潮流活力', label: '酸性锐舞',
+    vibe: '酸绿铬紫、扭曲镀铬图形、smiley、故障拉伸——电音/夜店/亚文化盘点',
+    cssVars: { '--fx-primary': '#0c0e0a', '--fx-accent': '#b6ff2e', '--fx-accent2': '#c95eff', '--fx-text': '#effff0', '--fx-surface': 'rgba(182,255,46,0.07)' },
+    fontPairing: 'tech',
+    bgCss: 'radial-gradient(ellipse 80% 75% at 50% 35%,#141810 0%,#0a0c08 75%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><svg style="position:absolute;right:6%;top:10%;opacity:.85" width="300" height="300" viewBox="0 0 300 300" fill="none"><circle cx="150" cy="150" r="130" fill="#b6ff2e"/><circle cx="105" cy="120" r="16" fill="#0c0e0a"/><circle cx="195" cy="120" r="16" fill="#0c0e0a"/><path d="M85 185 Q 150 240 215 185" stroke="#0c0e0a" stroke-width="14" stroke-linecap="round" fill="none"/></svg><svg style="position:absolute;left:-4%;bottom:-8%;opacity:.6" width="800" height="500" viewBox="0 0 800 500" fill="none"><path d="M0 250 Q 200 60 400 250 T 800 250" stroke="#c95eff" stroke-width="56" fill="none" stroke-linecap="round"/></svg></div>`,
+    css: `.kit-acid-warp{transform:scaleY(1.35) skew(-4deg);letter-spacing:-0.05em}`,
+    motionNotes: '锐舞癫狂：glitch 高频（每 2s 一次）、标题 kit-acid-warp 拉伸变形、smiley rotate 全程慢转；beats 密卡点+闪白（绿色 flash color 覆盖）；快而怪',
+  },
+  {
+    id: 'popquiz', family: '潮流活力', label: '综艺问答',
+    vibe: '大圆角选项卡、聚光灯、金币音效视觉、正误印章——互动问答/冷知识/竞猜',
+    cssVars: { '--fx-primary': '#2b1a66', '--fx-accent': '#ffcf3d', '--fx-accent2': '#42d6a4', '--fx-text': '#fdf8ff', '--fx-surface': 'rgba(255,255,255,0.1)' },
+    fontPairing: 'variety',
+    bgCss: 'radial-gradient(ellipse 80% 70% at 50% 25%,#39238a 0%,#241458 75%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:50%;top:-30%;width:1000px;height:900px;transform:translateX(-50%);background:conic-gradient(from 180deg at 50% 0%,transparent 40%,rgba(255,207,61,.12) 47%,rgba(255,207,61,.2) 50%,rgba(255,207,61,.12) 53%,transparent 60%)"></div><div style="position:absolute;left:10%;top:14%;width:26px;height:26px;background:#ffcf3d;clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)"></div><div style="position:absolute;right:12%;top:22%;width:20px;height:20px;background:#42d6a4;border-radius:50%"></div></div>`,
+    css: `.kit-quiz-option{background:rgba(255,255,255,.1);border:3px solid rgba(255,255,255,.35);border-radius:999px;backdrop-filter:blur(8px)}
+.kit-quiz-correct{background:rgba(66,214,164,.25);border-color:#42d6a4}`,
+    motionNotes: '悬念三拍：问题打出(typewriter) → 选项 kit-quiz-option 依次弹入(spring stagger 0.2) → 揭晓瞬间正确项 kit-quiz-correct + scale 1.1 冲击 + flash；节奏由悬念控制',
+  },
+  {
+    id: 'skate', family: '潮流活力', label: '滑板胶带',
+    vibe: '砂纸黑、撕裂贴纸、荧光喷字、车轮擦痕——滑板/机车/极限运动',
+    cssVars: { '--fx-primary': '#161616', '--fx-accent': '#ff6b1a', '--fx-accent2': '#3de8c8', '--fx-text': '#f2f0ea', '--fx-surface': 'rgba(255,107,26,0.08)' },
+    fontPairing: 'variety',
+    bgCss: '#161616',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div class="kp-noise" style="position:absolute;inset:0;opacity:2"></div><div style="position:absolute;left:-4%;bottom:18%;width:800px;height:9px;background:#ff6b1a;transform:rotate(-7deg);opacity:.8"></div><div style="position:absolute;left:-2%;bottom:calc(18% - 26px);width:560px;height:5px;background:#3de8c8;transform:rotate(-7deg);opacity:.6"></div><div style="position:absolute;right:8%;top:12%;width:180px;height:80px;background:#f2f0ea;clip-path:polygon(0 8%,96% 0,100% 82%,55% 100%,48% 88%,4% 94%);transform:rotate(5deg)"></div></div>`,
+    motionNotes: '擦地而过：主体元素 pathMove 大位移横穿（带 trail 3 残影）+ 落点 shake；贴纸撕裂多边形硬切拍上；橙青对撞色只各用一次；糙快狠',
+  },
+  {
+    id: 'bubbletea', family: '潮流活力', label: '奶茶波波',
+    vibe: '奶咖渐变、波波圆点上浮、杯壁挂壁感、盖章会员卡——探店/饮品/日常 vlog',
+    cssVars: { '--fx-primary': '#e8d5bd', '--fx-accent': '#8a5a36', '--fx-accent2': '#d98f5f', '--fx-text': '#4a3524', '--fx-surface': 'rgba(255,251,244,0.75)' },
+    fontPairing: 'variety',
+    bgCss: 'linear-gradient(180deg,#eeddc4 0%,#dfc5a3 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:10%;bottom:-4%;width:56px;height:56px;border-radius:50%;background:#4a3524;opacity:.75;box-shadow:120px -40px 0 -6px rgba(74,53,36,.6),240px -14px 0 -10px rgba(74,53,36,.7),330px -60px 0 -4px rgba(74,53,36,.55),60px -90px 0 -12px rgba(74,53,36,.5)"></div><div style="position:absolute;right:12%;top:10%;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle at 34% 30%,rgba(255,251,244,.9),rgba(217,143,95,.4))"></div><div class="kp-noise" style="position:absolute;inset:0;opacity:.5"></div></div>`,
+    motionNotes: '波波上浮：圆点用 y 轨道从底部慢慢浮起（错开相位与速度）；卡片奶白圆角 spring 轻弹；印章「已打卡」rotate -8° 最后盖上；软糯中速',
+  },
+  {
+    id: 'festival', family: '潮流活力', label: '音乐节荧光',
+    vibe: '夜空激光束、人浪剪影、荧光手环色、频谱条——现场/歌单/氛围混剪',
+    cssVars: { '--fx-primary': '#0d0a1a', '--fx-accent': '#ff4fd8', '--fx-accent2': '#4fffb0', '--fx-text': '#fdf0ff', '--fx-surface': 'rgba(255,79,216,0.08)' },
+    fontPairing: 'tech',
+    bgCss: 'linear-gradient(180deg,#120e24 0%,#0a0814 100%)',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:20%;bottom:0;width:5px;height:900px;background:linear-gradient(0deg,rgba(255,79,216,.7),transparent);transform:rotate(24deg);transform-origin:bottom"></div><div style="position:absolute;left:45%;bottom:0;width:5px;height:950px;background:linear-gradient(0deg,rgba(79,255,176,.6),transparent);transform:rotate(-10deg);transform-origin:bottom"></div><div style="position:absolute;left:70%;bottom:0;width:5px;height:880px;background:linear-gradient(0deg,rgba(120,140,255,.6),transparent);transform:rotate(-28deg);transform-origin:bottom"></div><svg style="position:absolute;left:0;right:0;bottom:0;opacity:.9" width="1920" height="200" viewBox="0 0 1920 200" preserveAspectRatio="none" fill="#08060e"><path d="M0 200 V 120 Q 100 90 180 120 T 360 110 Q 480 60 560 115 T 780 105 Q 900 70 980 110 T 1200 100 Q 1320 55 1400 110 T 1620 105 Q 1740 80 1920 115 V 200 Z"/></svg><div style="position:absolute;left:6%;bottom:34px;display:flex;gap:9px;align-items:flex-end">${Array.from({ length: 14 }).map((_, i) => `<div style="width:9px;height:${(14 + (i * 37) % 52).toFixed(0)}px;background:${i % 2 ? '#4fffb0' : '#ff4fd8'};opacity:.8"></div>`).join('')}</div></div>`,
+    motionNotes: '光束摇摆：激光 rotate ±6° 慢摆（错相位）、频谱条 scaleY 各自跳动轨道（beats 对齐 BGM）；标题荧光双色 kp-stroke；卡点闪白允许多次；能量拉满',
+  },
+  {
+    id: 'checkerpop', family: '潮流活力', label: '棋盘格潮牌',
+    vibe: '黑白棋盘格、火焰边、哥特字点缀——潮牌/穿搭/街拍',
+    cssVars: { '--fx-primary': '#111111', '--fx-accent': '#f2f2f2', '--fx-accent2': '#e8452e', '--fx-text': '#f2f2f2', '--fx-surface': 'rgba(242,242,242,0.07)' },
+    fontPairing: 'minimal',
+    bgCss: '#111111',
+    backdropHtml: `<div style="position:absolute;inset:0;overflow:hidden"><div style="position:absolute;left:0;right:0;top:0;height:90px;background:conic-gradient(#f2f2f2 90deg,#111 90deg 180deg,#f2f2f2 180deg 270deg,#111 270deg);background-size:90px 90px"></div><div style="position:absolute;left:0;right:0;bottom:0;height:90px;background:conic-gradient(#f2f2f2 90deg,#111 90deg 180deg,#f2f2f2 180deg 270deg,#111 270deg);background-size:90px 90px"></div><svg style="position:absolute;right:-2%;bottom:80px;opacity:.9" width="500" height="240" viewBox="0 0 500 240" fill="none"><path d="M0 240 Q 60 140 110 200 Q 140 90 200 170 Q 230 60 290 150 Q 330 40 380 140 Q 420 70 500 130 V 240 Z" fill="#e8452e"/></svg></div>`,
+    motionNotes: '格纹滚动：棋盘条 backgroundPosition 无法轨道化——改用条带 x 轨道整体缓移；大字白色斜拍入（rotate -3）；火焰 scaleY 轻微舔动（往复轨道）；街头利落',
+  },
+];

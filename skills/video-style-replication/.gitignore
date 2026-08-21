@@ -1,0 +1,16 @@
+# API 配置文件（包含密钥）
+config/api_config.json
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store

@@ -1,0 +1,11 @@
+# 项目索引（由 systems/config/project_manager.py 自动维护）
+# 结构示例：
+# projects:
+#   示例项目:
+#     characters: []
+#     created_at: '2026-01-01T00:00:00'
+#     path: /path/to/your/project
+#     scenes: []
+#     status: active
+#     style: modern_travel
+projects: {}

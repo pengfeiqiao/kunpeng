@@ -1,0 +1,132 @@
+{
+  "id": "omni-mg-animation",
+  "name": "Omni版MG动画",
+  "icon": "sparkles",
+  "description": "使用 Gemini Omni Flash / APIMart 生成 MG 动画，支持文生视频、视频生视频图形动效、App 展示包装",
+  "version": "1.1.0",
+  "hasPanel": true,
+  "accentColor": "#06b6d4",
+  "placeholder": "描述你要做的 MG 动画、视频包装或 App 展示动效...",
+  "panel": {
+    "fields": [
+      {
+        "key": "mode",
+        "label": "使用场景",
+        "type": "select",
+        "default": "auto",
+        "options": [
+          { "value": "auto", "label": "自动判断" },
+          { "value": "text", "label": "文生 MG 动画" },
+          { "value": "video", "label": "视频加图形动效" }
+        ]
+      },
+      {
+        "key": "style",
+        "label": "风格",
+        "type": "select",
+        "default": "app-premium-3d",
+        "options": [
+          { "value": "app-premium-3d", "label": "高级应用展示" },
+          { "value": "app-search-glass", "label": "搜索框产品片" },
+          { "value": "app-grid-icons", "label": "图标矩阵生态" },
+          { "value": "mobile-ui-tour", "label": "手机界面漫游" },
+          { "value": "saas-dashboard", "label": "SaaS 仪表盘" },
+          { "value": "ai-workflow", "label": "AI 工作流界面" },
+          { "value": "fintech-payment", "label": "支付金融 App" },
+          { "value": "ecommerce-product", "label": "电商功能演示" },
+          { "value": "devtool-pipeline", "label": "开发者工具流程" },
+          { "value": "product-launch-stage", "label": "产品发布舞台" },
+          { "value": "neo-grid-objects", "label": "潮流网格物件" },
+          { "value": "dark-orbit-tech", "label": "暗场星轨科技" },
+          { "value": "soft-gradient-title", "label": "柔光手写标题" },
+          { "value": "swiss-editorial", "label": "瑞士编辑感" },
+          { "value": "glass-ai-interface", "label": "玻璃 AI 界面" },
+          { "value": "monochrome-red-accent", "label": "黑白红点强调" },
+          { "value": "black-gold-launch", "label": "黑金发布会" },
+          { "value": "liquid-metal-tech", "label": "液态金属科技" },
+          { "value": "microchip-circuit", "label": "芯片电路流" },
+          { "value": "spatial-hologram", "label": "空间全息界面" },
+          { "value": "kinetic-infographic", "label": "高级信息图解" },
+          { "value": "process-flywheel", "label": "流程飞轮" },
+          { "value": "comparison-breakdown", "label": "对比拆解" },
+          { "value": "timeline-story", "label": "时间轴叙事" },
+          { "value": "three-step-method", "label": "三步方法论" },
+          { "value": "data-dashboard", "label": "数据仪表盘" },
+          { "value": "system-architecture", "label": "产品架构图" },
+          { "value": "map-route", "label": "地图路径" },
+          { "value": "knowledge-cards", "label": "知识卡片" },
+          { "value": "numeric-counter", "label": "数字冲击" },
+          { "value": "paper-editorial-collage", "label": "报刊拼贴手账" },
+          { "value": "polaroid-tape", "label": "拍立得胶带" },
+          { "value": "magazine-cutout", "label": "杂志剪贴版式" },
+          { "value": "paper-stage", "label": "纸片舞台" },
+          { "value": "hand-drawn-doodle", "label": "手绘涂鸦解释" },
+          { "value": "riso-print", "label": "Riso 印刷" },
+          { "value": "talking-head-premium", "label": "口播高级包装" },
+          { "value": "side-panel-callouts", "label": "侧边悬浮卡片" },
+          { "value": "keyword-icon-bursts", "label": "关键词图形强调" },
+          { "value": "safe-hud-overlay", "label": "轻量科技 HUD" },
+          { "value": "captionless-visual", "label": "无字幕视觉包装" },
+          { "value": "creator-pop", "label": "创作者爆款图形" },
+          { "value": "sticker-bounce", "label": "贴纸弹跳包装" },
+          { "value": "color-block-transition", "label": "潮流色块转场" },
+          { "value": "elastic-icon-system", "label": "弹性图标系统" },
+          { "value": "short-video-impact", "label": "短视频开场冲击" },
+          { "value": "isometric-city", "label": "等距城市地图" },
+          { "value": "soft-3d-icons", "label": "柔光 3D 图标" },
+          { "value": "miniature-diorama", "label": "微缩产品舞台" },
+          { "value": "glass-space", "label": "悬浮玻璃空间" },
+          { "value": "product-pedestal", "label": "产品陈列台" },
+          { "value": "apple-spatial-ui", "label": "空间计算界面" },
+          { "value": "terminal-code-cinema", "label": "代码终端电影感" },
+          { "value": "game-interface", "label": "游戏界面演示" },
+          { "value": "bauhaus-geometry", "label": "包豪斯几何" },
+          { "value": "brutalist-poster", "label": "粗野主义海报" },
+          { "value": "dream-memory", "label": "梦境记忆流" },
+          { "value": "particle-swarm", "label": "粒子群聚合" },
+          { "value": "domino-chain", "label": "多米诺因果链" },
+          { "value": "science-visualization", "label": "科学可视化" },
+          { "value": "architecture-exploded", "label": "建筑爆炸图" },
+          { "value": "inflatable-objects", "label": "充气软体世界" },
+          { "value": "crystal-asmr", "label": "晶体 ASMR" },
+          { "value": "mechanical-assembly", "label": "机械装配演示" },
+          { "value": "absurd-object-ad", "label": "荒诞物件广告" },
+          { "value": "pov-vlog-graphics", "label": "POV 视角包装" },
+          { "value": "mockumentary-overlay", "label": "伪纪录片包装" },
+          { "value": "sports-broadcast", "label": "体育转播包装" },
+          { "value": "ink-wash-motion", "label": "水墨流动叙事" },
+          { "value": "anime-storyboard", "label": "动画分镜漫画" },
+          { "value": "no-text-icon-story", "label": "无字图形叙事" },
+          { "value": "exact-chinese-title", "label": "中文锁字标题" }
+        ]
+      },
+      {
+        "key": "duration",
+        "label": "时长",
+        "type": "select",
+        "default": "10",
+        "options": [
+          { "value": "10", "label": "10 秒" }
+        ]
+      },
+      {
+        "key": "aspectRatio",
+        "label": "画幅",
+        "type": "select",
+        "default": "16:9",
+        "options": [
+          { "value": "16:9", "label": "16:9 横屏" },
+          { "value": "9:16", "label": "9:16 竖屏" }
+        ]
+      },
+      {
+        "key": "videoFile",
+        "label": "参考视频（可选）",
+        "type": "file",
+        "default": "",
+        "extensions": ["mp4", "mov", "webm", "m4v"]
+      }
+    ]
+  },
+  "promptTemplate": "[Omni版MG动画]\\n请按 ~/.kunpeng/skills/omni-mg-animation/SKILL.md 的工作流执行。API Key、主域名和备用域名必须从设置页读取。\\n\\n模式：{{mode}}\\n风格 ID：{{style}}\\n时长：{{duration}} 秒\\n画幅：{{aspectRatio}}\\n参考视频：{{videoFile}}\\n\\n用户要求：\\n{{userContent}}"
+}

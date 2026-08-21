@@ -1,0 +1,71 @@
+name: Bug 报告
+description: 报告鲲鹏的缺陷或异常行为
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢报告问题！本项目为个人业余项目，维护者会尽力回应。请尽量填写完整信息以便定位。
+  - type: input
+    id: version
+    attributes:
+      label: 鲲鹏版本
+      description: 例如 2.8.6（应用内「关于」或下载的 dmg 文件名）
+      placeholder: 2.8.6
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      description: 例如 macOS 15.5 (Apple Silicon) / Windows 11
+      placeholder: macOS 15.5 (Apple Silicon)
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 发生了什么？你预期是什么行为？
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 尽量给出稳定复现的最小步骤
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 出现……
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 报错信息
+      description: 控制台报错、弹窗截图文字等。注意脱敏，不要粘贴 API Key。
+      render: text
+  - type: dropdown
+    id: module
+    attributes:
+      label: 涉及模块
+      options:
+        - 对话 / Agent
+        - 画布
+        - 工坊
+        - 剪辑
+        - 文案
+        - 设置 / 配置
+        - 安装 / 启动
+        - 其他 / 不确定
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 Issue，没有重复报告
+          required: true
+        - label: 我提交的日志中不包含 API Key 等敏感信息
+          required: true

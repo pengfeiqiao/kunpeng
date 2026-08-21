@@ -1,0 +1,9 @@
+{
+  "volcano_engine": {
+    "enabled": true,
+    "model": "doubao-seedream-5-0-260128",
+    "api_key": "你的火山引擎API Key",
+    "req_key": "你的火山引擎Req Key",
+    "base_url": "https://ark.cn-beijing.volces.com/api/v3"
+  }
+}

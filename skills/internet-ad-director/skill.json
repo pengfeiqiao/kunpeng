@@ -1,0 +1,58 @@
+{
+  "id": "internet-ad-director",
+  "name": "广告导演",
+  "icon": "clapperboard",
+  "description": "互联网广告导演：病毒广告创意策略 + 分镜 + 提示词 + 生成 + 飞书建表，顾问与执行一体",
+  "version": "1.0.0",
+  "hasPanel": true,
+  "accentColor": "rose",
+  "placeholder": "补充说明（可选）：上线节点 / 预算 / 调性 / 参考案例…",
+  "panel": {
+    "fields": [
+      {
+        "key": "product",
+        "label": "产品 / 品牌",
+        "type": "input",
+        "placeholder": "如：某新锐气泡水 / 品牌名（必填）"
+      },
+      {
+        "key": "brief",
+        "label": "创意需求 brief",
+        "type": "textarea",
+        "placeholder": "核心诉求、卖点、背景、想要的感觉…（必填）"
+      },
+      {
+        "key": "market",
+        "label": "目标市场",
+        "type": "select",
+        "default": "中国",
+        "options": [
+          { "value": "中国", "label": "中国" },
+          { "value": "美欧", "label": "美欧" },
+          { "value": "东南亚", "label": "东南亚" },
+          { "value": "印度", "label": "印度" },
+          { "value": "中东", "label": "中东" },
+          { "value": "拉美", "label": "拉美" },
+          { "value": "全球", "label": "全球" }
+        ]
+      },
+      {
+        "key": "platform",
+        "label": "投放平台",
+        "type": "select",
+        "default": "抖音",
+        "options": [
+          { "value": "抖音", "label": "抖音" },
+          { "value": "小红书", "label": "小红书" },
+          { "value": "视频号", "label": "视频号" },
+          { "value": "B站", "label": "B站" },
+          { "value": "快手", "label": "快手" },
+          { "value": "TikTok", "label": "TikTok" },
+          { "value": "YouTube", "label": "YouTube" },
+          { "value": "Instagram", "label": "Instagram" }
+        ]
+      }
+    ]
+  },
+  "promptTemplate": "[广告导演] 请参考 ~/.kunpeng/skills/internet-ad-director/SKILL.md 扮演互联网广告导演。\n产品/品牌：{{product}}　目标市场：{{market}}　投放平台：{{platform}}\n创意需求：{{brief}}\n{{userContent}}\n\n先出创意策略方案（病毒元素匹配 + 导演风格推荐 + 短视频结构，按需联名/情绪雷达/整合营销），给我确认后再逐步落地：分镜表 → @图片N 提示词 →（确认后）seedance 生成 →（确认后）飞书多维表格建表。人群/病毒元素/导演风格未指定时由你分析推荐。缺产品或 brief 时先反问。每个消耗资源或外发的节点（生图/生视频/写飞书）先给完整方案、我确认后才执行。"
+}
