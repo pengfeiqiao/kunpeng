@@ -20,6 +20,9 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      - name: 安装 dsh-runtime 依赖
+        run: npm ci --prefix dsh-runtime
+
       - name: 类型检查
         run: npx tsc --noEmit
 
