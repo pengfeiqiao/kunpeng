@@ -1,6 +1,6 @@
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveApiKey, resolveSlotApiKey } from '@/lib/credentials';
-import { APIMART_SEEDREAM_SLOT_ID } from '@/lib/apimart/contracts';
+import { APIMART_GPT_IMAGE2_SLOT_ID, APIMART_SEEDREAM_SLOT_ID } from '@/lib/apimart/contracts';
 
 export type ImageRouteMode = 'text-to-image' | 'image-to-image';
 export type ImageRouteTier = 'cheap' | 'standard';
@@ -202,7 +202,8 @@ export function getImageRouteDefinitions(): ImageRouteDefinition[] {
   const builtInRoutes = RHTV_ROUTES.filter((route) => (
     route.provider !== 'runninghub' || Boolean(resolveApiKey(settings, 'runninghub', settings.runninghubApiKey).trim())
   ));
-  const apimartSeedreamRoutes: ImageRouteDefinition[] = resolveApiKey(settings, 'omniApimart', settings.omniApimartApiKey).trim()
+  const apimartKey = resolveApiKey(settings, 'omniApimart', settings.omniApimartApiKey).trim();
+  const apimartSeedreamRoutes: ImageRouteDefinition[] = apimartKey
     ? [
         {
           id: `api:${APIMART_SEEDREAM_SLOT_ID}:seedream-v5-pro:text-to-image`,
@@ -224,7 +225,31 @@ export function getImageRouteDefinitions(): ImageRouteDefinition[] {
         },
       ]
     : [];
-  return [...builtInRoutes, ...apiRoutes, ...apimartSeedreamRoutes];
+  // APIMart GPT-Image-2（异步任务接口，与生图槽位同池容灾；多域名线路由
+  // apimart/client 的并行健康检测挑选）。
+  const apimartGptImage2Routes: ImageRouteDefinition[] = apimartKey
+    ? [
+        {
+          id: `api:${APIMART_GPT_IMAGE2_SLOT_ID}:gpt-image-2:text-to-image`,
+          label: 'APIMart GPT-Image-2 文生',
+          provider: 'apimart',
+          mode: 'text-to-image',
+          tier: 'standard',
+          model: 'gpt-image-2',
+          slotId: APIMART_GPT_IMAGE2_SLOT_ID,
+        },
+        {
+          id: `api:${APIMART_GPT_IMAGE2_SLOT_ID}:gpt-image-2:image-to-image`,
+          label: 'APIMart GPT-Image-2 图生',
+          provider: 'apimart',
+          mode: 'image-to-image',
+          tier: 'standard',
+          model: 'gpt-image-2',
+          slotId: APIMART_GPT_IMAGE2_SLOT_ID,
+        },
+      ]
+    : [];
+  return [...builtInRoutes, ...apiRoutes, ...apimartSeedreamRoutes, ...apimartGptImage2Routes];
 }
 
 export function getImageRouteDefinition(routeId: string): ImageRouteDefinition | undefined {

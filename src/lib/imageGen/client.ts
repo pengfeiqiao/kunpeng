@@ -27,7 +27,10 @@ import {
 } from '@/lib/apimart/client';
 import { APIMART_BASE_URL } from '@/lib/apimart/baseUrl';
 import {
+  APIMART_GPT_IMAGE2_ENDPOINT,
+  APIMART_GPT_IMAGE2_SLOT_ID,
   APIMART_SEEDREAM_SLOT_ID,
+  buildApimartGptImage2Payload,
   buildApimartSeedreamPayload,
 } from '@/lib/apimart/contracts';
 
@@ -96,10 +99,50 @@ function getSlots(params: GenerateImageParams | undefined, model: string): Image
       tier: 'standard',
     });
   }
+  if (model === 'gpt-image-2' && apimartKey) {
+    // APIMart GPT-Image-2 走异步任务接口（docs.apimart.ai），与槽位同池容灾。
+    slots.push({
+      id: APIMART_GPT_IMAGE2_SLOT_ID,
+      label: 'APIMart GPT-Image-2',
+      provider: 'dmxapi',
+      baseUrl: APIMART_BASE_URL,
+      apiKey: apimartKey,
+      enabled: true,
+      priority: 60,
+      tier: 'standard',
+    });
+  }
   return slots
     .filter((s) => s.enabled && s.baseUrl && resolveSlotApiKey(settings, s))
     .filter((s) => !params?.forceSlotId || s.id === params.forceSlotId)
     .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+}
+
+async function gptImage2ApimartGen(
+  params: GenerateImageParams,
+  refs: EditReference[],
+): Promise<{ b64?: string; url?: string }> {
+  const imageUrls = refs.map((ref) => bytesToDataUrl(ref.binary, ref.mime || 'image/png'));
+  const taskId = await submitApimartTask({
+    path: '/v1/images/generations',
+    label: 'APIMart GPT-Image-2',
+    payload: buildApimartGptImage2Payload({
+      prompt: params.prompt,
+      imageUrls,
+      size: params.size,
+      aspectRatio: params.aspectRatio,
+      resolution: params.resolution,
+    }),
+    signal: params.signal,
+  });
+  try { params.onSubmitted?.(taskId, APIMART_GPT_IMAGE2_ENDPOINT); } catch { /* callback must not break a paid task */ }
+  const state = await pollApimartTask({
+    taskId,
+    kind: 'image',
+    label: 'APIMart GPT-Image-2',
+    signal: params.signal,
+  });
+  return { url: state.urls[0] };
 }
 
 async function seedreamProApimartGen(
@@ -584,6 +627,11 @@ async function tryGenerate(
       let result: { b64?: string; url?: string } = undefined!;
 
       if (model === 'gpt-image-2') {
+        if (slot.id === APIMART_GPT_IMAGE2_SLOT_ID) {
+          const editRefs = hasRef ? await getEditReferences(params, compress) : [];
+          console.log(`🎨 [${slot.label}] 尝试 gpt-image-2 async (apimart)${compress ? ' [压缩重试]' : ''}...`);
+          result = await gptImage2ApimartGen(params, editRefs);
+        } else {
         const tier = params.forceTier ?? slot.tier ?? 'standard';
         if (provider === 'zexapi') {
           const editRefs = hasRef ? await getEditReferences(params, compress) : [];
@@ -625,6 +673,7 @@ async function tryGenerate(
           if (!tried || !result) {
             throw new Error(subErr || 'no model tried');
           }
+        }
         }
       } else if (model === 'seedream-v5-pro') {
         const isApimart = slot.id === APIMART_SEEDREAM_SLOT_ID;

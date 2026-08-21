@@ -1,6 +1,6 @@
 [package]
 name = "kunpeng-desktop"
-version = "2.9.0"
+version = "2.9.1"
 description = "鲲鹏桌面客户端"
 authors = ["Kunpeng Contributors"]
 license = "MIT"

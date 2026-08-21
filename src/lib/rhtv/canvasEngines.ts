@@ -2,9 +2,10 @@
  * canvasEngines — curated engine → RunningHub endpoint mapping for the canvas.
  *
  * 2026-08: RunningHub 海外节点 API（appConfig/AI 应用通道，含 GPT-Image-2、
- * Midjourney 悠船、Topaz、Suno、video-upscaler）已全部下线不可用，本表只
- * 保留国内节点引擎（标准模型端点）。GPT-Image-2 与 Midjourney 逻辑模型仍
- * 可通过生图 API 槽位（DMX/AiHubMix/ZexAPI）与 APIMart 使用。
+ * Midjourney 悠船、Suno、video-upscaler）已下线不可用，本表只保留国内节点
+ * 引擎（标准模型端点）。例外：Topaz 图像放大实测仍可用，予以保留。
+ * GPT-Image-2 与 Midjourney 逻辑模型仍可通过生图 API 槽位
+ * （DMX/AiHubMix/ZexAPI）与 APIMart 使用。
  *
  * Default workflow: images = Seedream 5.0 Pro + API 槽位;
  * videos = Seedance 2.0 (multimodal preferred — reference images are
@@ -49,6 +50,32 @@ export const CANVAS_IMAGE_ENGINES: RhtvCanvasEngine[] = [
     ],
   },
 ];
+
+// 图像工具：放大走 Topaz 专用端点（无 prompt，2026-08 实测仍可用，保留）；
+// 扩图/重绘/擦除/抠图用 gpt-image-2 图生图 + 指令模板（走生图 API 槽位）。
+export const IMAGE_TOOL_ENGINE: RhtvCanvasEngine = {
+  id: 'topaz-upscale',
+  label: 'Topaz 放大',
+  endpoint: 'topazlabs/image-upscale-standard-v2',
+  kind: 'image',
+  mode: 'image-to-image',
+  imageParam: { key: 'imageUrl', multiple: false },
+  fixedParams: { subjectDetection: 'All', faceEnhancement: true },
+  appConfig: {
+    webappId: '2007765513115537410',
+    nodes: [
+      { nodeId: '1', fieldName: 'image', source: 'image' },
+      { nodeId: '2', fieldName: 'model', source: 'param', paramKey: 'model' },
+      { nodeId: '2', fieldName: 'scale', source: 'param', paramKey: 'scale' },
+      { nodeId: '2', fieldName: 'subject_detection', source: 'param', paramKey: 'subjectDetection' },
+    ],
+  },
+  params: [
+    { key: 'scale', label: '倍率', type: 'list', default: '2', options: ['2', '4', '6'] },
+    { key: 'model', label: '模型', type: 'list', default: 'Standard V2', options: ['Standard V2', 'Low Resolution V2', 'CGI', 'High Fidelity V2', 'Text Refine'] },
+    { key: 'subjectDetection', label: '主体检测', type: 'list', default: 'All', options: ['None', 'All', 'Foreground', 'Background'] },
+  ],
+};
 
 export const CANVAS_VIDEO_ENGINES: RhtvCanvasEngine[] = [
   {
@@ -265,7 +292,7 @@ export const CANVAS_AUDIO_ENGINES: RhtvCanvasEngine[] = [
 ];
 
 export const ALL_CANVAS_ENGINES = [
-  ...CANVAS_IMAGE_ENGINES,
+  ...CANVAS_IMAGE_ENGINES, IMAGE_TOOL_ENGINE,
   ...CANVAS_VIDEO_ENGINES, ...VIDEO_TOOL_ENGINES, ...CANVAS_AUDIO_ENGINES,
 ];
 
@@ -287,7 +314,8 @@ export function resolveImageEngine(id: string, refCountOrHasReference: number | 
     const target = hasReference ? 'seedream-v5-pro-i2i' : 'seedream-v5-pro';
     return CANVAS_IMAGE_ENGINES.find((e) => e.id === target)!;
   }
-  // Retired overseas ids (gpt-image-2*, midjourney-v81*, topaz-upscale) fall
-  // through to the default rather than crashing on a removed entry.
+  // Retired overseas ids (gpt-image-2*, midjourney-v81*) fall through to the
+  // default rather than crashing on a removed entry. Topaz upscale is back in
+  // the table (2026-08 verified working) and resolves via findCanvasEngine.
   return findCanvasEngine(id) ?? CANVAS_IMAGE_ENGINES[0];
 }
