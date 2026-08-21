@@ -62,17 +62,32 @@ function spawnMcpServer(port, extraEnv = {}) {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   child.stdout.setEncoding('utf8');
+  child.stderrText = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk) => {
+    child.stderrText = `${child.stderrText}${chunk}`.slice(-4000);
+  });
   return child;
 }
+
+// CI runners are much slower than a local dev machine: module loading, TCP
+// setup and stdio attach can each take seconds. 15s still catches real
+// orphans (they never exit at all) without flaky timeouts.
+const EXIT_TIMEOUT_MS = Number(process.env.MCP_TEST_EXIT_TIMEOUT_MS) || 15_000;
 
 function exitWithin(child, ms, label) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
-      reject(new Error(`${label}: process did not exit within ${ms}ms (orphan risk)`));
+      reject(new Error(`${label}: process did not exit within ${ms}ms (orphan risk)\nchild stderr:\n${child.stderrText || '(empty)'}`));
     }, ms);
     child.once('exit', (code, signal) => {
       clearTimeout(timer);
+      if (code !== 0 && child.stderrText) {
+        // Surface the child's own diagnostics — without them CI-only failures
+        // are impossible to read.
+        process.stderr.write(`[${label}] child stderr:\n${child.stderrText}\n`);
+      }
       resolve({ code, signal });
     });
   });
@@ -95,7 +110,7 @@ test('mcp server exits when the tool bridge socket closes (supervisor relaunch m
   });
   try {
     child = spawnMcpServer(bridge.port);
-    const { code } = await exitWithin(child, 5000, 'bridge-close exit');
+    const { code } = await exitWithin(child, EXIT_TIMEOUT_MS, 'bridge-close exit');
     assert.equal(code, 0, 'clean exit lets the DSH MCP supervisor relaunch a fresh connection');
   } finally {
     bridge.close();
@@ -111,7 +126,7 @@ test('mcp server exits on stdin EOF instead of lingering as an orphan', async ()
     // Wait for the hello handshake before cutting stdin.
     await new Promise((resolve) => setTimeout(resolve, 500));
     child.stdin.end();
-    const { code } = await exitWithin(child, 5000, 'stdin-EOF exit');
+    const { code } = await exitWithin(child, EXIT_TIMEOUT_MS, 'stdin-EOF exit');
     assert.equal(code, 0);
   } finally {
     bridge.close();
@@ -175,7 +190,7 @@ test('mcp server refuses to start without bridge configuration (fail fast, no ha
     env: { ...process.env }, // no KUNPENG_TOOL_BRIDGE_* / run identity
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  const { code } = await exitWithin(child, 5000, 'missing-config exit');
+  const { code } = await exitWithin(child, EXIT_TIMEOUT_MS, 'missing-config exit');
   assert.notEqual(code, 0);
 });
 
@@ -186,7 +201,7 @@ test('mcp server fails fast when the bridge never answers hello (no startup hang
   let child;
   try {
     child = spawnMcpServer(bridge.port, { KUNPENG_TOOL_BRIDGE_HELLO_TIMEOUT_MS: '500' });
-    const { code } = await exitWithin(child, 5000, 'hello-timeout exit');
+    const { code } = await exitWithin(child, EXIT_TIMEOUT_MS, 'hello-timeout exit');
     assert.notEqual(code, 0, 'handshake timeout must fail startup, not linger');
   } finally {
     bridge.close();
