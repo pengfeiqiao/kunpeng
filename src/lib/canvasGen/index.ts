@@ -110,7 +110,6 @@ import {
   MIDJOURNEY_DEFAULT_VERSION,
   MIDJOURNEY_PARAMETER_PRESETS,
   isMidjourneyEngineId,
-  midjourneyProviderOrder,
 } from '@/lib/midjourney/prompt';
 
 export interface CanvasGenRequest {
@@ -277,6 +276,14 @@ export function resolveGenEngine(
   // 兜底会把拼错的视频/音频 id 静默当 GPT 图片任务提交扣费
   if (!baseEngine && !req.engineId.startsWith('gpt-image') && !isSeedreamProImageEngine(req.engineId)) {
     return { error: `未知引擎: ${req.engineId}` };
+  }
+  // GPT Image 2 的 RunningHub 通道（海外节点）已下线；到达这里说明没有可用
+  // 的生图 API 槽位（有槽位时 chooseGptImageChannel 会返回 api: 路由）。
+  // 绝不能静默换成 Seedream 扣费——明确告诉用户怎么恢复。
+  if (!baseEngine && req.engineId.startsWith('gpt-image')) {
+    return {
+      error: 'GPT Image 2 的 RunningHub 渠道（海外节点）已于 2026-08 下线。请在「设置 → 图片模型」配置生图 API 槽位（DMXAPI / AiHubMix / ZexAPI），或改用 Seedream 5.0 Pro / 即梦通道。',
+    };
   }
   const engine: RhtvCanvasEngine | undefined =
     baseEngine?.kind === 'image' || !baseEngine
@@ -1186,38 +1193,8 @@ async function runApimartMidjourneyGeneration(
 }
 
 async function runMidjourneyGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
-  const version = midjourneyVersionOf(req);
-  const channels = midjourneyProviderOrder(version);
-  const primary = await runApimartMidjourneyGeneration(req, version);
-  const accepted = primary.success || primary.backgroundPending || primary.submissionUncertain
-    || primary.submissionCommitted || Boolean(primary.providerTaskId && !primary.providerFailed);
-  if (accepted || primary.error === '已取消' || channels.length === 1) return primary;
-
-  // Only V8.1 has a known RunningHub application. Fall back after APIMart has
-  // failed definitively; never resubmit while an APIMart task may still exist.
-  if (primary.taskId) useCanvasTaskStore.getState().removeTask(primary.taskId);
-  const fallbackParams = { ...(req.params ?? {}) };
-  delete fallbackParams.version;
-  delete fallbackParams.modelVersion;
-  const fallback = await runStandardGeneration({
-    ...req,
-    engineId: 'midjourney-v81',
-    referenceUrls: req.styleReferenceUrls?.length
-      ? [...(req.referenceUrls ?? []).slice(0, 1), req.styleReferenceUrls[0]]
-      : req.referenceUrls,
-    params: fallbackParams,
-  });
-  if (fallback.taskId) {
-    useCanvasTaskStore.getState().updateTask(fallback.taskId, { fallbackUsed: true });
-  }
-  if (!fallback.success && !fallback.backgroundPending && !fallback.submissionUncertain) {
-    return {
-      ...fallback,
-      fallbackUsed: true,
-      error: `APIMart: ${primary.error ?? '失败'}；RunningHub: ${fallback.error ?? '失败'}`,
-    };
-  }
-  return { ...fallback, fallbackUsed: true };
+  // 2026-08: RunningHub 悠船（海外节点）已下线，Midjourney 只走 APIMart。
+  return runApimartMidjourneyGeneration(req, midjourneyVersionOf(req));
 }
 
 async function runApimartMinimaxH3Generation(

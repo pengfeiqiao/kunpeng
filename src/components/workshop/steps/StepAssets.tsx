@@ -28,7 +28,7 @@ const DEFAULT_VOICE_SAMPLE_LINE = '你好，很高兴认识你。';
 const GPT_ENGINE: ImageEngineOption = { value: 'gpt-image-2', label: 'GPT', title: 'GPT-Image-2 智能生图通道' };
 const SEEDREAM_ENGINE: ImageEngineOption = { value: 'seedream-v5-pro', label: '豆包', title: '豆包 Seedream 5.0 Pro' };
 const MIDJOURNEY_V82_ENGINE: ImageEngineOption = { value: 'midjourney-v82', label: 'MJ 8.2', title: 'Midjourney V8.2（APIMart，新版审美，一次返回 4 张候选）' };
-const MIDJOURNEY_V81_ENGINE: ImageEngineOption = { value: 'midjourney-v81', label: 'MJ 8.1', title: 'Midjourney V8.1（悠船主节点，APIMart 容灾，一次返回 4 张候选）' };
+const MIDJOURNEY_V81_ENGINE: ImageEngineOption = { value: 'midjourney-v81', label: 'MJ 8.1', title: 'Midjourney V8.1（APIMart 通道，一次返回 4 张候选）' };
 
 function stripSpeechQuotes(value: string): string {
   return value.trim().replace(/^[“"']+/, '').replace(/[”"']+$/, '').trim();

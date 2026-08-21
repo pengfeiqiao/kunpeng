@@ -22,7 +22,7 @@ test('recognizes canvas Midjourney aliases before generic engine validation', ()
 
 test('uses APIMart as the primary Midjourney provider for every version', () => {
   assert.deepEqual(midjourneyProviderOrder('v8.2'), ['apimart']);
-  assert.deepEqual(midjourneyProviderOrder('v8.1'), ['apimart', 'runninghub']);
+  assert.deepEqual(midjourneyProviderOrder('v8.1'), ['apimart']);
   assert.deepEqual(midjourneyProviderOrder('v7'), ['apimart']);
   assert.deepEqual(midjourneyProviderOrder('niji7'), ['apimart']);
 });

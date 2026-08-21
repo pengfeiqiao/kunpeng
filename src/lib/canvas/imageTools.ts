@@ -1,7 +1,7 @@
 /**
  * imageTools — one-click AI image operations for canvas nodes.
- * 放大 = dedicated Topaz endpoint; 扩图/重绘/擦除/抠图 = instruction-based
- * editing via gpt-image-2 i2i (standard-API official path; no mask needed).
+ * 扩图/重绘/擦除/抠图 = instruction-based editing via gpt-image-2 i2i
+ * (生图 API 槽位通道；RunningHub 海外节点 2026-08 下线后 Topaz 放大已移除)。
  * Every tool derives a NEW node (version-tree semantics, never overwrites).
  */
 import { nanoid } from 'nanoid';
@@ -13,14 +13,13 @@ import { defaultNodeStyle } from '@/lib/canvas/layout';
 export interface ImageToolDef {
   id: string;
   label: string;
-  /** Editable instruction prefilled into the derived node (except upscale). */
+  /** Editable instruction prefilled into the derived node. */
   instruction?: string;
-  engineId: 'topaz-upscale' | 'gpt-image-2';
+  engineId: 'gpt-image-2';
   autoRun: boolean;
 }
 
 export const IMAGE_TOOLS: ImageToolDef[] = [
-  { id: 'upscale', label: '高清放大', engineId: 'topaz-upscale', autoRun: true },
   {
     id: 'expand', label: '智能扩图', engineId: 'gpt-image-2', autoRun: false,
     instruction: '将画面向四周智能扩展约 50%，新区域与原图风格、光线、纹理无缝衔接，原图内容保持完全不变。',
@@ -62,7 +61,7 @@ export async function applyImageTool(sourceNodeId: string, tool: ImageToolDef): 
       description: tool.instruction ?? `${tool.label}`,
       generationMode: 'image-to-image',
       referenceImages: [{ url: srcUrl, name: tool.label }],
-      imageModel: tool.engineId === 'topaz-upscale' ? 'topaz-upscale' : 'gpt-image-2',
+      imageModel: 'gpt-image-2',
     },
   });
   store.onConnect({ source: sourceNodeId, target: newId, sourceHandle: null, targetHandle: null });

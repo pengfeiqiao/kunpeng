@@ -42,31 +42,6 @@ function spawnDerived(sourceNodeId: string, type: 'video' | 'audio', label: stri
   return newId;
 }
 
-/** 视频高清（rhart-video/video-upscaler） */
-export async function upscaleVideo(nodeId: string): Promise<void> {
-  const { url, description } = getNodeVideo(nodeId);
-  if (!url) return;
-  const newId = spawnDerived(nodeId, 'video', `${description?.slice(0, 20) || ''} 高清增强`);
-  const result = await runGeneration({
-    engineId: 'video-upscaler',
-    prompt: 'upscale',
-    videoUrls: [url],
-    nodeId: newId,
-  });
-  const store = useCanvasStore.getState();
-  if (result.success && result.resultPaths[0]) {
-    store.updateNode(newId, {
-      isGenerating: false,
-      justCompletedAt: Date.now(),
-      generatedVideoUrl: result.resultUrls[0],
-      localPath: result.resultPaths[0],
-      mediaRole: 'output',
-    });
-  } else {
-    store.updateNode(newId, { isGenerating: false, description: `高清失败: ${result.error?.slice(0, 60) ?? ''}` });
-  }
-}
-
 /** 帧率增强（rhart-video/video-fps-increaser） */
 export async function increaseFps(nodeId: string): Promise<void> {
   const { url, description } = getNodeVideo(nodeId);

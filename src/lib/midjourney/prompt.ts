@@ -37,10 +37,9 @@ export function isMidjourneyEngineId(value: unknown): boolean {
   return engineId === 'midjourney' || engineId.startsWith('midjourney-');
 }
 
-/** APIMart is the primary Midjourney route for every supported version. */
-export function midjourneyProviderOrder(version: MidjourneyVersion): MidjourneyProvider[] {
-  // The bundled RunningHub applications currently expose V8.1 only.
-  return version === 'v8.1' ? ['apimart', 'runninghub'] : ['apimart'];
+/** APIMart is the only Midjourney route (RunningHub 悠船 overseas node retired 2026-08). */
+export function midjourneyProviderOrder(_version: MidjourneyVersion): MidjourneyProvider[] {
+  return ['apimart'];
 }
 
 export function getMidjourneyParameterDefaults(

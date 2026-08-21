@@ -365,11 +365,9 @@ export default function NodeInfoBar() {
   const [textPrompt, setTextPrompt] = useState('');
   const [panoPrompt, setPanoPrompt] = useState('');
   const [audioPrompt, setAudioPrompt] = useState('');
-  const [audioMode, setAudioMode] = useState<'song' | 'tts' | 'music' | 'dubbing'>('music');
+  const [audioMode, setAudioMode] = useState<'tts' | 'music' | 'dubbing'>('music');
   const [dubbingRefPath, setDubbingRefPath] = useState('');
   const [dubbingGenerating, setDubbingGenerating] = useState(false);
-  const [songTitle, setSongTitle] = useState('');
-  const [songTags, setSongTags] = useState('');
   const [ttsVoice, setTtsVoice] = useState('Wise_Woman');
   const [ttsEmotion, setTtsEmotion] = useState('neutral');
   const [textGenerating, setTextGenerating] = useState(false);
@@ -1022,7 +1020,7 @@ export default function NodeInfoBar() {
                 { value: 'midjourney', label: 'Midjourney' },
                 { value: 'dreamina', label: '即梦' },
               ]}
-              title="引擎（GPT/Seedream 使用智能通道；MJ V8.1 优先悠船并由 APIMart 容灾，其他版本走 APIMart）"
+              title="引擎（GPT/Seedream 使用智能通道；Midjourney 走 APIMart）"
             />
             {imgSource === 'midjourney' && (
               <SelectPill
@@ -1033,7 +1031,7 @@ export default function NodeInfoBar() {
                   updateNode(node.id, { modelVersion: version });
                 }}
                 options={MIDJOURNEY_VERSIONS.map((item) => ({ ...item }))}
-                title="Midjourney 版本（V8.1：悠船主节点 + APIMart 容灾；其他版本：APIMart）"
+                title="Midjourney 版本（统一走 APIMart 通道）"
               />
             )}
             <ParamSummaryPill
@@ -1298,13 +1296,10 @@ export default function NodeInfoBar() {
       if (!prompt) return;
       updateNode(node.id, { description: prompt, isGenerating: true });
       const { runGeneration } = await import('@/lib/canvasGen');
-      const engineId = audioMode === 'song' ? 'suno-v5' : audioMode === 'tts' ? 'minimax-speech' : 'minimax-music';
+      const engineId = audioMode === 'tts' ? 'minimax-speech' : 'minimax-music';
       // 实测必传参数（price-preview 验证 2026-06-11）
       const audioParams: Record<string, string | number | boolean> = {};
-      if (audioMode === 'song') {
-        audioParams.title = songTitle.trim() || '未命名';
-        audioParams.tags = songTags.trim() || '流行';
-      } else if (audioMode === 'tts') {
+      if (audioMode === 'tts') {
         audioParams.text = prompt;
         audioParams.voice_id = ttsVoice;
         audioParams.emotion = ttsEmotion;
@@ -1335,7 +1330,7 @@ export default function NodeInfoBar() {
     return (
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 w-[600px] max-w-[92vw] bg-[var(--canvas-panel)] backdrop-blur-sm rounded-2xl border border-[var(--canvas-node-border)] shadow-lg px-3 py-2.5">
         <div className="flex items-center gap-0.5 rounded-lg p-0.5 mb-2 w-fit" style={{ background: 'rgba(255,255,255,0.05)' }}>
-          {([['song', '写歌'], ['tts', '配音'], ['music', '纯音乐'], ['dubbing', '台词配音']] as const).map(([m, label]) => (
+          {([['tts', '配音'], ['music', '纯音乐'], ['dubbing', '台词配音']] as const).map(([m, label]) => (
             <button
               key={m}
               onClick={() => setAudioMode(m)}
@@ -1350,22 +1345,6 @@ export default function NodeInfoBar() {
             </button>
           ))}
         </div>
-        {audioMode === 'song' && (
-          <div className="flex gap-2 mb-1.5">
-            <input
-              value={songTitle}
-              onChange={(e) => setSongTitle(e.target.value)}
-              placeholder="歌曲标题"
-              className="w-32 px-2 py-1 rounded-lg text-[11px] bg-[rgba(255,255,255,0.04)] border border-[var(--canvas-node-border)] text-[var(--canvas-text-1)] focus:outline-none focus:border-[rgba(255,255,255,0.4)]"
-            />
-            <input
-              value={songTags}
-              onChange={(e) => setSongTags(e.target.value)}
-              placeholder="风格标签（逗号分隔，如：中国风，电影感，管弦乐）"
-              className="flex-1 px-2 py-1 rounded-lg text-[11px] bg-[rgba(255,255,255,0.04)] border border-[var(--canvas-node-border)] text-[var(--canvas-text-1)] focus:outline-none focus:border-[rgba(255,255,255,0.4)]"
-            />
-          </div>
-        )}
         <textarea
           value={audioPrompt}
           onChange={(e) => {
@@ -1377,7 +1356,7 @@ export default function NodeInfoBar() {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleAudioGenerate(); }
             e.stopPropagation();
           }}
-          placeholder={audioMode === 'song' ? '完整歌词，支持 [Verse] [Chorus] [Bridge] 结构标签' : audioMode === 'tts' ? '输入要配音的台词文案（支持中英混合）' : audioMode === 'dubbing' ? '台词配音提示词，如：（压低音量，唏嘘口吻）"他十来岁就当了皇帝。"' : '描述音乐氛围与风格（如：紧张悬疑的电影配乐，弦乐渐强，120BPM…）'}
+          placeholder={audioMode === 'tts' ? '输入要配音的台词文案（支持中英混合）' : audioMode === 'dubbing' ? '台词配音提示词，如：（压低音量，唏嘘口吻）"他十来岁就当了皇帝。"' : '描述音乐氛围与风格（如：紧张悬疑的电影配乐，弦乐渐强，120BPM…）'}
           rows={2}
           className="w-full resize-none bg-transparent text-xs text-[var(--canvas-text-1)] focus:outline-none placeholder:text-[var(--canvas-text-3)] leading-relaxed"
         />
@@ -1431,7 +1410,7 @@ export default function NodeInfoBar() {
         )}
         <div className="flex items-center gap-2 mt-1.5">
           <span className="px-2 py-1 rounded-lg text-[11px] bg-[rgba(255,255,255,0.05)] text-[var(--canvas-text-2)]">
-            {audioMode === 'song' ? 'Suno v5' : audioMode === 'tts' ? 'MiniMax Speech' : audioMode === 'dubbing' ? 'Doubao Seed-Audio' : 'MiniMax Music'}
+            {audioMode === 'tts' ? 'MiniMax Speech' : audioMode === 'dubbing' ? 'Doubao Seed-Audio' : 'MiniMax Music'}
           </span>
           {hasAudio && <span className="text-[10px] text-[var(--canvas-text-3)]">已有音频，重新生成将衍生新版本</span>}
           <div className="flex-1" />

@@ -21,7 +21,7 @@ export const imageGenerateTool: Tool = {
   definition: {
     name: 'image_generate',
     description:
-      '普通对话直接生成图片并返回本地图片，不创建画布节点。使用底部当前选择的 GPT Image 2、豆包 5 Pro 或 Midjourney；用户指定模型时可覆盖。Midjourney 默认 V8.2，V8.1 优先 RunningHub 悠船并在失败后切换 APIMart，一次返回 4 张候选。'
+      '普通对话直接生成图片并返回本地图片，不创建画布节点。使用底部当前选择的 GPT Image 2、豆包 5 Pro 或 Midjourney；用户指定模型时可覆盖。Midjourney 默认 V8.2（统一走 APIMart 通道），一次返回 4 张候选。'
       + 'APIMart 自动并行检测 api.apimart.ai、apib.ai、aiuxu.com、aishuch.com 并选择当前最快健康线路；遇到 TCP 超时时调用 apimart_route_status({refresh:true}) 查看真实状态，不要用 bash/curl 猜线路。'
       + '必须根据用户要求传 aspect_ratio；横图默认 16:9，竖图/小红书竖版通常 9:16，方图 1:1。不要只把比例写进 prompt，工具会把比例转换成供应商实际像素尺寸。'
       + '只有用户明确要求把结果放入画布时才改用 canvas_generate。',
@@ -153,7 +153,7 @@ export const imageGenerateTool: Tool = {
           `画幅：${aspectRatio}`,
           `版本：${version.toUpperCase()}`,
           ...(style ? [`风格：${style.name}`] : []),
-          `通道：${result.fallbackUsed ? 'APIMart 容灾' : 'RunningHub 悠船'}`,
+          `通道：APIMart`,
           ...result.resultPaths.map((path, index) => `候选 ${index + 1}：${path}`),
         ].join('\n'),
         media,

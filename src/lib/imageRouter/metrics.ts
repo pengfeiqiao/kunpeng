@@ -51,10 +51,8 @@ const SORT_MODE_KEY = 'kunpeng.imageRouteSortMode.v1';
 const SELECTED_AT_KEY = 'kunpeng.imageRouteSelectedAt.v1';
 const MAX_METRICS = 300;
 const RHTV_ROUTES: ImageRouteDefinition[] = [
-  { id: 'gpt-image-2', label: 'RunningHub 低价文生', provider: 'runninghub', mode: 'text-to-image', tier: 'cheap', model: 'gpt-image-2', engineId: 'gpt-image-2' },
-  { id: 'gpt-image-2-i2i', label: 'RunningHub 低价图生', provider: 'runninghub', mode: 'image-to-image', tier: 'cheap', model: 'gpt-image-2', engineId: 'gpt-image-2-i2i' },
-  { id: 'gpt-image-2-official', label: 'RunningHub 官方文生', provider: 'runninghub', mode: 'text-to-image', tier: 'standard', model: 'gpt-image-2', engineId: 'gpt-image-2-official' },
-  { id: 'gpt-image-2-official-i2i', label: 'RunningHub 官方图生', provider: 'runninghub', mode: 'image-to-image', tier: 'standard', model: 'gpt-image-2', engineId: 'gpt-image-2-official-i2i' },
+  // 2026-08: RunningHub 海外节点（GPT-Image-2 低价/官方通道）已下线，RHTV
+  // 侧只保留国内节点的 Seedream 路由。GPT-Image-2 由下方 api: 槽位承接。
   { id: 'seedream-v5-pro-rhtv', label: 'RunningHub Seedream 5 Pro 文生', provider: 'runninghub', mode: 'text-to-image', tier: 'standard', model: 'seedream-v5-pro', engineId: 'seedream-v5-pro' },
   { id: 'seedream-v5-pro-rhtv-i2i', label: 'RunningHub Seedream 5 Pro 图生', provider: 'runninghub', mode: 'image-to-image', tier: 'standard', model: 'seedream-v5-pro', engineId: 'seedream-v5-pro-i2i' },
   { id: 'dreamina:seedream-v5-pro:text-to-image', label: '即梦 Seedream 5 Pro 文生', provider: 'dreamina', mode: 'text-to-image', tier: 'standard', model: 'seedream-v5-pro', engineId: 'seedream-v5-pro' },
@@ -388,47 +386,27 @@ export function pickNextHealthyChannel(mode: ImageRouteMode, excludeIds: Set<str
 }
 
 export function chooseGptImageChannel(requestedEngineId: string, hasReference: boolean): string {
-  const lowcost = hasReference ? 'gpt-image-2-i2i' : 'gpt-image-2';
-  const official = hasReference ? 'gpt-image-2-official-i2i' : 'gpt-image-2-official';
   const mode: ImageRouteMode = hasReference ? 'image-to-image' : 'text-to-image';
+  // RunningHub 的 GPT-Image-2 通道（海外节点）已于 2026-08 下线，只能选择
+  // 生图 API 槽位（dmxapi/aihubmix/zexapi 等 api: 路由）。
   const apiRoutes = getImageRouteDefinitions()
-    .filter((r) => r.model === 'gpt-image-2' && r.provider !== 'runninghub' && r.mode === mode)
+    .filter((r) => r.model === 'gpt-image-2' && r.mode === mode)
     .map((r) => r.id);
+  if (apiRoutes.length === 0) return requestedEngineId;
 
-  if (requestedEngineId === 'gpt-image-2-official' || requestedEngineId === 'gpt-image-2-official-i2i') {
-    const candidates = [official, lowcost, ...apiRoutes];
-    const explore = dailyExploreCount() < 5 && Math.random() < 0.2;
-    if (explore) {
-      const healthyCandidates = candidates.filter(routeHealthy);
-      if (healthyCandidates.length > 0) {
-        bumpDailyExplore();
-        return healthyCandidates[Math.floor(Math.random() * healthyCandidates.length)];
-      }
-    }
-    return weightedPick(candidates);
-  }
-
-  if (requestedEngineId === 'gpt-image-2' || requestedEngineId === 'gpt-image-2-i2i') {
-    const candidates = [lowcost, official, ...apiRoutes];
+  if (requestedEngineId.startsWith('gpt-image-2')) {
     const explore = dailyExploreCount() < 5 && Math.random() < 0.35;
     if (explore) {
-      const healthyCandidates = candidates.filter(routeHealthy);
+      const healthyCandidates = apiRoutes.filter(routeHealthy);
       if (healthyCandidates.length > 0) {
         bumpDailyExplore();
         return healthyCandidates[Math.floor(Math.random() * healthyCandidates.length)];
       }
     }
-    return weightedPick(candidates);
+    return weightedPick(apiRoutes);
   }
 
   return requestedEngineId;
-}
-
-export function chooseGptImageRhtvEngineId(requestedEngineId: string, hasReference: boolean): string {
-  const channel = chooseGptImageChannel(requestedEngineId, hasReference);
-  return channel.startsWith('api:')
-    ? (hasReference ? 'gpt-image-2-i2i' : 'gpt-image-2')
-    : channel;
 }
 
 export function chooseSeedreamProChannel(requestedEngineId: string, hasReference: boolean): string {

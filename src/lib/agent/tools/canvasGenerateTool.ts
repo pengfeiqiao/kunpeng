@@ -41,7 +41,7 @@ export const canvasGenerateTool: Tool = {
     name: 'canvas_generate',
     description:
       '在画布节点上执行 AI 生成。'
-      + '图片引擎: gpt-image-2（自动区分文生图/图生图，可使用生图通道切换）、seedream-v5-pro（必须是 Seedream 5.0 Pro，支持文生/图生、多参考图，走 DMX/即梦 CLI/RunningHub 智能路由；即梦未登录时会自动唤起 Agent 登录恢复）、midjourney-v81（V8.1 优先 RunningHub 悠船、失败自动切 APIMart，返回4张；可在 params.version 传 v8.2/v8.1/v7/v6.1/v5.2/v5.1/niji7/niji6，非 V8.1 直接走 APIMart）。'
+      + '图片引擎: gpt-image-2（自动区分文生图/图生图，可使用生图通道切换）、seedream-v5-pro（必须是 Seedream 5.0 Pro，支持文生/图生、多参考图，走 DMX/即梦 CLI/RunningHub 智能路由；即梦未登录时会自动唤起 Agent 登录恢复）、midjourney-v81（统一走 APIMart，返回4张；可在 params.version 传 v8.2/v8.1/v7/v6.1/v5.2/v5.1/niji7/niji6）。'
       + '视频引擎: seedance-2.0（多模态，必须传参考图，提示词须遵守 ~/.kunpeng/aigc-memory/prompt-templates/seedance/README.md）、'
       + 'seedance-2.0-t2v（无参考图时用）、seedance-2.0-fast、'
       + 'seedance-2.5（多模态，别名 dreamina-seedance-2.5；默认走筷子丽帧通道，失败才降级即梦 CLI；支持图片≤30、视频≤10、音频≤10，总素材≤50，480p/720p，时长 4-30 秒；提交前应按官方 2.5 结构改写提示词，并严格按实际素材顺序使用 @图片N/@视频N/@音频N）、'

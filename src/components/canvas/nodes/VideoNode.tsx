@@ -14,7 +14,7 @@ import NodeParamBadge from './NodeParamBadge';
 import ToolbarDropdown from '../ToolbarDropdown';
 import NodeToolbarPortal from '../NodeToolbarPortal';
 import { extendVideo, lipSyncViaAgent } from '@/lib/canvas/videoTools';
-import { upscaleVideo, increaseFps, separateAudio, sendToEditor, sendToAgent } from '@/lib/canvas/videoToolActions';
+import { increaseFps, separateAudio, sendToEditor, sendToAgent } from '@/lib/canvas/videoToolActions';
 import { useJustCompleted } from './ImageNode';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { useVideoThumb } from '@/lib/canvas/videoThumbs';
@@ -247,7 +247,6 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeData>) {
           {data.generatedVideoUrl && (<>
             <ToolBtnV onClick={() => window.dispatchEvent(new CustomEvent('kunpeng-open-video-fullscreen', { detail: { url: data.generatedVideoUrl } }))} icon={Maximize2} label="全屏" title="全屏查看视频" />
             <ToolBtnV onClick={() => void handleOpenFolder()} icon={FolderOpen} label="打开" title="在 Finder 中定位视频文件" />
-            <ToolBtnV onClick={() => void upscaleVideo(id)} icon={Sparkles} label="高清" title="AI 视频高清增强" />
             <ToolBtnV onClick={() => void sendToEditor(id)} icon={Scissors} label="剪辑" title="加入剪辑时间轴" />
             <ToolBtnV onClick={() => window.dispatchEvent(new CustomEvent('kunpeng-frame-capture', { detail: { nodeId: id } }))} icon={Camera} label="捕捉帧" title="截取任意一帧为图片节点" />
             <ToolBtnV onClick={() => window.dispatchEvent(new CustomEvent('kunpeng-video-breakdown', { detail: { nodeId: id } }))} icon={Wand2} label="解析" title="拉片：解析镜头/景别/运镜为分镜表" />
