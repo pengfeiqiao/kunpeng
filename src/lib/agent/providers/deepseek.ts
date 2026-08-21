@@ -25,6 +25,8 @@ import { withRetry } from '../withRetry';
 import { GLMClient } from '../glmClient';
 import { sanitizeOpenAIToolPairing } from './pairing';
 
+const DEEPSEEK_VISION_MODEL = 'deepseek-v4-flash-vision-exp';
+
 const MODELS: ModelDef[] = [
   {
     id: 'deepseek-v4-pro',
@@ -35,6 +37,12 @@ const MODELS: ModelDef[] = [
   {
     id: 'deepseek-v4-flash',
     displayName: 'DeepSeek V4 Flash (Anthropic API)',
+    contextWindow: 1_000_000,
+    supportsTools: true,
+  },
+  {
+    id: DEEPSEEK_VISION_MODEL,
+    displayName: 'DeepSeek V4 Vision（实验 · 原生识图）',
     contextWindow: 1_000_000,
     supportsTools: true,
   },
@@ -146,8 +154,32 @@ export class DeepSeekProvider implements Provider {
 
   async *streamChat(req: ChatRequest, opts: ChatOptions): AsyncGenerator<StreamDelta> {
     if (this.anthropicClient) {
-      const target = req.modelId ?? this.defaultModelId;
-      yield* this.anthropicClient.streamChat(req.messages, req.tools, opts.signal, target);
+      const preferred = req.modelId ?? this.defaultModelId;
+      // 多模态默认开启：请求带图片且当前模型不支持视觉时，自动改用官方视觉
+      // 模型（deepseek-v4-flash-vision-exp，2026-08-21 实测可用）。若视觉
+      // 模型在产出任何内容前失败，回退到原模型的文本占位路径
+      // （由 image_recognition 工具完成识图），绝不让整轮失败。
+      const hasImages = req.messages.some((message) => {
+        if (message.role === 'tool' && message.media?.some((block) => block.type === 'image')) return true;
+        if (message.role === 'user' && Array.isArray(message.content)) {
+          return message.content.some((block) => block.type === 'image');
+        }
+        return false;
+      });
+      const autoVision = hasImages && !/vision/i.test(preferred);
+      const firstModel = autoVision ? DEEPSEEK_VISION_MODEL : preferred;
+      let yieldedAny = false;
+      try {
+        for await (const delta of this.anthropicClient.streamChat(req.messages, req.tools, opts.signal, firstModel)) {
+          yieldedAny = true;
+          yield delta;
+        }
+        return;
+      } catch (err) {
+        if (!autoVision || yieldedAny) throw err;
+        agentLog.warn('DeepSeek', `${DEEPSEEK_VISION_MODEL} failed before any output; falling back to ${preferred} with tool-based vision`);
+      }
+      yield* this.anthropicClient.streamChat(req.messages, req.tools, opts.signal, preferred);
       return;
     }
 

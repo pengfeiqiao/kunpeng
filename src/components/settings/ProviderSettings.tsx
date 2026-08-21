@@ -61,7 +61,7 @@ const KNOWN_PROVIDERS: ProviderMeta[] = [
     docUrl: 'https://platform.deepseek.com/',
     placeholder: '粘贴 DeepSeek API Key (sk-...)',
     defaultBaseUrl: 'https://api.deepseek.com/anthropic',
-    models: ['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-v4', 'deepseek-chat', 'deepseek-reasoner'],
+    models: ['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp', 'deepseek-v4', 'deepseek-chat', 'deepseek-reasoner'],
   },
   {
     id: 'kimi',

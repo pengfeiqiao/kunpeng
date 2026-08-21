@@ -15,6 +15,7 @@ export const CHAT_MODELS: Record<string, ChatModelOption[]> = {
   deepseek: [
     { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', detail: '复杂推理与长任务' },
     { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', detail: '快速响应' },
+    { value: 'deepseek-v4-flash-vision-exp', label: 'DeepSeek V4 Vision', detail: '原生识图（实验）' },
     { value: 'deepseek-chat', label: 'DeepSeek Chat', detail: '通用对话' },
     { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner', detail: '深度推理' },
   ],

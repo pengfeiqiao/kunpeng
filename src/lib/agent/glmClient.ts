@@ -27,6 +27,31 @@ function modelRequiresThinking(model: string): boolean {
   return /^glm-5\.[3-9]/i.test(model.trim()) || /^glm-[6-9]/i.test(model.trim());
 }
 
+/**
+ * Native multimodal capability by host+model. Kimi and MiniMax accept media
+ * blocks for every model; DeepSeek's official API only accepts images on its
+ * vision models (e.g. deepseek-v4-flash-vision-exp — other models either
+ * substitute an "[Unsupported Image]" placeholder or hard-reject the request,
+ * both verified against the live endpoints).
+ */
+export function supportsNativeVision(baseUrl: string, model: string): boolean {
+  if (/api\.kimi\.com|minimaxi\.com|minimax\.io/i.test(baseUrl)) return true;
+  if (/deepseek\.com/i.test(baseUrl)) return /vision/i.test(model);
+  return false;
+}
+
+const IMAGE_UNSUPPORTED_RE = /does not support image|unsupported image|image.*not.*support|invalid image|无法.*图|不支持.*图/i;
+
+function hasImageBlocks(messages: AgentMessage[]): boolean {
+  return messages.some((message) => {
+    if (message.role === 'tool' && message.media?.some((block) => block.type === 'image')) return true;
+    if (message.role === 'user' && Array.isArray(message.content)) {
+      return message.content.some((block) => block.type === 'image');
+    }
+    return false;
+  });
+}
+
 const DEFAULT_CONFIG: Partial<GLMClientConfig> = {
   baseUrl: 'https://open.bigmodel.cn/api/anthropic',
   model: 'glm-5.1',
@@ -630,6 +655,11 @@ export class GLMClient {
     modelOverride?: string,
   ): AsyncGenerator<StreamDelta> {
     const requestModel = modelOverride ?? this.config.model;
+    // 原生视觉默认开启：请求带图片且模型支持原生视觉时先走多模态；
+    // 若端点拒绝图片内容（未产出任何 delta），自动降级为文本占位符
+    // （系统提示会引导模型改用 image_recognition 工具）。
+    const requestHadMedia = hasImageBlocks(messages);
+    let textOnlyRetry = false;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       // Mid-stream failures must NOT be retried here: chunks already delivered
       // downstream would be emitted twice (duplicate UI text, corrupted
@@ -637,13 +667,22 @@ export class GLMClient {
       // matches the router's `!yieldedAny` fallback semantics (router.ts).
       let yieldedAny = false;
       try {
-        for await (const delta of this._streamChatOnce(messages, tools, signal, requestModel)) {
+        for await (const delta of this._streamChatOnce(messages, tools, signal, requestModel, textOnlyRetry)) {
           yieldedAny = true;
           yield delta;
         }
         return;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
+        if (
+          requestHadMedia && !textOnlyRetry && !yieldedAny
+          && supportsNativeVision(this.config.baseUrl, requestModel)
+          && IMAGE_UNSUPPORTED_RE.test(errMsg)
+        ) {
+          agentLog.warn('GLM', 'endpoint rejected image content, retrying text-only (image_recognition tool path)');
+          textOnlyRetry = true;
+          continue;
+        }
         const status = typeof err === 'object' && err !== null && 'status' in err
           ? Number((err as { status?: number }).status)
           : undefined;
@@ -670,6 +709,7 @@ export class GLMClient {
     tools?: ToolDefinition[],
     signal?: AbortSignal,
     requestModel = this.config.model,
+    forceTextOnly = false,
   ): AsyncGenerator<StreamDelta> {
     // If the signal is already aborted (e.g. user clicked stop during tool
     // execution in the previous turn), throw immediately so the coordinator's
@@ -687,10 +727,10 @@ export class GLMClient {
     const requiresThinkingHistory = /deepseek\.com|minimaxi\.com|minimax\.io/i.test(this.config.baseUrl);
     const { system, messages: aMsgs } = convertMessages(messages, {
       injectThinking: requiresThinkingHistory,
-      // Kimi and MiniMax both accept native image/video content blocks on
-      // their Anthropic endpoints; other providers get text placeholders that
-      // route vision through tools (DeepSeek has no native vision).
-      allowMedia: /api\.kimi\.com|minimaxi\.com|minimax\.io/i.test(this.config.baseUrl),
+      // Native vision is on by default for capable hosts/models (Kimi,
+      // MiniMax, and DeepSeek vision models); other providers get text
+      // placeholders that route vision through tools.
+      allowMedia: !forceTextOnly && supportsNativeVision(this.config.baseUrl, requestModel),
     });
     const aTools = convertTools(tools);
 
