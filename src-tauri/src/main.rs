@@ -304,6 +304,7 @@ fn main() {
             get_file_size,
             get_file_metadata,
             browser::browser_open,
+            browser::browser_install,
             browser::browser_snapshot,
             browser::browser_action,
             browser::browser_screenshot,

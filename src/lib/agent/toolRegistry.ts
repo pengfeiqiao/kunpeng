@@ -148,7 +148,7 @@ import { askUserQuestionTool } from './tools/askUserQuestionTool';
 import { skillInvokeTool } from './tools/skillInvokeTool';
 import { webFetchTool } from './tools/webFetchTool';
 import { webSearchTool } from './tools/webSearchTool';
-import { browserControlTool } from './tools/browserTool';
+import { browserControlTool, browserInstallTool } from './tools/browserTool';
 import { visionTool } from './tools/visionTool';
 import { sleepTool, scheduleCronTool } from './tools/scheduleCronTool';
 import { aigcOptimizePromptTool } from './tools/genTools';
@@ -182,6 +182,7 @@ export function createDefaultRegistry(): ToolRegistry {
   registry.register(webFetchTool);
   registry.register(webSearchTool);
   registry.register(browserControlTool);
+  registry.register(browserInstallTool);
   registry.register(visionTool);
   registry.register(sleepTool);
   registry.register(scheduleCronTool);

@@ -50,6 +50,19 @@ async function findChrome() {
     process.env.CHROME_PATH,
     process.env.PUPPETEER_EXECUTABLE_PATH,
     ...bundled,
+    // 按需下载的内核（browser_install），公开构建不再打包 Chromium
+    ...(await (async () => {
+      const home = process.env.HOME;
+      if (!home) return [];
+      const root = path.join(home, '.kunpeng', 'browsers', 'chromium');
+      const found = [];
+      try {
+        for (const platform of await fs.readdir(root)) {
+          found.push(path.join(root, platform, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'));
+        }
+      } catch {}
+      return found;
+    })()),
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Chromium.app/Contents/MacOS/Chromium',
     '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',

@@ -28,6 +28,31 @@ async function snapshot(maxChars?: number): Promise<BrowserSnapshot> {
   return invoke<BrowserSnapshot>('browser_snapshot', { maxChars });
 }
 
+/** 没有可用浏览器内核时的引导：让 Agent 能自愈。 */
+const MISSING_BROWSER_RE = /找不到可用的 Chromium|Chromium|浏览器内核/i;
+
+export const browserInstallTool: Tool = {
+  definition: {
+    name: 'browser_install',
+    description:
+      '下载并安装鲲鹏的浏览器内核（约 170MB，一次性）。当 browser_control/web_fetch 报「找不到可用的 Chromium」时调用；完成后重试原操作。',
+    parameters: { type: 'object', properties: {} },
+  },
+  risk: 'safe',
+  async execute() {
+    try {
+      const path = await invoke<string>('browser_install');
+      return { success: true, output: `浏览器内核已就绪：${path}\n请重试刚才的浏览器操作。` };
+    } catch (error) {
+      return {
+        success: false,
+        output: '',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  },
+};
+
 export const browserControlTool: Tool = {
   definition: {
     name: 'browser_control',
@@ -109,10 +134,14 @@ export const browserControlTool: Tool = {
       });
       return { success: true, output: formatBrowserSnapshot(result) };
     } catch (error) {
+      let message = error instanceof Error ? error.message : String(error);
+      if (MISSING_BROWSER_RE.test(message)) {
+        message += '\n\n[可自愈] 调用 browser_install 自动下载浏览器内核（约 170MB，一次性），完成后重试当前操作；或请用户安装 Google Chrome。';
+      }
       return {
         success: false,
         output: '',
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       };
     }
   },

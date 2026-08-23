@@ -8,7 +8,7 @@ use std::{
     process::{Child, Command, Stdio},
     time::Duration,
 };
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
@@ -56,6 +56,11 @@ fn find_chromium(app: &AppHandle) -> Result<PathBuf, String> {
         roots.push(resource_dir.join("../.local-browsers/chromium"));
     }
     roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.local-browsers/chromium"));
+    // Runtime-downloaded copy (browser_install): keeps Chromium out of the
+    // installer while letting first use self-provision.
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join(".kunpeng/browsers/chromium"));
+    }
 
     #[cfg(target_os = "macos")]
     for root in roots {
@@ -80,7 +85,137 @@ fn find_chromium(app: &AppHandle) -> Result<PathBuf, String> {
         }
     }
 
-    Err("找不到可用的 Chromium。请重新安装鲲鹏，或安装 Google Chrome。".to_string())
+    Err("找不到可用的 Chromium。可调用 browser_install 自动下载浏览器内核（约 170MB），或安装 Google Chrome 后重试。".to_string())
+}
+
+// ── 按需下载浏览器内核（公开构建不再打包 Chromium）─────────────────────────
+
+/// Pinned to the same Playwright build the bundled copy used.
+const CHROMIUM_BUILD: &str = "1651413";
+const CHROMIUM_URLS: &[&str] = &[
+    "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/1651413/chromium-mac-arm64.zip",
+    "https://playwright.azureedge.net/builds/chromium/1651413/chromium-mac-arm64.zip",
+];
+
+#[derive(Clone, Serialize)]
+struct BrowserInstallProgress {
+    stage: String,
+    loaded: u64,
+    total: u64,
+}
+
+fn browser_install_dir() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or_else(|| "无法定位用户目录".to_string())?;
+    Ok(home.join(".kunpeng").join("browsers"))
+}
+
+/// Download the pinned Chromium build on first use. Emits
+/// `browser-install-progress` events; safe to call repeatedly (no-op when the
+/// binary already exists).
+#[tauri::command]
+pub async fn browser_install(app: AppHandle) -> Result<String, String> {
+    if !cfg!(target_os = "macos") || !cfg!(target_arch = "aarch64") {
+        return Err("当前仅支持 macOS Apple Silicon 自动下载；其他平台请安装 Google Chrome。".to_string());
+    }
+    if let Ok(path) = find_chromium(&app) {
+        return Ok(path.to_string_lossy().to_string());
+    }
+    let emit = |stage: &str, loaded: u64, total: u64| {
+        let _ = app.emit_all(
+            "browser-install-progress",
+            BrowserInstallProgress { stage: stage.to_string(), loaded, total },
+        );
+    };
+    let base = browser_install_dir()?;
+    let staging = base.join(format!("installing-{}", chrono::Local::now().timestamp_millis()));
+    std::fs::create_dir_all(&staging).map_err(|e| format!("创建下载目录失败: {}", e))?;
+    let zip_path = staging.join("chromium.zip");
+
+    let cleanup = |p: &Path| {
+        let _ = std::fs::remove_dir_all(p);
+    };
+
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("创建下载客户端失败: {}", e))?;
+
+    let mut last_err = String::new();
+    let mut downloaded = false;
+    for url in CHROMIUM_URLS {
+        emit("downloading", 0, 0);
+        let response = match client.get(*url).send().await {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                last_err = format!("{}: HTTP {}", url, r.status());
+                continue;
+            }
+            Err(e) => {
+                last_err = format!("{}: {}", url, e);
+                continue;
+            }
+        };
+        let total = response.content_length().unwrap_or(0);
+        let mut file = match std::fs::File::create(&zip_path) {
+            Ok(f) => f,
+            Err(e) => {
+                cleanup(&staging);
+                return Err(format!("创建临时文件失败: {}", e));
+            }
+        };
+        use std::io::Write;
+        let mut stream = response.bytes_stream();
+        let mut loaded: u64 = 0;
+        let mut failed = false;
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(bytes) => {
+                    if let Err(e) = file.write_all(&bytes) {
+                        last_err = format!("写入失败: {}", e);
+                        failed = true;
+                        break;
+                    }
+                    loaded += bytes.len() as u64;
+                    emit("downloading", loaded, total);
+                }
+                Err(e) => {
+                    last_err = format!("下载中断: {}", e);
+                    failed = true;
+                    break;
+                }
+            }
+        }
+        if !failed && loaded > 0 {
+            downloaded = true;
+            break;
+        }
+    }
+    if !downloaded {
+        cleanup(&staging);
+        return Err(format!("浏览器内核下载失败：{}。可安装 Google Chrome 后重试。", last_err));
+    }
+
+    emit("extracting", 0, 0);
+    let extract_dir = base.join("chromium");
+    let _ = std::fs::remove_dir_all(&extract_dir);
+    std::fs::create_dir_all(&extract_dir).map_err(|e| format!("创建安装目录失败: {}", e))?;
+    let status = Command::new("ditto")
+        .args(["-x", "-k", zip_path.to_string_lossy().as_ref(), extract_dir.to_string_lossy().as_ref()])
+        .status()
+        .map_err(|e| format!("解压失败: {}", e))?;
+    if !status.success() {
+        cleanup(&staging);
+        return Err("解压浏览器内核失败（ditto 非零退出）".to_string());
+    }
+    cleanup(&staging);
+
+    match find_chromium(&app) {
+        Ok(path) => {
+            emit("done", 1, 1);
+            Ok(path.to_string_lossy().to_string())
+        }
+        Err(e) => Err(format!("下载完成但未找到可执行文件：{}", e)),
+    }
 }
 
 fn reserve_port() -> Result<u16, String> {
