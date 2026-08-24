@@ -59,6 +59,7 @@ export const LEGACY_CAPABILITIES: LegacyCapabilitySpec[] = [
   { cap: 'ark', label: '火山方舟', keyField: 'arkApiKey', defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3' },
   { cap: 'happyHorse', label: 'HappyHorse', keyField: 'happyHorseApiKey', baseUrlField: 'happyHorseBaseUrl', defaultBaseUrl: '' },
   { cap: 'runninghub', label: 'RunningHub', keyField: 'runninghubApiKey', defaultBaseUrl: 'https://www.runninghub.cn' },
+  { cap: 'runninghubIntl', label: 'RunningHub 国际站', keyField: 'runninghubIntlApiKey', defaultBaseUrl: 'https://www.runninghub.ai' },
   { cap: 'kuaizi', label: '筷子丽帧', keyField: 'kuaiziApiKey', defaultBaseUrl: 'https://aiopenapi.kuaizi.cn' },
   { cap: 'doubaoSpeech', label: '豆包语音', keyField: 'doubaoSpeechApiKey', defaultBaseUrl: 'https://openspeech.bytedance.com' },
   { cap: 'omni', label: 'ZexAPI / Omni', keyField: 'omniApiKey', defaultBaseUrl: 'https://zexapi.com' },

@@ -216,6 +216,12 @@ interface SettingsState {
   setHappyHorseApiKey: (key: string) => void;
   runninghubApiKey: string;
   setRunninghubApiKey: (key: string) => void;
+  /** RunningHub 站点：cn=国内站（runninghub.cn，默认）、ai=国际站（runninghub.ai）。两站账号与 Key 互不通用。 */
+  runninghubSite: 'cn' | 'ai';
+  setRunninghubSite: (site: 'cn' | 'ai') => void;
+  /** RunningHub 国际站 API Key（runninghub.ai），仅在 runninghubSite='ai' 时使用。 */
+  runninghubIntlApiKey: string;
+  setRunninghubIntlApiKey: (key: string) => void;
   kuaiziApiKey: string;
   setKuaiziApiKey: (key: string) => void;
   useRhtvSeedance: boolean;
@@ -410,6 +416,10 @@ export const useSettingsStore = create<SettingsState>()(
       setHappyHorseApiKey: (happyHorseApiKey) => set((s) => ({ happyHorseApiKey, ...mirrorCredentialWrite(s, 'happyHorse', happyHorseApiKey) })),
       runninghubApiKey: '',
       setRunninghubApiKey: (runninghubApiKey) => set((s) => ({ runninghubApiKey, ...mirrorCredentialWrite(s, 'runninghub', runninghubApiKey) })),
+      runninghubSite: 'cn',
+      setRunninghubSite: (runninghubSite) => set({ runninghubSite }),
+      runninghubIntlApiKey: '',
+      setRunninghubIntlApiKey: (runninghubIntlApiKey) => set((s) => ({ runninghubIntlApiKey, ...mirrorCredentialWrite(s, 'runninghubIntl', runninghubIntlApiKey) })),
       kuaiziApiKey: '',
       setKuaiziApiKey: (kuaiziApiKey) => set((s) => ({ kuaiziApiKey, ...mirrorCredentialWrite(s, 'kuaizi', kuaiziApiKey) })),
       useRhtvSeedance: false,
@@ -779,6 +789,8 @@ export const useSettingsStore = create<SettingsState>()(
         result.chatImageModel = result.chatImageModel ?? 'gpt-image-2';
         result.chatVideoModel = result.chatVideoModel ?? 'seedance-2.0';
         result.wan3Channel = result.wan3Channel ?? 'auto';
+        result.runninghubSite = result.runninghubSite ?? 'cn';
+        result.runninghubIntlApiKey = result.runninghubIntlApiKey ?? '';
         result.workspaceAgentModels = {
           canvas: 'global',
           workshop: 'global',

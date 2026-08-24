@@ -1,73 +1,36 @@
-# 贡献指南（CONTRIBUTING）
+# 参与共建（Contributing）
 
-感谢你愿意为鲲鹏贡献代码！本项目为个人业余项目，Issue 和 PR 会尽力回应，但无法保证响应时效。
+感谢你对鲲鹏的兴趣！这是一个公开仓库，**不需要任何额外权限**就可以贡献代码。
 
-## 环境准备
+## 提交流程
 
-- Node.js 20+
-- Rust 工具链（rustup）
-- macOS（当前主要支持平台）
+1. Fork 本仓库到你自己的账号
+2. 在 Fork 上新建分支（如 `fix/dock-reopen`、`feat/xxx`）
+3. 提交代码并 Push 到你的 Fork
+4. 在 GitHub 上向本仓库的 `main` 分支发起 Pull Request
+
+> 常见问题：「可以给我开 PR 权限吗？」——GitHub 公开仓库的 PR 走的是 Fork 流程，任何人都可以提，无需仓库写权限。直接 Fork 后提 PR 即可。
+
+## 本地开发
 
 ```bash
 npm install
-npm run tauri:dev      # 开发模式（热更新）
+npm run tauri:dev        # 开发模式启动
+npx tsc --noEmit         # 前端类型检查
+npm run test:harness     # agent / 渠道 / 凭证测试
+cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
-## 构建
+提交 PR 前请确保 `tsc`、`test:harness`、`cargo check` 全部通过。
 
-```bash
-npm run tauri:build    # 打包，走 scripts/tauri-build.mjs 包装器；公共构建为纯净版
-```
+## 约定
 
-注意：`dsh-runtime/node`（内嵌 Node.js 运行时）是 gitignored 的本地下载件，`npm install` 后先跑一次 `npm run setup:dsh-node` 自动下载（或参考 `.github/workflows/release.yml` 手动准备）。
+- **不要提交任何 API Key / 凭证**。密钥只允许存 `settingsStore`（凭证注册表），不进日志、错误消息、进程参数。
+- **付费生成工具一旦执行过，禁止自动整轮重放**（防重复扣费）；渠道容灾只能在"确认未扣费"时切换。
+- DeepSeek Harness 锁定 `0.1.0-rc.6`，不要改 `dsh-runtime/node_modules` 上游源码。
+- 新渠道/新引擎请补最小单测（`node --test` 风格，参考 `src/lib/videoRouter/wan3.test.ts`）。
+- 更详细的工程约定见根目录 `AGENTS.md`。
 
-## 测试
+## 反馈问题
 
-提交 PR 前请至少跑通与你改动相关的测试：
-
-```bash
-npm run test:harness        # 前端 agent / harness 核心测试
-npm run test:dsh-runtime    # dsh-runtime 测试
-npm run test:omni           # 多模态相关测试
-npm run test:context        # 上下文压缩/保留测试
-npx tsc --noEmit            # 类型检查
-cargo check --manifest-path src-tauri/Cargo.toml   # Rust 侧
-```
-
-完整脚本列表见 `package.json` 的 `scripts`。
-
-## PR 流程
-
-1. Fork 本仓库，从 `main` 切出功能分支（建议命名 `feat/xxx` 或 `fix/xxx`）。
-2. 保持改动最小化：一个 PR 只做一件事，不顺手重构无关代码。
-3. 提交信息用简洁中文或英文说明「做了什么、为什么」。
-4. 发起 PR 时填写模板内容（改动说明、测试情况、关联 Issue）。
-5. 维护者 review 通过并合并。
-
-## 硬性纪律（务必遵守）
-
-### DSH（DeepSeek Harness）锁版本
-
-`dsh-runtime/` 捆绑的上游引擎 `@deepseek-ai/dsh` 锁定在 **0.1.0-rc.6**（`dsh-runtime/package.json` 中所有 `@deepseek-ai/*` 包同版本锁定）。**升级该版本必须做全量回归**，至少包括：
-
-1. `npm run test:harness`
-2. `npm run test:dsh-runtime`
-3. **真实 ACP 冒烟**（真实 DeepSeek 渠道跑一条端到端任务）
-
-未通过回归的 DSH 升级 PR 一律不予合并。
-
-### Harness 失败降级策略
-
-Harness 链路失败时，**只允许降级到同模型的 DeepSeek 普通模式**（自研 provider 链路），不得降级到其他模型或静默换渠道。
-
-### 付费工具执行后禁止整轮重放
-
-涉及计费 API 的工具（图像 / 视频生成等）一旦执行成功，**禁止整轮对话重放**（replay / retry 整轮），避免重复扣费。失败重试只允许从未执行的步骤继续。
-
-## 行为准则
-
-参与本项目请遵守 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
-
-## 安全问题
-
-安全漏洞请按 [SECURITY.md](SECURITY.md) 报告，不要在公开 Issue 中披露。
+提 Issue 时请带上：鲲鹏版本号、操作系统、复现步骤、期望与实际行为。涉及生成失败时附上任务面板里的错误文本（注意抹掉 Key）。

@@ -409,6 +409,7 @@ const SETTINGS_EXPORT_CREDENTIAL_KEYS = new Set([
   'arkApiKey',
   'happyHorseApiKey',
   'runninghubApiKey',
+  'runninghubIntlApiKey',
   'kuaiziApiKey',
   'doubaoSpeechApiKey',
   'omniApiKey',
@@ -451,6 +452,8 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
     happyHorseBaseUrl, setHappyHorseBaseUrl,
     happyHorseApiKey, setHappyHorseApiKey,
     runninghubApiKey, setRunninghubApiKey,
+    runninghubSite, setRunninghubSite,
+    runninghubIntlApiKey, setRunninghubIntlApiKey,
     kuaiziApiKey, setKuaiziApiKey,
     seedanceEngine, setSeedanceEngine,
     minimaxH3Channel, setMinimaxH3Channel,
@@ -719,14 +722,49 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
       </CollapsibleSection>
 
       <CollapsibleSection title="RunningHub" description="RunningHub 多媒体生成（MiniMax H3 渠道、视频/图片/音频/3D/AI应用）" defaultOpen={false}>
+        <div className="mb-3">
+          <label className="block text-xs text-zinc-500 mb-1">站点</label>
+          <div className="flex rounded-md bg-zinc-100 p-0.5">
+            {([
+              { id: 'cn', label: '国内站 runninghub.cn', hint: '默认；使用下方国内站 API Key' },
+              { id: 'ai', label: '国际站 runninghub.ai', hint: '国际站账号体系独立，使用下方国际站 API Key' },
+            ] as const).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setRunninghubSite(opt.id)}
+                title={opt.hint}
+                className={`min-w-[58px] flex-1 rounded-[5px] px-2.5 py-1.5 text-center text-xs font-medium transition-colors ${
+                  runninghubSite === opt.id
+                    ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/80'
+                    : 'text-zinc-500 hover:text-zinc-900'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+            国内站与国际站的账号和 API Key 互不通用；切换站点后，提交/查询/估价/上传与账户余额都走对应站点。
+          </p>
+        </div>
         <KeyInputRow
-          label="RunningHub API Key"
+          label="RunningHub API Key（国内站）"
           hint="runninghub.cn 企业 API Key；MiniMax H3 的渠道之一"
           value={rk('runninghub', runninghubApiKey)}
           onChange={setRunninghubApiKey}
           show={showKeys.has('runninghub')}
           onToggleShow={() => toggleShow('runninghub')}
-          placeholder="输入 RunningHub API Key..."
+          placeholder="输入国内站 API Key..."
+        />
+        <KeyInputRow
+          label="RunningHub API Key（国际站）"
+          hint="runninghub.ai 国际站 API Key；仅站点切到国际站时使用"
+          value={rk('runninghubIntl', runninghubIntlApiKey)}
+          onChange={setRunninghubIntlApiKey}
+          show={showKeys.has('runninghubIntl')}
+          onToggleShow={() => toggleShow('runninghubIntl')}
+          placeholder="输入国际站 API Key..."
         />
       </CollapsibleSection>
 
