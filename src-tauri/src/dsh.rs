@@ -188,12 +188,23 @@ fn bundled_runtime_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
     candidates
 }
 
+/// Node dist layout differs by platform: unix tarballs ship bin/node, the
+/// Windows zip puts node.exe at the archive root (top dir stripped on
+/// extraction by fetch-dsh-node.mjs).
+fn node_binary(root: &Path) -> PathBuf {
+    if cfg!(target_os = "windows") {
+        root.join("node").join("node.exe")
+    } else {
+        root.join("node").join("bin").join("node")
+    }
+}
+
 fn ensure_runtime(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "无法定位用户目录".to_string())?;
     let root = home.join(".kunpeng").join("dsh").join(DSH_VERSION);
     let marker = root.join(".ready");
     let required = [
-        root.join("node").join("bin").join("node"),
+        node_binary(&root),
         root.join("node_modules")
             .join("@deepseek-ai")
             .join("dsh")
@@ -216,8 +227,7 @@ fn ensure_runtime(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let source = bundled_runtime_candidates(app)
         .into_iter()
         .find(|candidate| {
-            candidate.join("node_modules").exists()
-                && candidate.join("node").join("bin").join("node").exists()
+            candidate.join("node_modules").exists() && node_binary(candidate).exists()
         })
         .ok_or_else(|| "DeepSeek Harness 运行时未随应用部署，请重新安装完整版本".to_string())?;
 
@@ -502,7 +512,7 @@ pub async fn dsh_start(
             .map_err(|error| format!("部署 Harness 运行时任务失败: {}", error))??
     };
     let bridge = ensure_bridge(&app, state.inner.clone()).await?;
-    let node = runtime.join("node").join("bin").join("node");
+    let node = node_binary(&runtime);
     let acp_bin = runtime
         .join("node_modules")
         .join("@deepseek-ai")
@@ -632,6 +642,47 @@ pub async fn dsh_start(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    #[cfg(target_os = "windows")]
+    {
+        // node.exe needs SystemRoot for crypto/winsock and USERPROFILE for
+        // os.homedir(); a minimal Windows PATH keeps child lookups working
+        // without dragging the whole inherited environment back in. GUI apps
+        // must pass CREATE_NO_WINDOW or every console child flashes a window
+        // (tokio Command has an inherent creation_flags method on Windows).
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        for key in [
+            "SystemRoot",
+            "windir",
+            "USERNAME",
+            "COMPUTERNAME",
+            "PATHEXT",
+            "ProgramFiles",
+            "ProgramFiles(x86)",
+            "ProgramData",
+            "LOCALAPPDATA",
+            "APPDATA",
+            "ALLUSERSPROFILE",
+        ] {
+            if let Ok(value) = std::env::var(key) {
+                command.env(key, value);
+            }
+        }
+        let temp = std::env::temp_dir();
+        let system_root =
+            std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_string());
+        command
+            .env("USERPROFILE", &home)
+            .env("TEMP", &temp)
+            .env("TMP", &temp)
+            .env(
+                "PATH",
+                format!(
+                    "{}\\System32;{};{}\\System32\\Wbem;{}\\System32\\WindowsPowerShell\\v1.0",
+                    system_root, system_root, system_root, system_root
+                ),
+            )
+            .creation_flags(CREATE_NO_WINDOW);
+    }
     let inherited_http_proxy = std::env::var("HTTP_PROXY")
         .or_else(|_| std::env::var("http_proxy"))
         .ok();

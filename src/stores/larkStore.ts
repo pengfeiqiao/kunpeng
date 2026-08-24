@@ -15,6 +15,7 @@ import { useRunStepStore } from '@/stores/runStepStore';
 import { MessageIdCache } from '@/lib/messaging/dedup';
 import { CircuitBreaker } from '@/lib/messaging/circuitBreaker';
 import { normalizeCustomRules } from '@/lib/agent/rulePolicy';
+import { getShellInfo, osDisplayName } from '@/lib/platform';
 import { withRemoteAgentTimeout } from '@/lib/messaging/remoteRun';
 import { compactRemoteHistory } from '@/lib/messaging/remoteHistory';
 
@@ -361,12 +362,13 @@ async function getCoordinator(botId: string, chatId: string) {
     },
   };
   registry.register(sendFileTool);
+  const shellEnv = await getShellInfo();
   const coordinator = new AgentCoordinator({
     glmClient: config.glmClient,
     toolRegistry: registry,
     cwd: config.cwd,
-    os: 'macOS',
-    shell: 'zsh',
+    os: osDisplayName(shellEnv.platform),
+    shell: shellEnv.shell,
     maxTurns: 15,
     skillDescriptions: config.skillDescriptions || undefined,
     customRules: config.customRules,

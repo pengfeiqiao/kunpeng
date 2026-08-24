@@ -19,6 +19,7 @@ import { registerHook } from '@/lib/agent/hooks';
 import { buildSkillRelevanceNotice } from '@/lib/agent/skillPromptPolicy';
 import { recordTrajectory, maybeEvolve } from '@/lib/agent/evolution';
 import { registerCleanup } from '@/lib/cleanupRegistry';
+import { getShellInfo, osDisplayName } from '@/lib/platform';
 import { safeLocalStorage } from '@/lib/safeStorage';
 import {
   writeSessionToFile,
@@ -481,7 +482,7 @@ python3 ~/.kunpeng/skills/rhtv/scripts/runninghub.py --download-url "URL" -o /tm
 \`\`\`bash
 python3 ~/.kunpeng/skills/rhtv/scripts/runninghub.py --endpoint ... --prompt "..." -o /tmp/kunpeng/rh-output/...
 \`\`\`
-如果执行失败提示 key 未配置，请在鲲鹏设置中填写 RunningHub API Key，或在 ~/.zshrc 中设置 export RUNNINGHUB_API_KEY=xxx。`;
+如果执行失败提示 key 未配置，请在鲲鹏设置中填写 RunningHub API Key，或在 shell 配置文件（macOS/Linux 为 ~/.zshrc，Windows 为系统环境变量）中设置 RUNNINGHUB_API_KEY=xxx。`;
 }
 
 /**
@@ -888,6 +889,7 @@ export function useAgent(options?: { primary?: boolean }) {
       // Factory — lazily builds a coordinator for a given agent id.
       // Closes over the shared client/registry/workspace/customRules so
       // additional agents are cheap to spin up (no duplicated skill load).
+      const shellEnv = await getShellInfo();
       const buildCoordinator = (agentId: string): AgentCoordinator => {
         const settings = useSettingsStore.getState();
         const meta = settings.agentMetas[agentId];
@@ -898,8 +900,8 @@ export function useAgent(options?: { primary?: boolean }) {
           glmClient: client,
           toolRegistry: registry,
           cwd,
-          os: 'macOS',
-          shell: 'zsh',
+          os: osDisplayName(shellEnv.platform),
+          shell: shellEnv.shell,
           maxTurns: maxTurns || 30,
           workspace: workspace || undefined,
           skillDescriptions: loader.getDescriptionText({

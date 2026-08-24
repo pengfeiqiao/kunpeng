@@ -25,6 +25,9 @@ async function startFakeBridge(onConnection) {
   const server = net.createServer((socket) => {
     socket.setEncoding('utf8');
     sockets.add(socket);
+    // Windows delivers ECONNRESET (not a clean FIN) when a killed child's
+    // socket dies; without a handler the error event crashes the test runner.
+    socket.on('error', () => sockets.delete(socket));
     let buffer = '';
     socket.on('data', (chunk) => {
       buffer += chunk;

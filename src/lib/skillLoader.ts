@@ -1422,7 +1422,7 @@ AI应用ID：{{webappId}}
     id: 'ocean-engine-ad',
     name: '巨量投流',
     icon: 'megaphone',
-    description: '巨量引擎广告投放自动化（Safari + osascript）',
+    description: '巨量引擎广告投放自动化（内置 Chromium 浏览器，跨平台）',
     version: '1.0.0',
     hasPanel: true,
     accentColor: 'orange',

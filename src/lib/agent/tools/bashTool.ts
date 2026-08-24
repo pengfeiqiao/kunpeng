@@ -29,7 +29,7 @@ export const bashTool: Tool = {
   definition: {
     name: 'bash',
     description:
-      '执行一次独立的 zsh 命令。返回可续读的 output_id 和精确字符范围；完整输出保留 1 小时、最多最近 24 次，可用 bash_read_output 分页读取而不重跑命令。',
+      '执行一次独立的 shell 命令（具体 shell 见系统环境信息：zsh/bash 用 POSIX 语法，powershell 用 PowerShell 语法）。返回可续读的 output_id 和精确字符范围；完整输出保留 1 小时、最多最近 24 次，可用 bash_read_output 分页读取而不重跑命令。',
     parameters: {
       type: 'object',
       properties: {

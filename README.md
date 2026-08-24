@@ -4,7 +4,7 @@
 
 > 一套在真实商业短片项目里打磨出来的 AIGC 视频 Agent——从 AI 剧本、画布、流水线工坊到智能剪辑，全链路一站式，本地运行，完全开源。
 
-鲲鹏是一款基于 Tauri（React + Rust）的 macOS 桌面应用。它最初是一个人为拍片自用的内部工具：团队多条百万赞、十多条十万赞级的 AI 短片全部由它产出，之后一边批量接商业项目一边踩坑修复，把原型打磨成了这套可以商用落地的视频 Agent，现在完整开源。
+鲲鹏是一款基于 Tauri（React + Rust）的 macOS / Windows 桌面应用。它最初是一个人为拍片自用的内部工具：团队多条百万赞、十多条十万赞级的 AI 短片全部由它产出，之后一边批量接商业项目一边踩坑修复，把原型打磨成了这套可以商用落地的视频 Agent，现在完整开源。
 
 ![鲲鹏主界面 · 普通对话模式](docs/images/hero-main.png)
 
@@ -93,9 +93,12 @@ HTML 页面动效 + MiniMax H3 / Seedance Mini / Omni 多引擎生成，画布�
 
 ## 安装
 
-### 下载安装包（macOS，Apple Silicon）
+### 下载安装包（macOS / Windows）
 
-从 [Releases](../../releases) 页面下载最新的 `.dmg`，拖入「应用程序」即可。
+- macOS（Apple Silicon）：从 [Releases](../../releases) 页面下载最新的 `.dmg`，拖入「应用程序」即可。
+- Windows：下载 NSIS `-setup.exe` 安装包，按提示安装。
+
+> **Windows 命令执行说明**：Agent 的 bash 工具在 Windows 上优先使用 Git Bash（推荐安装 [Git for Windows](https://git-scm.com/download/win)，命令语法与 macOS 一致）；未安装时回退 PowerShell。首次使用浏览器自动化时如无 Chrome/Chromium 会提示一键下载浏览器内核（也可用系统自带的 Edge）。
 
 > **未签名应用的 Gatekeeper 提示**：当前发布包未做 Apple 开发者签名，首次打开可能提示「无法打开，因为无法验证开发者」或「已损坏」。解决方法二选一：
 >
@@ -141,14 +144,14 @@ HTML 页面动效 + MiniMax H3 / Seedance Mini / Omni 多引擎生成，画布�
 
 ## 已知边界（实话实说）
 
-- **目前只有 macOS 版本**（Apple Silicon 为主）。Windows 移植难度较高暂未实现，欢迎有兴趣的开发者一起共建。
+- **macOS（Apple Silicon）与 Windows 均可构建运行**。Windows 侧建议安装 [Git for Windows](https://git-scm.com/download/win)：命令执行优先复用 Git Bash（保持 POSIX 命令语法兼容），未安装时回退 PowerShell（部分依赖管道/heredoc 的自动化命令不可用）；视频编码在 Windows 上自动回退 libx264（无 videotoolbox 硬编）。
 - 项目从 2026 年 1 月由一名非专业程序员从零迭代而来，代码里难免有临时迭代的冗余和「屎山」；但经过大半年高强度商用实战，稳定跑项目、批量出片没有问题。
 - 内置 AI 精细剪辑能力仍有局限，商用高精度成片建议外接专业剪辑软件处理。
 - 团队核心重心是自有内容创作，很难逐一响应外部 BUG 反馈和新增需求；Issue 会尽力回应，更欢迎 PR 共建。
 
 ## 从源码构建
 
-环境要求：Node.js 24+、Rust 工具链（rustup）、macOS。
+环境要求：Node.js 24+、Rust 工具链（rustup），macOS 或 Windows（Windows 另需 Visual Studio Build Tools，含「使用 C++ 的桌面开发」工作负载）。
 
 ```bash
 # 安装依赖
@@ -159,7 +162,7 @@ npm run setup:dsh-node   # 下载内嵌 Node 运行时（gitignored，首次构�
 # 开发模式（热更新）
 npm run tauri:dev
 
-# 打包（公共构建为纯净版，不含任何私人资源）
+# 打包（公共构建为纯净版，不含任何私人资源；macOS 产出 .dmg，Windows 产出 NSIS 安装包）
 npm run tauri:build
 ```
 

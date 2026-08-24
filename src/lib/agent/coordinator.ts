@@ -18,6 +18,7 @@ import { getProvider } from './providers/registry';
 import { sanitizeProgressText } from './toolSummary';
 import { buildTemporalTurnContext, isTimeSensitiveQuery } from './temporalContext';
 import { terminalToolResults } from './completionGuard';
+import { osDisplayName, userAgentPlatform } from '@/lib/platform';
 
 export interface CoordinatorConfig {
   glmClient: GLMClient;
@@ -296,10 +297,11 @@ export class AgentCoordinator {
 
   /** 构建完整系统提示词（单一来源，避免参数遗漏） */
   private buildPrompt(): string {
+    const platform = userAgentPlatform();
     return buildSystemPrompt({
       cwd: this.config.cwd,
-      os: this.config.os || 'macOS',
-      shell: this.config.shell || 'zsh',
+      os: this.config.os || osDisplayName(platform),
+      shell: this.config.shell || (platform === 'windows' ? 'powershell' : 'zsh'),
       skillDescriptions: this.config.skillDescriptions,
       workspace: this.config.workspace,
       customRules: this.config.customRules,

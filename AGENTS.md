@@ -2,7 +2,7 @@
 
 ## 项目
 
-鲲鹏（Kunpeng）：Tauri 1.x + React 18 + Rust 的桌面 AIGC 创作工作台（对话/画布/工坊/剪辑/文案）。
+鲲鹏（Kunpeng）：Tauri 1.x + React 18 + Rust 的桌面 AIGC 创作工作台（对话/画布/工坊/剪辑/文案），支持 macOS 与 Windows。
 
 ## 常用命令
 
@@ -10,7 +10,13 @@
 - 类型检查：`npx tsc --noEmit`
 - 测试：`npm run test:harness`（agent/DSH/凭证/渠道）、`npm run test:dsh-runtime`、`npm run test:omni`、`npm run test:context`
 - Rust：`cargo check --manifest-path src-tauri/Cargo.toml`
-- 打包：`npm run tauri:build`（经 `scripts/tauri-build.mjs`，无 `private.defaults.json` 时为纯净公开构建）
+- 打包：`npm run tauri:build`（经 `scripts/tauri-build.mjs`，无 `private.defaults.json` 时为纯净公开构建；macOS 出 dmg，Windows 出 msi/nsis）
+
+## 跨平台约定
+
+- `execute_command` 的 shell 由 Rust 侧 `shell_info` 决定：macOS/Linux=zsh；Windows 优先 Git Bash（POSIX 语法），缺失时回退 PowerShell。前端命令构造、agent 提示词（os/shell）一律走 `src/lib/platform.ts`，不要写死平台。
+- macOS 专属 API（cocoa/objc、ditto、open -R、videotoolbox）必须 `#[cfg(target_os)]` 门控并给 Windows 等价实现（zip crate 解压、explorer /select、libx264 回退）。
+- Windows 拉起控制台子进程（node.exe 等）必须加 `CREATE_NO_WINDOW`，否则会闪终端窗口；杀进程树用 `taskkill /T /F`（无 killpg）。
 
 ## 硬性纪律
 

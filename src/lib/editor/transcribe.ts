@@ -88,7 +88,7 @@ export async function renderTimelineAudioForTranscription(
   onProgress?: (status: string) => void,
 ): Promise<string | null> {
   const ffmpeg = await detectFfmpeg();
-  if (!ffmpeg) throw new Error('未检测到 ffmpeg（brew install ffmpeg）');
+  if (!ffmpeg) throw new Error('未检测到 ffmpeg（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
   const s = useEditorStore.getState();
   const clips = s.clips.filter((clip) => clip.path && s.clipLength(clip) > 0.05);
   const mutedTracks = new Set(s.audioTracks.filter((track) => track.muted).map((track) => track.id));
@@ -179,7 +179,7 @@ export async function transcribeEditorTimelineAudio(
 /** 抽取媒体文件的完整音轨为 16k 单声道 wav，返回临时文件路径。无音轨返回 null。 */
 async function extractWav(mediaPath: string): Promise<string | null> {
   const ffmpeg = await detectFfmpeg();
-  if (!ffmpeg) throw new Error('未检测到 ffmpeg（brew install ffmpeg）');
+  if (!ffmpeg) throw new Error('未检测到 ffmpeg（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
   const out = `/tmp/kunpeng-asr-${Date.now()}-${nanoid(4)}.wav`;
   const r = await invoke<CommandResult>('execute_command', {
     command: `${ffmpeg} -i ${q(mediaPath)} -vn -ar 16000 -ac 1 ${q(out)} -y`,
@@ -195,7 +195,7 @@ async function extractWav(mediaPath: string): Promise<string | null> {
 /** 抽取媒体文件 [startSec, startSec+durSec) 区间的音轨为 16k 单声道 wav。无音轨返回 null。 */
 async function extractWavRange(mediaPath: string, startSec: number, durSec: number): Promise<string | null> {
   const ffmpeg = await detectFfmpeg();
-  if (!ffmpeg) throw new Error('未检测到 ffmpeg（brew install ffmpeg）');
+  if (!ffmpeg) throw new Error('未检测到 ffmpeg（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
   const out = `/tmp/kunpeng-asr-${Date.now()}-${nanoid(4)}.wav`;
   // -ss 在 -i 前 = 快速输入 seek；音频 seek 近乎采样精确
   const r = await invoke<CommandResult>('execute_command', {

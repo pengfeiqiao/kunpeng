@@ -38,6 +38,14 @@ pub async fn mcp_stdio_spawn(
     cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::null());
+    // GUI apps must pass CREATE_NO_WINDOW on Windows or every console-based
+    // MCP server (node/python) flashes a terminal window on spawn (tokio
+    // Command has an inherent creation_flags method on Windows).
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
 
     let mut child = cmd
         .spawn()

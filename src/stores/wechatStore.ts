@@ -16,6 +16,7 @@ import { MessageIdCache } from '@/lib/messaging/dedup';
 import { CircuitBreaker } from '@/lib/messaging/circuitBreaker';
 import { formatToolSummary } from '@/lib/agent/toolSummary';
 import { normalizeCustomRules } from '@/lib/agent/rulePolicy';
+import { getShellInfo, osDisplayName } from '@/lib/platform';
 import { withRemoteAgentTimeout } from '@/lib/messaging/remoteRun';
 import { compactRemoteHistory } from '@/lib/messaging/remoteHistory';
 
@@ -436,12 +437,13 @@ async function getCoordinator(botId: string, userId: string): Promise<AgentCoord
     },
   });
 
+  const shellEnv = await getShellInfo();
   const coordinator = new AgentCoordinator({
     glmClient: config.glmClient,
     toolRegistry: registry,
     cwd: config.cwd,
-    os: 'macOS',
-    shell: 'zsh',
+    os: osDisplayName(shellEnv.platform),
+    shell: shellEnv.shell,
     maxTurns: 15,
     skillDescriptions: config.skillDescriptions || undefined,
     customRules: config.customRules,

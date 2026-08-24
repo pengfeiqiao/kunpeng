@@ -487,7 +487,7 @@ export async function exportEditorToJianying(onProgress?: (p: JianyingExportProg
   const fps = s.exportSettings.fps;
   const ffmpeg = await detectFfmpeg();
   if (!ffmpeg && (s.textClips.some((x) => !x.disabled) || s.fxClips.some((x) => !x.disabled))) {
-    throw new Error('导出剪映特效层需要 ffmpeg。请先安装：brew install ffmpeg');
+    throw new Error('导出剪映特效层需要 ffmpeg。请先安装（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
   }
 
   const renderedFxOverlays: JyOverlay[] = [];

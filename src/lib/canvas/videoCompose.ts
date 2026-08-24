@@ -7,10 +7,23 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/tauri';
 import { createDir } from '@tauri-apps/api/fs';
 import { appendArtifact } from '@/lib/artifacts';
+import { isWindowsSync } from '@/lib/platform';
 
 interface CommandResult { stdout: string; stderr: string; exit_code: number }
 
-const FFMPEG_CANDIDATES = ['~/.kunpeng/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', 'ffmpeg'];
+// Windows：PATH 优先（Git Bash 下 `ffmpeg` 直接命中）+ 常见安装目录。绝对
+// 路径预置单引号：bash 会把裸反斜杠当转义、空格会拆词；返回值作为 shell
+// 命令片段被各调用点直接内插，引号必须随值一起传递。
+const shellQuote = (p: string) => `'${p.replace(/'/g, `'\\''`)}'`;
+const FFMPEG_CANDIDATES = isWindowsSync()
+  ? [
+      'ffmpeg',
+      'ffmpeg.exe',
+      shellQuote(`${process.env.USERPROFILE ?? ''}\\.kunpeng\\bin\\ffmpeg.exe`),
+      shellQuote(`${process.env.LOCALAPPDATA ?? ''}\\Microsoft\\WinGet\\Links\\ffmpeg.exe`),
+      shellQuote('C:\\ffmpeg\\bin\\ffmpeg.exe'),
+    ]
+  : ['~/.kunpeng/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', 'ffmpeg'];
 
 export async function detectFfmpeg(): Promise<string | null> {
   for (const bin of FFMPEG_CANDIDATES) {
@@ -121,7 +134,7 @@ export interface ComposeOptions {
 export async function composeVideos(opts: ComposeOptions): Promise<string> {
   const ffmpeg = await detectFfmpeg();
   if (!ffmpeg) {
-    throw new Error('未检测到 ffmpeg。请先安装：brew install ffmpeg（安装后无需重启应用）');
+    throw new Error('未检测到 ffmpeg。请先安装（macOS: brew install ffmpeg；Windows: winget install ffmpeg）（安装后无需重启应用）');
   }
   if (opts.clips.length < 2) throw new Error('至少需要 2 段视频');
 

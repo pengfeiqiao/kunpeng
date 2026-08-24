@@ -659,7 +659,7 @@ export async function analyzeReferenceVideo(path: string, options: AnalyzeRefere
 
   throwIfAborted(options.signal);
   const ffmpeg = await detectFfmpeg();
-  if (!ffmpeg) throw new Error('未检测到 ffmpeg（brew install ffmpeg）');
+  if (!ffmpeg) throw new Error('未检测到 ffmpeg（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
 
   options.onProgress?.('Kimi 剪辑 Agent：检测全片镜头切点');
   const sceneCuts = await detectSceneCuts(ffmpeg, path, mode === 'quick' ? 30 : 80);

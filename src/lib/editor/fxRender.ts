@@ -13,6 +13,7 @@ import html2canvas from 'html2canvas';
 import { writeBinaryFile, writeTextFile, createDir, exists, readTextFile, BaseDirectory } from '@tauri-apps/api/fs';
 import { homeDir, resourceDir } from '@tauri-apps/api/path';
 import { invoke } from '@tauri-apps/api/tauri';
+import { stopBackgroundProcessCommand, isWindowsSync } from '@/lib/platform';
 import MOTION_RUNTIME_SRC from '../../../scripts/motion-runtime.js?raw';
 import { KP_MOTION_VERSION } from '@/lib/motion/runtimeVersion';
 import { DEFAULT_FX_TRANSFORM, useEditorStore, type EditorRenderError, type TextClip, type FxClip } from '@/stores/editorStore';
@@ -623,7 +624,14 @@ async function commandOk(command: string, timeoutMs = 5000): Promise<boolean> {
   return r.exit_code === 0;
 }
 
-const NODE_CANDIDATES = ['/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node', 'node'];
+// Windows 常见安装位置 + PATH 兜底；Git Bash 下 PATH 查找即可命中。
+const NODE_CANDIDATES = isWindowsSync()
+  ? [
+      `${process.env.ProgramFiles || 'C:\\Program Files'}\\nodejs\\node.exe`,
+      'node',
+      'node.exe',
+    ]
+  : ['/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node', 'node'];
 let cachedNodeCommand: string | null | undefined;
 
 async function detectNodeCommand(): Promise<string | null> {
@@ -772,10 +780,9 @@ async function runWorkerShellWithProgress(args: {
   }
 
   const stopProcess = async (force = false) => {
-    const sig = force ? 'KILL' : 'TERM';
     await invoke<CommandResult>('execute_command', {
-      command: `pkill -${sig} -P ${pid} 2>/dev/null || true; kill -${sig} ${pid} 2>/dev/null || true`,
-      timeoutMs: 3000,
+      command: stopBackgroundProcessCommand(pid, force),
+      timeoutMs: 5000,
     }).catch(() => null);
   };
 
@@ -909,7 +916,7 @@ async function runWorkerLayer(doc: FxDoc, opts: FxRenderOptions): Promise<FxLaye
   const nodeCommand = await detectNodeCommand();
   if (!nodeCommand) {
     await appendRenderDebug(absDir, 'node-missing', { candidates: NODE_CANDIDATES });
-    throw new Error('特效渲染需要 Node.js，但应用没有找到 node。请安装 Node.js，或确认 /opt/homebrew/bin/node、/usr/local/bin/node 可用。');
+    throw new Error('特效渲染需要 Node.js，但应用没有找到 node。请安装 Node.js（Windows 安装到默认目录或加入 PATH，macOS 确认 /opt/homebrew/bin/node、/usr/local/bin/node 可用）。');
   }
   await appendRenderDebug(absDir, 'node-detected', { nodeCommand, scriptPath });
   const existing = activeWorkerLayers.get(absDir);
