@@ -318,6 +318,24 @@ interface SettingsState {
   setNotificationsEnabled: (enabled: boolean) => void;
   // 联网搜索开关（默认关闭；开启后 web_search 工具才暴露给模型）
   webSearchEnabled: boolean;
+  /** 联网搜索模块 API：auto=内置（DMX perplexity→腾讯）；custom=OpenAI 兼容端点。 */
+  webSearchApiMode: 'auto' | 'custom';
+  setWebSearchApiMode: (mode: 'auto' | 'custom') => void;
+  webSearchCustomBaseUrl: string;
+  setWebSearchCustomBaseUrl: (url: string) => void;
+  webSearchCustomApiKey: string;
+  setWebSearchCustomApiKey: (key: string) => void;
+  webSearchCustomModel: string;
+  setWebSearchCustomModel: (model: string) => void;
+  /** 识图模块 API：auto=内置容灾链（原生 Kimi → DMX kimi-k3 → 豆包…）；custom=OpenAI 兼容端点。 */
+  visionApiMode: 'auto' | 'custom';
+  setVisionApiMode: (mode: 'auto' | 'custom') => void;
+  visionCustomBaseUrl: string;
+  setVisionCustomBaseUrl: (url: string) => void;
+  visionCustomApiKey: string;
+  setVisionCustomApiKey: (key: string) => void;
+  visionCustomModel: string;
+  setVisionCustomModel: (model: string) => void;
   setWebSearchEnabled: (enabled: boolean) => void;
 
   // 生图 API 槽位（多 API 降级链）
@@ -527,6 +545,22 @@ export const useSettingsStore = create<SettingsState>()(
       notificationsEnabled: true,
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       webSearchEnabled: false,
+      webSearchApiMode: 'auto',
+      setWebSearchApiMode: (webSearchApiMode) => set({ webSearchApiMode }),
+      webSearchCustomBaseUrl: '',
+      setWebSearchCustomBaseUrl: (webSearchCustomBaseUrl) => set({ webSearchCustomBaseUrl }),
+      webSearchCustomApiKey: '',
+      setWebSearchCustomApiKey: (webSearchCustomApiKey) => set({ webSearchCustomApiKey }),
+      webSearchCustomModel: '',
+      setWebSearchCustomModel: (webSearchCustomModel) => set({ webSearchCustomModel }),
+      visionApiMode: 'auto',
+      setVisionApiMode: (visionApiMode) => set({ visionApiMode }),
+      visionCustomBaseUrl: '',
+      setVisionCustomBaseUrl: (visionCustomBaseUrl) => set({ visionCustomBaseUrl }),
+      visionCustomApiKey: '',
+      setVisionCustomApiKey: (visionCustomApiKey) => set({ visionCustomApiKey }),
+      visionCustomModel: '',
+      setVisionCustomModel: (visionCustomModel) => set({ visionCustomModel }),
       setWebSearchEnabled: (webSearchEnabled) => set({ webSearchEnabled }),
 
       // 生图 API 槽位
@@ -797,6 +831,14 @@ export const useSettingsStore = create<SettingsState>()(
         result.runninghubSite = result.runninghubSite ?? 'cn';
         result.runninghubIntlApiKey = result.runninghubIntlApiKey ?? '';
         result.runninghubCustomWebappId = result.runninghubCustomWebappId ?? '';
+        result.webSearchApiMode = result.webSearchApiMode ?? 'auto';
+        result.webSearchCustomBaseUrl = result.webSearchCustomBaseUrl ?? '';
+        result.webSearchCustomApiKey = result.webSearchCustomApiKey ?? '';
+        result.webSearchCustomModel = result.webSearchCustomModel ?? '';
+        result.visionApiMode = result.visionApiMode ?? 'auto';
+        result.visionCustomBaseUrl = result.visionCustomBaseUrl ?? '';
+        result.visionCustomApiKey = result.visionCustomApiKey ?? '';
+        result.visionCustomModel = result.visionCustomModel ?? '';
         result.workspaceAgentModels = {
           canvas: 'global',
           workshop: 'global',

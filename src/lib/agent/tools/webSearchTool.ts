@@ -12,6 +12,8 @@ import type { Tool } from '../types';
 import { dmxResponses } from './dmxClient';
 import { isToolEnabled } from '../toolGating';
 import { prepareTemporalSearchQuery } from '../temporalContext';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { postCustomChat } from '@/lib/openaiCompat';
 
 interface Citation {
   url?: string;
@@ -87,6 +89,28 @@ export const webSearchTool: Tool = {
     }
     const temporal = prepareTemporalSearchQuery(query);
     const cap = Math.max(1, Math.min(limit ?? 8, 20));
+
+    // 用户自定义联网端点：OpenAI 兼容 chat/completions（可在「设置 → 识图与联网」配置）
+    if (useSettingsStore.getState().webSearchApiMode === 'custom') {
+      const s = useSettingsStore.getState();
+      try {
+        const text = await postCustomChat({
+          baseUrl: s.webSearchCustomBaseUrl,
+          apiKey: s.webSearchCustomApiKey,
+          model: s.webSearchCustomModel,
+          messages: [{ role: 'user', content: temporal.prompt }],
+        });
+        const lines = [text];
+        if (temporal.isTimeSensitive) {
+          lines.unshift(`[搜索时间锚点：${temporal.context.isoDate} ${temporal.context.timeZone}]`);
+        }
+        lines.push(`\n（搜索引擎：自定义端点 ${s.webSearchCustomModel.trim() || 'custom'}）`);
+        return { success: true, output: lines.join('\n') };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, output: '', error: `自定义联网端点失败: ${msg}（可在「设置 → 识图与联网」检查配置，或切回自动模式）` };
+      }
+    }
 
     // 主：perplexity
     let primaryErr = '';

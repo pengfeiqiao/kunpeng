@@ -15,6 +15,7 @@ import { resolveApiKey, resolveSlotApiKey } from '@/lib/credentials';
 import { getWebFetchTimeoutMs } from '@/lib/timeouts';
 import { isKimiK3Configured, kimiK3Vision } from '@/lib/agent/kimiClient';
 import { loadImageInput } from '@/lib/agent/mediaInput';
+import { postCustomChat } from '@/lib/openaiCompat';
 
 export { loadImageInput } from '@/lib/agent/mediaInput';
 
@@ -162,6 +163,29 @@ export async function visionWithFallback(
   image: string,
   instruction: string,
 ): Promise<{ text: string; model: string; label: string }> {
+  // 用户自定义识图端点：OpenAI 兼容 chat/completions（可在「设置 → 识图与联网」配置）
+  if (useSettingsStore.getState().visionApiMode === 'custom') {
+    const s = useSettingsStore.getState();
+    const url = await loadImageInput(image);
+    const text = await postCustomChat({
+      baseUrl: s.visionCustomBaseUrl,
+      apiKey: s.visionCustomApiKey,
+      model: s.visionCustomModel,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url } },
+            { type: 'text', text: instruction },
+          ],
+        },
+      ],
+    }).catch((err) => {
+      throw new Error(`自定义识图端点失败: ${err instanceof Error ? err.message : String(err)}（可在「设置 → 识图与联网」检查配置，或切回自动模式）`);
+    });
+    return { text, model: s.visionCustomModel.trim() || 'custom', label: '自定义端点' };
+  }
+
   let kimiError = '';
   if (isKimiK3Configured()) {
     try {
@@ -186,8 +210,10 @@ interface VisionModelDef {
 }
 
 const VISION_MODELS: VisionModelDef[] = [
+  // DMXAPI 上的 kimi-k3 与原生 Kimi K3 同模型且支持视觉（已实测），
+  // 未配置原生 Kimi 时的首选；Gemini 已按成本要求移除。
+  { model: 'kimi-k3', endpoint: 'chat', label: 'Kimi K3 (DMX)' },
   { model: 'doubao-seed-2-0-lite-260215', endpoint: 'chat', label: '豆包' },
-  { model: 'gemini-2.5-flash', endpoint: 'chat', label: 'Gemini' },
   { model: 'gpt-4o-mini', endpoint: 'chat', label: 'GPT-4o-mini' },
   { model: 'mimo-v2-omni', endpoint: 'chat', label: 'MiMo' },
   { model: 'DeepSeek-OCR', endpoint: 'chat', label: 'DeepSeek' },

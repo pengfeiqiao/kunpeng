@@ -415,6 +415,8 @@ const SETTINGS_EXPORT_CREDENTIAL_KEYS = new Set([
   'omniApiKey',
   'omniZeroFallApiKey',
   'omniApimartApiKey',
+  'visionCustomApiKey',
+  'webSearchCustomApiKey',
   'cosSecretId',
   'cosSecretKey',
   'providerApiKeys',
@@ -471,6 +473,14 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
     cosSecretId, setCosSecretId,
     cosSecretKey, setCosSecretKey,
     cosTransitEndpoint, setCosTransitEndpoint,
+    webSearchApiMode, setWebSearchApiMode,
+    webSearchCustomBaseUrl, setWebSearchCustomBaseUrl,
+    webSearchCustomApiKey, setWebSearchCustomApiKey,
+    webSearchCustomModel, setWebSearchCustomModel,
+    visionApiMode, setVisionApiMode,
+    visionCustomBaseUrl, setVisionCustomBaseUrl,
+    visionCustomApiKey, setVisionCustomApiKey,
+    visionCustomModel, setVisionCustomModel,
   } = useSettingsStore();
 
   const [showKeys, setShowKeys] = useState<Set<string>>(new Set());
@@ -933,6 +943,94 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
 
       {/* RunningHub */}
       {section === 'integrations' && <>
+
+      {/* 识图与联网（模块 API 自定义） */}
+      <CollapsibleSection title="识图与联网" description="对话中 image_recognition 识图与 web_search 联网搜索的 API 自定义；也可以直接让对话里的 Agent 帮你配置" defaultOpen={false}>
+        <div className="space-y-5">
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">识图模块（image_recognition）</label>
+            <div className="flex rounded-md bg-zinc-100 p-0.5">
+              {([
+                { id: 'auto', label: '自动（推荐）', hint: '原生 Kimi → DMX kimi-k3 → 豆包 lite → GPT-4o-mini 容灾链' },
+                { id: 'custom', label: '自定义端点', hint: 'OpenAI 兼容 chat/completions 端点' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setVisionApiMode(opt.id)}
+                  title={opt.hint}
+                  className={`min-w-[58px] flex-1 rounded-[5px] px-2.5 py-1.5 text-center text-xs font-medium transition-colors ${
+                    visionApiMode === opt.id
+                      ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {visionApiMode === 'custom' && (
+              <div className="mt-2 space-y-2">
+                <input type="text" value={visionCustomBaseUrl} onChange={(e) => setVisionCustomBaseUrl(e.target.value)} className={inputCls} placeholder="Base URL，如 https://api.openai.com/v1 或 https://www.dmxapi.cn" />
+                <input type="text" value={visionCustomModel} onChange={(e) => setVisionCustomModel(e.target.value)} className={inputCls} placeholder="支持视觉的模型名，如 gpt-4o-mini / kimi-k3" />
+                <KeyInputRow
+                  label="识图自定义端点 API Key"
+                  hint="仅用于上方自定义端点"
+                  value={visionCustomApiKey}
+                  onChange={setVisionCustomApiKey}
+                  show={showKeys.has('visionCustom')}
+                  onToggleShow={() => toggleShow('visionCustom')}
+                  placeholder="输入 API Key..."
+                />
+              </div>
+            )}
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+              自动模式按「原生 Kimi → DMXAPI kimi-k3 → 豆包 lite → GPT-4o-mini」容灾；自定义模式只走你填的端点，需要 OpenAI 兼容的 chat/completions 且模型支持图片输入。
+            </p>
+          </div>
+          <div className="border-t border-zinc-100 pt-4">
+            <label className="block text-xs text-zinc-500 mb-1">联网搜索模块（web_search）</label>
+            <div className="flex rounded-md bg-zinc-100 p-0.5">
+              {([
+                { id: 'auto', label: '自动（推荐）', hint: 'DMX perplexity-sonar-pro → 腾讯搜索回退' },
+                { id: 'custom', label: '自定义端点', hint: 'OpenAI 兼容端点，如自建搜索/Perplexity API' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setWebSearchApiMode(opt.id)}
+                  title={opt.hint}
+                  className={`min-w-[58px] flex-1 rounded-[5px] px-2.5 py-1.5 text-center text-xs font-medium transition-colors ${
+                    webSearchApiMode === opt.id
+                      ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {webSearchApiMode === 'custom' && (
+              <div className="mt-2 space-y-2">
+                <input type="text" value={webSearchCustomBaseUrl} onChange={(e) => setWebSearchCustomBaseUrl(e.target.value)} className={inputCls} placeholder="Base URL，如 https://api.perplexity.ai 或自建网关" />
+                <input type="text" value={webSearchCustomModel} onChange={(e) => setWebSearchCustomModel(e.target.value)} className={inputCls} placeholder="模型名，如 sonar-pro" />
+                <KeyInputRow
+                  label="联网自定义端点 API Key"
+                  hint="仅用于上方自定义端点"
+                  value={webSearchCustomApiKey}
+                  onChange={setWebSearchCustomApiKey}
+                  show={showKeys.has('webSearchCustom')}
+                  onToggleShow={() => toggleShow('webSearchCustom')}
+                  placeholder="输入 API Key..."
+                />
+              </div>
+            )}
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+              自动模式走 DMXAPI 的 perplexity-sonar-pro，失败回退腾讯搜索；自定义模式把搜索词作为普通对话发给 OpenAI 兼容端点（请选用带联网能力的模型）。不知道怎么填时，可以直接在对话里让 Agent 帮你配置。
+            </p>
+          </div>
+        </div>
+      </CollapsibleSection>
 
       {/* Kimi 剪辑 Agent */}
       <CollapsibleSection title="Kimi 剪辑 Agent" description="参考视频拉片、剪辑计划与成片复盘" defaultOpen={false}>
