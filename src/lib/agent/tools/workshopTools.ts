@@ -13,6 +13,7 @@ import { renderStepExport } from '@/lib/workshop/exportTemplates';
 import { writeProjectFile } from '@/lib/aigc/projectStore';
 import { homeDir } from '@tauri-apps/api/path';
 import { formatSeedanceValidation, validateSeedancePrompt } from '@/lib/seedance/validation';
+import { findAiDramaPerformanceHits, PERFORMANCE_BRIEF } from '@/lib/videoPrompt/performance';
 import { ensureVideoThumb } from '@/lib/canvas/videoThumbs';
 import {
   applyVideoPlanningReferencePrefixes,
@@ -127,6 +128,10 @@ function collectDirectorPromptWarnings(shotNo: string, imagePrompt?: string, vid
     if (countPattern(imagePrompt, /画面配色严格参考/g) > 1 || countPattern(imagePrompt, /色卡/g) > 2) {
       warnings.push(`${shotNo}: imagePrompt 色卡/配色约束出现过多；色卡只在最后一句统一写一次，不要在每个画面短句重复`);
     }
+    const imageDramaHits = findAiDramaPerformanceHits(imagePrompt);
+    if (imageDramaHits.length > 0) {
+      warnings.push(`${shotNo}: imagePrompt 含 AI 短剧/漫剧风表演词（${imageDramaHits.join('、')}）；默认禁止此类夸张程式化表演，改成克制真实的表演瞬间`);
+    }
   }
 
   if (videoPrompt !== undefined) {
@@ -148,6 +153,10 @@ function collectDirectorPromptWarnings(shotNo: string, imagePrompt?: string, vid
     }
     if (/很悲伤|很愤怒|很紧张|非常悲伤|非常愤怒|非常紧张|情绪复杂|氛围感|电影感十足/.test(videoPrompt)) {
       warnings.push(`${shotNo}: videoPrompt 出现抽象情绪/空泛形容，需改成可见的身体动作和环境反馈`);
+    }
+    const videoDramaHits = findAiDramaPerformanceHits(videoPrompt);
+    if (videoDramaHits.length > 0) {
+      warnings.push(`${shotNo}: videoPrompt 含 AI 短剧/漫剧风表演词（${videoDramaHits.join('、')}）；默认禁止此类夸张程式化表演，改成按"触发→发酵→释放"分层的克制表演，并写清行为目的`);
     }
     if (countPattern(videoPrompt, /画面配色严格参考/g) > 1 || countPattern(videoPrompt, /全片画面配色严格参考/g) > 1 || countPattern(videoPrompt, /色卡/g) > 3) {
       warnings.push(`${shotNo}: videoPrompt 色卡/配色约束重复出现；色卡是全局风格参考，只能在全文最后一句点名一次，子镜头里不要反复写`);
@@ -1591,6 +1600,9 @@ const setPromptsTool: Tool = {
 - 关键情绪动作优先用三层法：核心动作 → 已存在接触材质的变化 → 周边环境被动响应。没有发生接触时不要硬造破裂、碎片或新道具
 - 关键情绪时刻按已有剧情写足反馈，过场镜头写一层核心动作即可
 - 空间层次不能只写主体：前景遮挡+中景主体+背景环境至少写两层
+
+【人物表演——表演层次 + 行为目的】
+- ${PERFORMANCE_BRIEF}
 
 【跨镜衔接——模型能理解的技法】
 - 动作延续：用"已经+结果状态"作为新镜起点（如"十指已经插进雪里"而非重新"把手伸进雪里"）

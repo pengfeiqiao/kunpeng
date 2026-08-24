@@ -20,6 +20,7 @@ const VIDEO_MODELS = [
   { value: 'seedance-2.0-fast', label: 'Seedance 2.0 Fast', detail: '速度优先' },
   { value: 'seedance-2.0-mini', label: 'Seedance 2.0 Mini', detail: '低成本备用' },
   { value: 'seedance-2.5', label: 'Seedance 2.5', detail: '即梦 CLI 新版视频' },
+  { value: 'wan-3.0', label: '万相 3.0', detail: '阿里全能参考 · 文档/网页链接直接发给 Agent' },
   { value: 'omni-mg-animation', label: 'Omni MG', detail: 'MG 动画与视频包装' },
 ] as const;
 

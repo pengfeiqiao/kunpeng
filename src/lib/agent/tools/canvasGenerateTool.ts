@@ -9,6 +9,7 @@
  */
 import type { Tool } from '../types';
 import { generateForNode } from '@/lib/canvasGen';
+import { PERFORMANCE_BRIEF } from '@/lib/videoPrompt/performance';
 import { ALL_CANVAS_ENGINES, findCanvasEngine } from '@/lib/rhtv/canvasEngines';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { useAssetLibraryStore } from '@/stores/assetLibraryStore';
@@ -46,6 +47,7 @@ export const canvasGenerateTool: Tool = {
       + 'seedance-2.0-t2v（无参考图时用）、seedance-2.0-fast、'
       + 'seedance-2.5（多模态，别名 dreamina-seedance-2.5；默认走筷子丽帧通道，失败才降级即梦 CLI；支持图片≤30、视频≤10、音频≤10，总素材≤50，480p/720p，时长 4-30 秒；提交前应按官方 2.5 结构改写提示词，并严格按实际素材顺序使用 @图片N/@视频N/@音频N）、'
       + 'minimax-hailuo-h3（MiniMax H3 多模态，别名 minimax-h3；有无参考图均可，图≤9/视频≤3/音频≤3，固定 2K，时长 5-15 秒）。'
+      + 'wan-3.0（万相 3.0 全能参考视频：图≤10/视频≤5/音频≤5，另支持 file_url 文档与 link_url 网页参考，两者互斥；480P/720P/1080P，时长 2-30 秒；默认筷子丽帧主渠道，失败自动容灾 RunningHub/APIMart）。'
       + 'Omni版MG动画: omni-mg-animation，适合用户明确要 MG 动画、图形类动效、App 展示动效；正常路线固定 10 秒 720p，参考视频最多 1 个。系统会先生成母版概念图和 2-4 张同风格关键帧并显示在画布，再连同用户原始图片/视频提交；@图片N/@视频一必须与节点显示顺序一致，原始人物/物品主体不得改变。'
       + 'Seedance 视频默认通过筷子丽帧（Kuaizi）API 通道生成，无需你额外处理——只要传 seedance 引擎 ID，后端自动路由到丽帧；用户在设置中开启 RHTV Seedance 开关后才走 RunningHub 通道。'
       + '生成是异步长任务（图 ~30s，视频可能 1-20min）。若工具返回超时但已有 taskId，后台仍会继续轮询；也可用 canvas_recover_task 主动从 API 取回迟到结果。',
@@ -63,7 +65,7 @@ export const canvasGenerateTool: Tool = {
         },
         prompt: {
           type: 'string',
-          description: '生成提示词。prompt_template=universal 时按通用导演结构组织素材身份、空间站位、时间戳动作、单段机位和物理反馈，禁止补写剧本中不存在的人物、关系、事件或对白；legacy 时保留原有写法。@图片按 reference_urls 顺序用中文数字引用。Omni MG 仍使用其专属 MG 提示词规则，只做适度兼容。',
+          description: `生成提示词。prompt_template=universal 时按通用导演结构组织素材身份、空间站位、时间戳动作、单段机位和物理反馈，禁止补写剧本中不存在的人物、关系、事件或对白；legacy 时保留原有写法。@图片按 reference_urls 顺序用中文数字引用。Omni MG 仍使用其专属 MG 提示词规则，只做适度兼容。${PERFORMANCE_BRIEF}`,
         },
         prompt_template: {
           type: 'string',
@@ -84,6 +86,14 @@ export const canvasGenerateTool: Tool = {
           type: 'array',
           items: { type: 'string' },
           description: '视频参考（本地路径或 URL，仅视频编辑/多模态视频支持，已有视频节点修改时可留空，系统会自动使用该节点当前视频）',
+        },
+        file_url: {
+          type: 'string',
+          description: '仅 wan-3.0：参考文档 URL（docx/pdf/md 等公网地址），与 link_url 互斥',
+        },
+        link_url: {
+          type: 'string',
+          description: '仅 wan-3.0：公开网页 URL（免登录），与 file_url 互斥',
         },
         params: {
           type: 'object',
@@ -354,6 +364,8 @@ export const canvasGenerateTool: Tool = {
       referenceUrls,
       audioUrls,
       videoUrls,
+      documentUrl: String(params.file_url ?? '').trim() || undefined,
+      linkUrl: String(params.link_url ?? '').trim() || undefined,
       params: overrides,
       overwrite: true,
     });

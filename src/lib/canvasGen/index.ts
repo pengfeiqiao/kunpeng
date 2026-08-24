@@ -55,6 +55,8 @@ import {
   type KuaiziImageInput,
   type KuaiziVideoMode,
 } from '@/lib/kuaizi/seedance';
+import { runKuaiziMinimaxH3Generation } from '@/lib/kuaizi/minimaxH3';
+import { runKuaiziWan3Generation } from '@/lib/kuaizi/wan3';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveApiKey } from '@/lib/credentials';
 import {
@@ -86,6 +88,7 @@ import {
 } from '@/lib/billingSafety';
 import {
   APIMART_MINIMAX_H3_ENDPOINT,
+  APIMART_WAN3_ENDPOINT,
   ApimartTaskFailedError,
   hasApimartApiKey,
   pollApimartTask,
@@ -96,12 +99,19 @@ import {
   APIMART_SUNO_ENDPOINT,
   buildApimartMinimaxH3Payload,
   buildApimartSunoPayload,
+  buildApimartWan3Payload,
 } from '@/lib/apimart/contracts';
 import {
   chooseMinimaxH3Channel,
   recordMinimaxH3Metric,
   type MinimaxH3Channel,
 } from '@/lib/videoRouter/minimaxH3';
+import {
+  chooseWan3Channel,
+  recordWan3Metric,
+  WAN3_CHANNEL_PREFERENCE,
+  type Wan3Channel,
+} from '@/lib/videoRouter/wan3';
 import {
   APIMART_MIDJOURNEY_ENDPOINT,
   ApimartMidjourneyTaskError,
@@ -128,6 +138,10 @@ export interface CanvasGenRequest {
   audioUrls?: string[];
   /** Reference video (Seedance multimodal @视频N, e.g. video-extend). */
   videoUrls?: string[];
+  /** 万相 3.0 参考文档 URL（docx/pdf/md 等，与 linkUrl 互斥）。 */
+  documentUrl?: string;
+  /** 万相 3.0 参考网页 URL（公开免登录，与 documentUrl 互斥）。 */
+  linkUrl?: string;
   /** Engine param overrides (aspectRatio/resolution/duration/ratio...). */
   params?: RhtvParams;
   /** Force writing into the node even if it already holds a result. */
@@ -143,6 +157,10 @@ export interface CoreGenRequest {
   styleReferenceUrls?: string[];
   audioUrls?: string[];
   videoUrls?: string[];
+  /** 万相 3.0 参考文档 URL（与 linkUrl 互斥）。 */
+  documentUrl?: string;
+  /** 万相 3.0 参考网页 URL（与 documentUrl 互斥）。 */
+  linkUrl?: string;
   params?: RhtvParams;
   /** Optional canvas node to associate in the task queue UI. */
   nodeId?: string;
@@ -314,7 +332,8 @@ export function resolveGenEngine(
   // is forbidden ("绝对禁止改用 text-to-video") — surface the error instead.
   // MiniMax H3 例外：单端点多模态（t2v/i2v 同端点，prompt 必填、参考可选），
   // 不适用 Seedance 的"必须有参考素材"红线与 @图片N 提示词校验。
-  const isMinimaxH3 = engine.id === 'minimax-hailuo-h3';
+  // 万相 3.0 同样例外：全能参考模型，文生/首帧/参考/文档/网页同端点。
+  const isMinimaxH3 = engine.id === 'minimax-hailuo-h3' || engine.id === 'wan-3.0';
   if (!isMinimaxH3 && engine.mode === 'multimodal-video' && refs.length === 0 && (req.audioUrls?.length ?? 0) === 0 && (req.videoUrls?.length ?? 0) === 0) {
     return { error: 'Seedance 多模态视频必须提供参考素材（项目红线）。请连接参考图节点或改选「文生视频」引擎。' };
   }
@@ -1340,13 +1359,170 @@ async function runApimartMinimaxH3Generation(
   }
 }
 
+/** 各视频渠道的统一展示名 */
+function videoChannelLabel(channel: string): string {
+  if (channel === 'runninghub') return 'RunningHub';
+  if (channel === 'apimart') return 'APIMart';
+  return '筷子丽帧';
+}
+
+/**
+ * 多渠道视频容灾通用循环：首选失败后，按 available 顺序依次尝试剩余渠道。
+ * 已扣费/仍在跑/提交状态不明/已取消时立即停止——绝不自动重发付费请求。
+ */
+async function runVideoChannelCascade<C extends string>(input: {
+  available: C[];
+  first: C;
+  runChannel: (channel: C, fallbackUsed: boolean) => Promise<CoreGenResult>;
+}): Promise<CoreGenResult> {
+  const tried: C[] = [input.first];
+  const attemptErrors: string[] = [];
+  let result = await input.runChannel(input.first, false);
+  if (!result.success) attemptErrors.push(`${videoChannelLabel(input.first)}: ${result.error ?? '失败'}`);
+
+  while (true) {
+    const paidOrStillRunning = result.success || result.backgroundPending || result.submissionUncertain
+      || result.submissionCommitted || result.automaticRetryBlocked
+      || Boolean(result.providerTaskId && !result.providerFailed);
+    const cancelled = result.error === '已取消';
+    if (paidOrStillRunning || cancelled) return result;
+    const next = input.available.find((channel) => !tried.includes(channel));
+    if (!next) break;
+    if (result.taskId) useCanvasTaskStore.getState().removeTask(result.taskId);
+    result = await input.runChannel(next, true);
+    tried.push(next);
+    if (!result.success && !result.backgroundPending && !result.submissionUncertain) {
+      attemptErrors.push(`${videoChannelLabel(next)}: ${result.error ?? '失败'}`);
+    }
+  }
+  return { ...result, error: attemptErrors.join('；') };
+}
+
+/**
+ * 筷子系视频渠道（H3 / 万相 3.0）的 canvasGen 包装：任务队列注册、并发槽、
+ * 计费安全错误语义与 runKuaiziSeedanceGeneration 对齐。
+ */
+async function runKuaiziVideoChannel(
+  req: CoreGenRequest,
+  opts: {
+    engineLabel: string;
+    endpoint: string;
+    provider: string;
+    fallbackUsed?: boolean;
+    run: (args: {
+      signal: AbortSignal;
+      onProgress: (phase: string) => void;
+      onProviderTaskCreated: (remoteTaskId: string) => void;
+    }) => Promise<{ taskId: string; resultPaths: string[]; resultUrls: string[] }>;
+  },
+): Promise<CoreGenResult> {
+  const refs = req.referenceUrls ?? [];
+  const taskId = useCanvasTaskStore.getState().addTask({
+    nodeId: req.nodeId ?? '',
+    kind: 'video',
+    engineId: req.engineId,
+    engineLabel: opts.engineLabel,
+    endpoint: opts.endpoint,
+    prompt: req.prompt,
+    referenceUrls: refs.length > 0 ? refs : undefined,
+    params: req.params,
+    projectId: req.projectId,
+    workshopShotNo: req.workshopShotNo,
+    workshopShotKind: req.workshopShotKind,
+    workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    inFlight: true,
+    fallbackUsed: opts.fallbackUsed,
+  });
+  const ac = new AbortController();
+  taskAborts.set(taskId, ac);
+  try { req.onTaskCreated?.(taskId); } catch { /* caller callback must not break a paid task */ }
+  const update = (patch: Partial<CanvasTask>) =>
+    useCanvasTaskStore.getState().updateTask(taskId, patch);
+  let providerTaskId = '';
+
+  try {
+    await acquireSlot(taskId);
+    if (ac.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    update({ status: 'uploading', progress: `准备${opts.engineLabel}参考素材…` });
+    const result = await opts.run({
+      signal: ac.signal,
+      onProviderTaskCreated: (remoteTaskId) => {
+        providerTaskId = remoteTaskId;
+        update({ rhTaskId: remoteTaskId, status: 'running', progress: `已提交${opts.engineLabel}任务，等待生成…` });
+      },
+      onProgress: (phase) => {
+        const status = /下载/.test(phase) ? 'downloading' : /上传|COS/.test(phase) ? 'uploading' : 'running';
+        update({ status, progress: phase });
+      },
+    });
+
+    update({
+      status: 'succeeded',
+      progress: `完成（${opts.engineLabel}）`,
+      rhTaskId: result.taskId,
+      resultPaths: result.resultPaths,
+      resultUrls: [],
+      finishedAt: Date.now(),
+    });
+    return {
+      success: true,
+      taskId,
+      resultPaths: result.resultPaths,
+      resultUrls: result.resultUrls,
+      engineKind: 'video',
+      fallbackUsed: opts.fallbackUsed,
+    };
+  } catch (err) {
+    const kuaiziRetryStopped = shouldStopAutomaticPaidFallback(err, 'kuaizi-video');
+    const rawMessage = kuaiziRetryStopped
+      ? paidRetryStoppedMessage(err, opts.engineLabel)
+      : err instanceof Error ? err.message : String(err);
+    const msg = err instanceof DOMException && err.name === 'AbortError'
+      ? '已取消'
+      : `${opts.engineLabel}失败: ${rawMessage}`;
+    // 业务错误（余额不足 / 远端 failed 终态）不产生扣费，视为可安全降级的 provider 终态
+    const providerFailed = err instanceof KuaiziBusinessError
+      && (err.kind === 'task_failed' || err.kind === 'balance');
+    const protectedTaskId = providerTaskId || paidTaskId(err) || '';
+    const submissionUncertain = kuaiziRetryStopped && !protectedTaskId;
+    const recoverable = Boolean(protectedTaskId)
+      && !(err instanceof DOMException && err.name === 'AbortError')
+      && !(err instanceof KuaiziBusinessError)
+      && (mustNotAutoResubmit(err) || isTransientKuaiziError(err));
+    update(recoverable
+      ? { status: 'running', rhTaskId: protectedTaskId, progress: '网络抖动，后台继续查询结果…', error: undefined }
+      : { status: 'failed', error: msg, finishedAt: Date.now() });
+    await appendKuaiziLog({
+      timestamp: new Date().toISOString(),
+      provider: opts.provider,
+      event: recoverable ? 'recoverable_failure' : 'failure',
+      localTaskId: taskId,
+      taskId: protectedTaskId || undefined,
+      error: msg,
+    });
+    return {
+      success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video', error: msg,
+      providerTaskId: protectedTaskId || undefined,
+      providerFailed,
+      backgroundPending: recoverable,
+      submissionUncertain,
+      automaticRetryBlocked: kuaiziRetryStopped,
+    };
+  } finally {
+    taskAborts.delete(taskId);
+    useCanvasTaskStore.getState().updateTask(taskId, { inFlight: false });
+    releaseSlot();
+  }
+}
+
 async function runMinimaxH3Generation(req: CoreGenRequest): Promise<CoreGenResult> {
   const settings = useSettingsStore.getState();
   const available: MinimaxH3Channel[] = [];
   if (resolveApiKey(settings, 'runninghub', settings.runninghubApiKey).trim()) available.push('runninghub');
   if (hasApimartApiKey()) available.push('apimart');
+  if (getKuaiziApiKey()) available.push('kuaizi');
   // 用户在「设置 → 视频与语音」里可以指定 H3 优先渠道；auto 保持按
-  // 健康度/延迟自动选路。失败时仍会容灾到另一个渠道（防止单点不可用）。
+  // 健康度/延迟自动选路。失败时仍会容灾到其余渠道（防止单点不可用）。
   const pref = settings.minimaxH3Channel ?? 'auto';
   const first = pref !== 'auto' && available.includes(pref)
     ? pref
@@ -1354,7 +1530,7 @@ async function runMinimaxH3Generation(req: CoreGenRequest): Promise<CoreGenResul
   if (!first) {
     return {
       success: false, taskId: '', resultPaths: [], resultUrls: [], engineKind: 'video',
-      error: 'MiniMax H3 没有可用渠道，请在设置中填写 RunningHub 或 APIMart API Key。',
+      error: 'MiniMax H3 没有可用渠道，请在设置中填写 RunningHub、APIMart 或筷子丽帧的 API Key。',
     };
   }
 
@@ -1362,7 +1538,23 @@ async function runMinimaxH3Generation(req: CoreGenRequest): Promise<CoreGenResul
     const startedAt = Date.now();
     const result = channel === 'apimart'
       ? await runApimartMinimaxH3Generation(req, fallbackUsed)
-      : await runStandardGeneration(req);
+      : channel === 'kuaizi'
+        ? await runKuaiziVideoChannel(req, {
+            engineLabel: 'MiniMax H3 · 筷子丽帧',
+            endpoint: 'kuaizi/minimax-h3',
+            provider: 'kuaizi-minimax-h3',
+            fallbackUsed,
+            run: (args) => runKuaiziMinimaxH3Generation({
+              prompt: req.prompt,
+              referenceUrls: req.referenceUrls,
+              videoUrls: req.videoUrls,
+              audioUrls: req.audioUrls,
+              params: req.params,
+              signal: args.signal,
+              onProgress: args.onProgress,
+            }),
+          })
+        : await runStandardGeneration(req);
     const accepted = result.success || result.backgroundPending || result.submissionCommitted
       || Boolean(result.providerTaskId && !result.providerFailed);
     if (!result.submissionUncertain) {
@@ -1380,31 +1572,396 @@ async function runMinimaxH3Generation(req: CoreGenRequest): Promise<CoreGenResul
     return fallbackUsed ? { ...result, fallbackUsed: true } : result;
   };
 
-  const primary = await runChannel(first, false);
-  const paidOrStillRunning = primary.success || primary.backgroundPending || primary.submissionUncertain
-    || primary.submissionCommitted || primary.automaticRetryBlocked
-    || Boolean(primary.providerTaskId && !primary.providerFailed);
-  const cancelled = primary.error === '已取消';
-  if (paidOrStillRunning || cancelled) return primary;
+  return runVideoChannelCascade({ available, first, runChannel });
+}
 
-  const second = available.find((channel) => channel !== first);
-  if (!second) return primary;
-  if (primary.taskId) useCanvasTaskStore.getState().removeTask(primary.taskId);
-  const fallback = await runChannel(second, true);
-  if (!fallback.success && !fallback.backgroundPending && !fallback.submissionUncertain) {
-    const firstLabel = first === 'runninghub' ? 'RunningHub' : 'APIMart';
-    const secondLabel = second === 'runninghub' ? 'RunningHub' : 'APIMart';
+// ── 万相 3.0（wan-3.0）：筷子主渠道 + RunningHub + APIMart 三渠道容灾 ──────────
+
+const WAN3_RHTV_ENDPOINT = 'alibaba/wan-3.0/reference-to-video';
+const WAN3_RESOLUTIONS = ['480P', '720P', '1080P'];
+const WAN3_RATIOS = ['adaptive', '16:9', '4:3', '1:1', '3:4', '9:16'];
+
+function normalizeWan3Params(params: RhtvParams | undefined): {
+  resolution: string;
+  aspectRatio: string;
+  duration: number | 'auto';
+  audio: boolean;
+  seed?: number;
+} {
+  const p = params ?? {};
+  const resRaw = String(p.resolution || '720P').toUpperCase();
+  const ratioRaw = String(p.ratio ?? p.aspectRatio ?? 'adaptive');
+  const durRaw = String(p.duration ?? '5');
+  const durationNum = Math.round(Number(durRaw));
+  return {
+    resolution: WAN3_RESOLUTIONS.includes(resRaw) ? resRaw : '720P',
+    aspectRatio: WAN3_RATIOS.includes(ratioRaw) ? ratioRaw : 'adaptive',
+    duration: durRaw === '-1' || durRaw === 'auto'
+      ? 'auto'
+      : Number.isFinite(durationNum) ? Math.min(30, Math.max(2, durationNum)) : 5,
+    audio: p.generateAudio !== false && p.audio !== false,
+    seed: Number(p.seed) > 0 ? Math.trunc(Number(p.seed)) : undefined,
+  };
+}
+
+/** RunningHub 标准模型 API：alibaba/wan-3.0/reference-to-video */
+async function runRhtvWan3Generation(req: CoreGenRequest, fallbackUsed = false): Promise<CoreGenResult> {
+  const refs = req.referenceUrls ?? [];
+  const audioRefs = req.audioUrls ?? [];
+  const videoRefs = req.videoUrls ?? [];
+  if (refs.length > 10 || videoRefs.length > 5 || audioRefs.length > 5) {
     return {
-      ...fallback,
-      error: `${firstLabel}: ${primary.error ?? '失败'}；${secondLabel}: ${fallback.error ?? '失败'}`,
+      success: false, taskId: '', resultPaths: [], resultUrls: [], engineKind: 'video',
+      error: `万相 3.0 参考素材超限（图 ${refs.length}/10、视频 ${videoRefs.length}/5、音频 ${audioRefs.length}/5），请减少素材后重试。`,
     };
   }
-  return fallback;
+  const taskId = useCanvasTaskStore.getState().addTask({
+    nodeId: req.nodeId ?? '',
+    kind: 'video',
+    engineId: 'wan-3.0',
+    engineLabel: '万相 3.0 · RunningHub',
+    endpoint: WAN3_RHTV_ENDPOINT,
+    prompt: req.prompt,
+    referenceUrls: refs.length > 0 ? refs : undefined,
+    params: req.params,
+    projectId: req.projectId,
+    workshopShotNo: req.workshopShotNo,
+    workshopShotKind: req.workshopShotKind,
+    workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    inFlight: true,
+    fallbackUsed,
+  });
+  const ac = new AbortController();
+  taskAborts.set(taskId, ac);
+  try { req.onTaskCreated?.(taskId); } catch { /* caller callback must not break a paid task */ }
+  const update = (patch: Partial<CanvasTask>) =>
+    useCanvasTaskStore.getState().updateTask(taskId, patch);
+  let providerTaskId = '';
+  let submissionCommitted = false;
+
+  try {
+    await acquireSlot(taskId);
+    if (ac.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    update({ status: 'uploading', progress: '上传万相 3.0 参考素材…' });
+    const resolvedRefs: string[] = [];
+    for (const r of refs) resolvedRefs.push(await rhtvResolveMedia(r));
+    const resolvedAudio: string[] = [];
+    for (const a of audioRefs) resolvedAudio.push(await rhtvResolveMedia(a));
+    const resolvedVideos: string[] = [];
+    for (const v of videoRefs) resolvedVideos.push(await rhtvResolveMedia(v));
+
+    const norm = normalizeWan3Params(req.params);
+    const payload: RhtvParams = {
+      prompt: req.prompt,
+      resolution: norm.resolution,
+      aspectRatio: norm.aspectRatio,
+      duration: String(norm.duration),
+      audio: norm.audio,
+      ...(norm.seed ? { seed: norm.seed } : {}),
+    };
+    if (resolvedRefs.length > 0) payload.imageUrls = resolvedRefs;
+    if (resolvedVideos.length > 0) payload.videoUrls = resolvedVideos;
+    if (resolvedAudio.length > 0) payload.audioUrls = resolvedAudio;
+    if (req.documentUrl) payload.fileUrl = req.documentUrl;
+    if (req.linkUrl) payload.linkUrl = req.linkUrl;
+
+    update({ status: 'running', progress: '已提交 RunningHub 万相 3.0，等待生成…' });
+    const submitResp = await rhtvSubmit(WAN3_RHTV_ENDPOINT, payload, ac.signal);
+    submissionCommitted = true;
+    providerTaskId = submitResp.taskId ?? '';
+
+    let urls: string[];
+    if (submitResp.status === 'SUCCESS' && submitResp.results?.length) {
+      urls = submitResp.results.map((r) => r.url || r.outputUrl || '').filter(Boolean);
+    } else {
+      if (!providerTaskId) throw new Error(`RunningHub 未返回 taskId: ${JSON.stringify(submitResp).slice(0, 200)}`);
+      update({ rhTaskId: providerTaskId });
+      const polled = await rhtvPollTask(providerTaskId, {
+        signal: ac.signal,
+        onProgress: (status, elapsed) => update({ progress: `${status} · ${Math.round(elapsed / 1000)}s` }),
+      });
+      urls = polled.urls;
+    }
+    const videoUrls = urls.filter(isVideoOutputUrl);
+    if (videoUrls.length > 0) urls = videoUrls;
+    if (urls.length === 0) throw new Error('生成完成但没有输出文件');
+
+    update({ status: 'downloading', progress: `下载 ${urls.length} 个产物…`, resultUrls: urls });
+    const paths = await rhtvDownloadAll(urls, 'video', 'wan-3.0', (phase) => update({ progress: phase }));
+    update({ status: 'succeeded', progress: '完成', resultPaths: paths, finishedAt: Date.now() });
+    for (const p of paths) {
+      void appendArtifact({ path: p, type: 'video', engine: WAN3_RHTV_ENDPOINT, prompt: req.prompt, taskId });
+    }
+    void appendGenerationLog({
+      timestamp: new Date().toISOString(),
+      director: '',
+      taskType: refs.length > 0 || videoRefs.length > 0 ? 'image-to-video' : 'text-to-video',
+      engine: 'other',
+      prompt: req.prompt,
+      outputPath: paths[0],
+      outputPaths: paths,
+      model: WAN3_RHTV_ENDPOINT,
+      taskId,
+      providerTaskId,
+      endpoint: WAN3_RHTV_ENDPOINT,
+      shotNo: req.workshopShotNo,
+      params: req.params,
+      refs: [
+        ...refs.map((source, i) => ({ index: i + 1, type: 'image' as const, source })),
+        ...videoRefs.map((source, i) => ({ index: i + 1, type: 'video' as const, source })),
+        ...audioRefs.map((source, i) => ({ index: i + 1, type: 'audio' as const, source })),
+      ],
+    }).catch(() => {});
+    return {
+      success: true, taskId, resultPaths: paths,
+      resultUrls: paths.map((p) => convertFileSrc(p)),
+      engineKind: 'video', fallbackUsed, providerTaskId,
+    };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      update({ status: 'failed', error: '已取消', finishedAt: Date.now() });
+      return { success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video', error: '已取消' };
+    }
+    const submissionUncertain = err instanceof RhtvSubmissionUnknownError || mustNotAutoResubmit(err);
+    if (submissionUncertain) {
+      const reason = err instanceof Error ? err.message : String(err);
+      update({ status: 'failed', error: reason, progress: reason, finishedAt: Date.now() });
+      return {
+        success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video',
+        error: reason, providerTaskId: providerTaskId || paidTaskId(err), submissionUncertain: true,
+      };
+    }
+    if (submissionCommitted && !providerTaskId) {
+      const reason = err instanceof Error ? err.message : String(err);
+      update({ status: 'failed', error: reason, progress: '远端已生成产物，本地处理失败；已停止容灾以避免重复扣费。', finishedAt: Date.now() });
+      return {
+        success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video',
+        error: reason, submissionCommitted: true,
+      };
+    }
+    // 已有远端任务且非终态拒单：保持归属，不做渠道降级（防重复扣费）
+    if (providerTaskId && !isTerminalRhtvRejection(err)) {
+      const reason = err instanceof Error ? err.message : String(err);
+      const transient = !(err instanceof RhtvBusinessError) && isTransientKuaiziError(err);
+      update(transient
+        ? { status: 'running', rhTaskId: providerTaskId, progress: '网络抖动，后台继续查询结果…', error: undefined }
+        : { status: 'failed', rhTaskId: providerTaskId, error: reason, progress: reason, finishedAt: Date.now() });
+      return {
+        success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video',
+        error: transient ? `${reason}（后台仍在继续查询结果）` : reason,
+        providerTaskId,
+        backgroundPending: transient,
+      };
+    }
+    const msg = err instanceof RhtvBusinessError
+      ? err.message
+      : `生成失败: ${err instanceof Error ? err.message : String(err)}`;
+    update({ status: 'failed', error: msg, finishedAt: Date.now() });
+    return {
+      success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video',
+      error: msg, providerTaskId,
+      providerFailed: isTerminalRhtvRejection(err),
+      submissionCommitted: submissionCommitted && !providerTaskId,
+    };
+  } finally {
+    taskAborts.delete(taskId);
+    useCanvasTaskStore.getState().updateTask(taskId, { inFlight: false });
+    releaseSlot();
+  }
+}
+
+/** APIMart：wan3.0-video（/v1/videos/generations 异步任务） */
+async function runApimartWan3Generation(req: CoreGenRequest, fallbackUsed = false): Promise<CoreGenResult> {
+  const imageRefs = req.referenceUrls ?? [];
+  const videoRefs = req.videoUrls ?? [];
+  const audioRefs = req.audioUrls ?? [];
+  if (!hasApimartApiKey()) {
+    return {
+      success: false, taskId: '', resultPaths: [], resultUrls: [], engineKind: 'video',
+      error: '未配置 APIMart API Key，请在设置 > API 密钥 > APIMart 中填写。',
+    };
+  }
+  if (imageRefs.length > 10 || videoRefs.length > 5 || audioRefs.length > 5) {
+    return {
+      success: false, taskId: '', resultPaths: [], resultUrls: [], engineKind: 'video',
+      error: `APIMart 万相 3.0 参考素材超限（图 ${imageRefs.length}/10、视频 ${videoRefs.length}/5、音频 ${audioRefs.length}/5），请减少素材后重试。`,
+    };
+  }
+  const taskId = useCanvasTaskStore.getState().addTask({
+    nodeId: req.nodeId ?? '',
+    kind: 'video',
+    engineId: 'wan-3.0',
+    engineLabel: '万相 3.0 · APIMart',
+    endpoint: APIMART_WAN3_ENDPOINT,
+    prompt: req.prompt,
+    referenceUrls: imageRefs.length > 0 ? imageRefs : undefined,
+    params: req.params,
+    projectId: req.projectId,
+    workshopShotNo: req.workshopShotNo,
+    workshopShotKind: req.workshopShotKind,
+    workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    inFlight: true,
+    fallbackUsed,
+  });
+  const ac = new AbortController();
+  taskAborts.set(taskId, ac);
+  try { req.onTaskCreated?.(taskId); } catch { /* caller callback must not break a paid task */ }
+  const update = (patch: Partial<CanvasTask>) =>
+    useCanvasTaskStore.getState().updateTask(taskId, patch);
+  let providerTaskId = '';
+  try {
+    await acquireSlot(taskId);
+    if (ac.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    update({ status: 'uploading', progress: fallbackUsed ? '主通道失败，准备 APIMart 万相 3.0…' : '准备 APIMart 万相 3.0 参考素材…' });
+    const imageUrls = await Promise.all(imageRefs.map((source, index) =>
+      resolveApimartPublicMedia(source, index, (message) => update({ progress: message }))));
+    const videoUrls = await Promise.all(videoRefs.map((source, index) =>
+      resolveApimartPublicMedia(source, index + imageUrls.length, (message) => update({ progress: message }))));
+    const audioUrls = await Promise.all(audioRefs.map((source, index) =>
+      resolveApimartPublicMedia(source, index + imageUrls.length + videoUrls.length, (message) => update({ progress: message }))));
+    const norm = normalizeWan3Params(req.params);
+    providerTaskId = await submitApimartTask({
+      path: '/v1/videos/generations',
+      label: 'APIMart 万相 3.0',
+      signal: ac.signal,
+      payload: buildApimartWan3Payload({
+        prompt: req.prompt,
+        imageUrls,
+        videoUrls,
+        audioUrls,
+        fileUrl: req.documentUrl,
+        linkUrl: req.linkUrl,
+        duration: norm.duration === 'auto' ? -1 : norm.duration,
+        resolution: norm.resolution,
+        aspectRatio: norm.aspectRatio,
+        audio: norm.audio,
+      }),
+    });
+    update({ rhTaskId: providerTaskId, status: 'running', progress: 'APIMart 万相 3.0 已提交，等待生成…' });
+    const state = await pollApimartTask({
+      taskId: providerTaskId,
+      kind: 'video',
+      label: 'APIMart 万相 3.0',
+      signal: ac.signal,
+      onProgress: (progress) => update({ status: 'running', progress }),
+    });
+    update({ status: 'downloading', progress: '万相 3.0 已完成，正在保存视频…', resultUrls: state.urls });
+    const paths = await rhtvDownloadAll(state.urls, 'video', 'wan-3.0', (progress) => update({ progress }));
+    update({ status: 'succeeded', progress: '完成', resultPaths: paths, resultUrls: state.urls, finishedAt: Date.now() });
+    for (const path of paths) {
+      void appendArtifact({ path, type: 'video', engine: APIMART_WAN3_ENDPOINT, prompt: req.prompt, taskId });
+    }
+    return {
+      success: true,
+      taskId,
+      resultPaths: paths,
+      resultUrls: paths.map((path) => convertFileSrc(path)),
+      engineKind: 'video',
+      fallbackUsed,
+      providerTaskId,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      update({ status: 'failed', error: '已取消', finishedAt: Date.now() });
+      return { success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video', error: '已取消' };
+    }
+    if (error instanceof PaidTaskCreatedError) providerTaskId = error.taskId;
+    if (providerTaskId && !(error instanceof ApimartTaskFailedError)) {
+      update({ status: 'running', rhTaskId: providerTaskId, progress: '连接暂时中断，后台继续查询 APIMart 万相 3.0…', error: undefined });
+      return {
+        success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video',
+        error: `${message}（后台仍在继续查询结果）`, providerTaskId, backgroundPending: true,
+      };
+    }
+    const submissionUncertain = error instanceof PaidSubmissionUnknownError || mustNotAutoResubmit(error);
+    update({ status: 'failed', error: message, progress: message, finishedAt: Date.now() });
+    return {
+      success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video', error: message,
+      providerTaskId,
+      providerFailed: error instanceof ApimartTaskFailedError,
+      submissionUncertain,
+    };
+  } finally {
+    taskAborts.delete(taskId);
+    useCanvasTaskStore.getState().updateTask(taskId, { inFlight: false });
+    releaseSlot();
+  }
+}
+
+async function runWan3Generation(req: CoreGenRequest): Promise<CoreGenResult> {
+  if (req.documentUrl && req.linkUrl) {
+    return {
+      success: false, taskId: '', resultPaths: [], resultUrls: [], engineKind: 'video',
+      error: '万相 3.0 的文档与网页链接互斥，一次只能传一个。',
+    };
+  }
+  const settings = useSettingsStore.getState();
+  // 主渠道顺序：筷子 → RunningHub → APIMart（按已配置的 Key 过滤）
+  const available: Wan3Channel[] = WAN3_CHANNEL_PREFERENCE.filter((channel) => {
+    if (channel === 'kuaizi') return Boolean(getKuaiziApiKey());
+    if (channel === 'runninghub') return Boolean(resolveApiKey(settings, 'runninghub', settings.runninghubApiKey).trim());
+    return hasApimartApiKey();
+  });
+  const pref = settings.wan3Channel ?? 'auto';
+  const first = pref !== 'auto' && available.includes(pref)
+    ? pref
+    : chooseWan3Channel(available);
+  if (!first) {
+    return {
+      success: false, taskId: '', resultPaths: [], resultUrls: [], engineKind: 'video',
+      error: '万相 3.0 没有可用渠道，请在设置中填写筷子丽帧、RunningHub 或 APIMart 的 API Key。',
+    };
+  }
+
+  const runChannel = async (channel: Wan3Channel, fallbackUsed: boolean) => {
+    const startedAt = Date.now();
+    const result = channel === 'kuaizi'
+      ? await runKuaiziVideoChannel(req, {
+          engineLabel: '万相 3.0 · 筷子丽帧',
+          endpoint: 'kuaizi/wan-3.0',
+          provider: 'kuaizi-wan3',
+          fallbackUsed,
+          run: (args) => runKuaiziWan3Generation({
+            prompt: req.prompt,
+            referenceUrls: req.referenceUrls,
+            videoUrls: req.videoUrls,
+            audioUrls: req.audioUrls,
+            documentUrl: req.documentUrl,
+            linkUrl: req.linkUrl,
+            params: req.params,
+            signal: args.signal,
+            onProgress: args.onProgress,
+          }),
+        })
+      : channel === 'apimart'
+        ? await runApimartWan3Generation(req, fallbackUsed)
+        : await runRhtvWan3Generation(req, fallbackUsed);
+    const accepted = result.success || result.backgroundPending || result.submissionCommitted
+      || Boolean(result.providerTaskId && !result.providerFailed);
+    if (!result.submissionUncertain) {
+      recordWan3Metric({
+        channel,
+        startedAt,
+        totalMs: Date.now() - startedAt,
+        success: accepted,
+        error: accepted ? undefined : result.error,
+      });
+    }
+    if (fallbackUsed && result.taskId) {
+      useCanvasTaskStore.getState().updateTask(result.taskId, { fallbackUsed: true });
+    }
+    return fallbackUsed ? { ...result, fallbackUsed: true } : result;
+  };
+
+  return runVideoChannelCascade({ available, first, runChannel });
 }
 
 export async function runGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
   if (isMidjourneyEngine(req.engineId)) return runMidjourneyGeneration(req);
   if (req.engineId === 'minimax-hailuo-h3') return runMinimaxH3Generation(req);
+  if (req.engineId === 'wan-3.0') return runWan3Generation(req);
   if (req.engineId === 'suno-v5' || req.engineId === 'suno') return runSunoGeneration(req);
   return runStandardGeneration(req);
 }
@@ -2439,6 +2996,8 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
     referenceUrls: req.referenceUrls,
     audioUrls: req.audioUrls,
     videoUrls: req.videoUrls,
+    documentUrl: req.documentUrl,
+    linkUrl: req.linkUrl,
     params: req.params,
     nodeId: targetNodeId,
     onTaskCreated: (taskId) => {

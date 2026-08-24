@@ -224,9 +224,12 @@ interface SettingsState {
    *  取代旧的 useRhtvSeedance 布尔（v31 迁移保留原选择）。 */
   seedanceEngine: 'kuaizi' | 'runninghub' | 'ark';
   setSeedanceEngine: (engine: 'kuaizi' | 'runninghub' | 'ark') => void;
-  /** MiniMax H3 渠道偏好：auto=按健康度自动容灾（默认）；runninghub/apimart=优先该渠道，失败仍容灾另一个。 */
-  minimaxH3Channel: 'auto' | 'runninghub' | 'apimart';
-  setMinimaxH3Channel: (channel: 'auto' | 'runninghub' | 'apimart') => void;
+  /** MiniMax H3 渠道偏好：auto=按健康度自动容灾（默认）；runninghub/apimart/kuaizi=优先该渠道，失败仍容灾其余渠道。 */
+  minimaxH3Channel: 'auto' | 'runninghub' | 'apimart' | 'kuaizi';
+  setMinimaxH3Channel: (channel: 'auto' | 'runninghub' | 'apimart' | 'kuaizi') => void;
+  /** 万相 3.0 渠道偏好：auto=筷子主渠道按健康度容灾（默认）；其余=优先该渠道，失败仍容灾剩余渠道。 */
+  wan3Channel: 'auto' | 'kuaizi' | 'runninghub' | 'apimart';
+  setWan3Channel: (channel: 'auto' | 'kuaizi' | 'runninghub' | 'apimart') => void;
   kimiEditModel: string;
   setKimiEditModel: (model: string) => void;
   kimiEditUseCos: boolean;
@@ -295,7 +298,7 @@ interface SettingsState {
   // Composer model preferences. These guide normal-chat generation tools;
   // canvas/workshop nodes keep their own per-node model settings.
   chatImageModel: 'gpt-image-2' | 'seedream-v5-pro' | 'midjourney-v81' | 'midjourney-v82';
-  chatVideoModel: 'seedance-2.0' | 'seedance-2.0-fast' | 'seedance-2.0-mini' | 'seedance-2.5' | 'minimax-h3' | 'omni-mg-animation';
+  chatVideoModel: 'seedance-2.0' | 'seedance-2.0-fast' | 'seedance-2.0-mini' | 'seedance-2.5' | 'minimax-h3' | 'omni-mg-animation' | 'wan-3.0';
   setChatImageModel: (model: SettingsState['chatImageModel']) => void;
   setChatVideoModel: (model: SettingsState['chatVideoModel']) => void;
 
@@ -415,6 +418,8 @@ export const useSettingsStore = create<SettingsState>()(
       setSeedanceEngine: (seedanceEngine) => set({ seedanceEngine }),
       minimaxH3Channel: 'auto',
       setMinimaxH3Channel: (minimaxH3Channel) => set({ minimaxH3Channel }),
+      wan3Channel: 'auto',
+      setWan3Channel: (wan3Channel) => set({ wan3Channel }),
       kimiEditModel: '',
       setKimiEditModel: (kimiEditModel) => set({ kimiEditModel }),
       kimiEditUseCos: true,
@@ -773,6 +778,7 @@ export const useSettingsStore = create<SettingsState>()(
         result.deepseekEngine = result.deepseekEngine ?? 'harness';
         result.chatImageModel = result.chatImageModel ?? 'gpt-image-2';
         result.chatVideoModel = result.chatVideoModel ?? 'seedance-2.0';
+        result.wan3Channel = result.wan3Channel ?? 'auto';
         result.workspaceAgentModels = {
           canvas: 'global',
           workshop: 'global',

@@ -1480,17 +1480,21 @@ export const useWorkshopStore = create<WorkshopState>((set, get) => ({
     const isMini = effectiveModel === 'seedance-2.0-mini';
     // MiniMax H3 单端点多模态：有无参考图都用同一个引擎 id
     const isH3 = effectiveModel === 'minimax-h3';
+    // 万相 3.0 全能参考单端点：文生/图/视频/音频参考同引擎 id
+    const isWan3 = effectiveModel === 'wan-3.0';
     const engineId = kind === 'image'
       ? 'gpt-image-2'
       : isSeedance25
         ? DREAMINA_SEEDANCE_25_ENGINE_ID
         : isH3
         ? 'minimax-hailuo-h3'
-        : isMini
-          ? (refs.length > 0 ? 'seedance-2.0-mini-i2v' : 'seedance-2.0-mini-t2v')
-          : (refs.length > 0 ? 'seedance-2.0' : 'seedance-2.0-t2v');
+        : isWan3
+          ? 'wan-3.0'
+          : isMini
+            ? (refs.length > 0 ? 'seedance-2.0-mini-i2v' : 'seedance-2.0-mini-t2v')
+            : (refs.length > 0 ? 'seedance-2.0' : 'seedance-2.0-t2v');
 
-    if (kind === 'video' && refs.length > 0 && !isH3) {
+    if (kind === 'video' && refs.length > 0 && !isH3 && !isWan3) {
       const requiredRefs = refs.map((_, i) => ({ index: i + 1, label: refLabels[i] ?? `参考图 ${i + 1}` }));
       const validation = validateSeedancePrompt(finalPrompt, {
         refCount: refs.length,
@@ -1559,6 +1563,13 @@ export const useWorkshopStore = create<WorkshopState>((set, get) => ({
                 duration: String(Math.min(15, Math.max(5, shot.durationSec ?? 5))),
                 ratio: effectiveRatio!,
               }
+            : isWan3
+              ? {
+                  // 万相 3.0：480P/720P/1080P，时长 2-30
+                  resolution: '720P',
+                  duration: String(Math.min(30, Math.max(2, shot.durationSec ?? 5))),
+                  ratio: effectiveRatio!,
+                }
             : {
                 duration: String(shot.durationSec ?? 5),
                 ratio: effectiveRatio!,

@@ -26,6 +26,7 @@ import {
 export { APIMART_BASE_URL } from './baseUrl';
 export const APIMART_SEEDREAM_ENDPOINT = 'apimart/seedream-5-0-pro';
 export const APIMART_MINIMAX_H3_ENDPOINT = 'apimart/minimax-h3';
+export const APIMART_WAN3_ENDPOINT = 'apimart/wan-3.0';
 
 export class ApimartTaskFailedError extends Error {
   constructor(message: string) {

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useCanvasStore } from '@/stores/canvasStore';
-import { ImageIcon, Film, Sparkles, ArrowUp, ChevronDown, Maximize2, X, Check, Clock, AudioLines, Aperture, Palette } from 'lucide-react';
+import { ImageIcon, Film, Sparkles, ArrowUp, ChevronDown, Maximize2, X, Check, Clock, AudioLines, Aperture, Palette, Link2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { TextNodeData, ImageNodeData } from '@/types/canvas';
 import { generateForNode } from '@/lib/canvasGen';
+import { classifyWan3LinkUrl } from '@/lib/videoRouter/wan3';
 import { useCanvasMention, type MentionItem } from '@/hooks/useCanvasMention';
 import { useSlashMenu } from '@/hooks/useSlashMenu';
 import { previewPrice, type PricePreview } from '@/lib/rhtv/pricePreview';
@@ -382,6 +383,7 @@ export default function NodeInfoBar() {
   const [vRatio, setVRatio] = useState('16:9');
   const [vDuration, setVDuration] = useState(5);
   const [vModel, setVModel] = useState('seedance-2.0');
+  const [wanRefLink, setWanRefLink] = useState('');
   const [videoPromptTemplateOverride, setVideoPromptTemplateOverride] = useState<VideoPromptTemplate | ''>('');
   const [globalVideoPromptTemplate, setGlobalVideoPromptTemplate] = useState<VideoPromptTemplate>(() => readGlobalVideoPromptTemplate());
   const [showPromptOptimizeMenu, setShowPromptOptimizeMenu] = useState(false);
@@ -445,6 +447,8 @@ export default function NodeInfoBar() {
         ? null
         : vModel === 'minimax-h3'
         ? 'minimax/hailuo-h3/multimodal-to-video'
+        : vModel === 'wan-3.0'
+        ? 'alibaba/wan-3.0/reference-to-video'
         : vModel.includes('mini')
         ? (vMode === 't2v'
           ? 'rhart-video/sparkvideo-2.0-mini/text-to-video'
@@ -464,6 +468,9 @@ export default function NodeInfoBar() {
     : vModel === 'minimax-h3'
       // H3 只有 2K、时长 5-15，且不收 generateAudio 等 Seedance 参数
       ? { prompt: 'estimate', resolution: '2K', ratio: vRatio, duration: String(Math.min(15, Math.max(5, vDuration))) }
+      : vModel === 'wan-3.0'
+      // 万相 3.0：480P/720P/1080P 三档，时长 2-30
+      ? { prompt: 'estimate', resolution: (['480P', '720P', '1080P'].includes(vResolution) ? vResolution : '720P'), aspectRatio: vRatio, duration: String(Math.min(30, Math.max(2, vDuration))) }
       : { prompt: 'estimate', resolution: fastClampRes, ratio: vRatio, duration: String(vDuration), generateAudio: vGenAudio };
   const estPrice = usePriceEstimate(
     genMode === 'api' && vMode !== 'dreamina' ? priceEndpoint : null,
@@ -539,6 +546,7 @@ export default function NodeInfoBar() {
       if (data.resolution) setVResolution(data.resolution as string);
       if (data.aspectRatio) setVRatio(data.aspectRatio as string);
       if (data.duration) setVDuration(data.duration as number);
+      setWanRefLink(typeof data.wanRefLink === 'string' ? data.wanRefLink : '');
       // modelVersion 存的是引擎 id（minimax-hailuo-h3），SelectPill 值是短名
       if (data.modelVersion) setVModel(
         data.modelVersion === 'minimax-hailuo-h3'
@@ -1532,7 +1540,7 @@ export default function NodeInfoBar() {
       const collected = collectNodeReferences(node.id, { extraTailImages: assetImages });
       const mergedRefs = collected.images.map((r) => r.submitUrl);
       const audioUrls = collected.audios.map((r) => r.submitUrl);
-      const videoLimit = vModel === 'seedance-2.5' ? 10 : vModel === 'minimax-h3' ? 3 : 1;
+      const videoLimit = vModel === 'seedance-2.5' ? 10 : vModel === 'minimax-h3' ? 3 : vModel === 'wan-3.0' ? 5 : 1;
       const refVideoUrls = selfVideoFallback(node.id, collected).slice(0, videoLimit);
 
       updateNode(node.id, {
@@ -1541,6 +1549,7 @@ export default function NodeInfoBar() {
         resolution: effectiveVRes,
         aspectRatio: vRatio,
         duration: vDuration,
+        ...(vModel === 'wan-3.0' ? { wanRefLink: wanRefLink.trim() } : {}),
         // H3 写回引擎 id（非下拉短名），保证徽章/重试链路一致
         modelVersion: vModel === 'minimax-h3'
           ? 'minimax-hailuo-h3'
@@ -1623,6 +1632,7 @@ export default function NodeInfoBar() {
       const isFastModel = vModel.includes('fast');
       const isMiniModel = vModel.includes('mini');
       const isH3Model = vModel === 'minimax-h3';
+      const isWan3Model = vModel === 'wan-3.0';
       const isSeedance25Model = vModel === 'seedance-2.5';
       // 只有图/音/视频参考全部为空才落 t2v——只连音频/视频（无图）时必须
       // 保持 multimodal 引擎，否则参考素材被 t2v 引擎静默丢弃。
@@ -1635,6 +1645,9 @@ export default function NodeInfoBar() {
       } else if (isH3Model) {
         // MiniMax H3 单端点：i2v/t2v 通用，有参考无参考都用同一个 id
         engineId = 'minimax-hailuo-h3';
+      } else if (isWan3Model) {
+        // 万相 3.0 全能参考单端点：文生/图/视频/音频/文档/网页同引擎 id
+        engineId = 'wan-3.0';
       } else if ((vMode === 't2v' && refVideoUrls.length === 0) || !hasAnyRef) {
         engineId = isMiniModel ? 'seedance-2.0-mini-t2v' : 'seedance-2.0-t2v';
       } else {
@@ -1643,6 +1656,9 @@ export default function NodeInfoBar() {
       // 显式文生视频：画布上连着的参考不随请求提交（t2v 引擎不支持，
       // 传了会被引擎能力校验拦截报错）
       const isT2v = engineId.endsWith('-t2v');
+      // 万相 3.0 参考链接：文档扩展名 → file（文档），其余公网 URL → link（网页）
+      const wanLink = isWan3Model ? wanRefLink.trim() : '';
+      const wanLinkKind = wanLink ? classifyWan3LinkUrl(wanLink) : null;
       const result = await generateForNode({
         nodeId: node.id,
         engineId,
@@ -1650,12 +1666,16 @@ export default function NodeInfoBar() {
         referenceUrls: isT2v ? [] : mergedRefs,
         audioUrls: isT2v ? [] : mergedAudio,
         videoUrls: isT2v ? [] : refVideoUrls,
+        documentUrl: wanLinkKind === 'document' ? wanLink : undefined,
+        linkUrl: wanLinkKind === 'link' ? wanLink : undefined,
         overwrite: true,
         // H3 只收 resolution(2K)/duration(5-15)/ratio，不传 Seedance 专有参数
         params: isSeedance25Model
           ? { resolution: effectiveVRes, ratio: vRatio, duration: String(Math.min(30, Math.max(4, Math.round(vDuration)))) }
           : isH3Model
           ? { resolution: '2K', ratio: vRatio, duration: String(Math.min(15, Math.max(5, Math.round(vDuration)))) }
+          : isWan3Model
+          ? { resolution: effectiveVRes, ratio: vRatio, duration: String(Math.min(30, Math.max(2, Math.round(vDuration)))), generateAudio: vGenAudio }
           : { resolution: effectiveVRes, ratio: vRatio, duration: String(vDuration), generateAudio: vGenAudio, realPersonMode: true, ...(isMiniModel ? { mode: 'mini' } : isFastModel ? { mode: 'fast' } : {}), ...(vSeed ? { seed: Number(vSeed) } : {}) },
       });
       if (!result.success) {
@@ -1666,12 +1686,15 @@ export default function NodeInfoBar() {
     const isFast = vModel.includes('fast');
     const isMini = vModel.includes('mini');
     const isH3 = vModel === 'minimax-h3';
+    const isWan3 = vModel === 'wan-3.0';
     const isSeedance25 = vModel === 'seedance-2.5';
-    // MiniMax H3 分辨率只有 2K 一档（枚举大写 K）
+    // MiniMax H3 分辨率只有 2K 一档（枚举大写 K）；万相 3.0 为 480P/720P/1080P
     const vResOptions = isSeedance25
       ? [{ value: '480p', label: '480p' }, { value: '720p', label: '720p' }]
       : isH3
       ? [{ value: '2K', label: '2K' }]
+      : isWan3
+      ? [{ value: '480P', label: '480P' }, { value: '720P', label: '720P' }, { value: '1080P', label: '1080P' }]
       : (isFast || isMini)
       ? [{ value: '480p', label: '480p' }, { value: '720p', label: '720p' }, { value: '1080p', label: '1080p' }, { value: '2k', label: '2k' }, { value: '4k', label: '4k' }]
       : [{ value: '480p', label: '480p' }, { value: '720p', label: '720p' }, { value: 'native1080p', label: '原生1080p' }, { value: '1080p', label: '1080p' }, { value: '2k', label: '2k' }, { value: '4k', label: '4k' }];
@@ -1679,7 +1702,9 @@ export default function NodeInfoBar() {
     // 再写回 state（不能在 render 中 setState）。
     const effectiveVRes = isSeedance25
       ? (vResolution === '480p' ? '480p' : '720p')
-      : isH3 ? '2K' : (isFast || isMini) && vResolution === 'native1080p' ? '720p' : vResolution;
+      : isH3 ? '2K'
+      : isWan3 ? (['480P', '720P', '1080P'].includes(vResolution) ? vResolution : '720P')
+      : (isFast || isMini) && vResolution === 'native1080p' ? '720p' : vResolution;
     // H3 时长枚举 5-15：普通模式看模型 SelectPill，MG 模式看引擎切换
     const h3DurationMode = (vMode === 'omni' && mgGenerationEngine === 'minimax-h3') || (vMode !== 'omni' && isH3);
 
@@ -1980,6 +2005,28 @@ export default function NodeInfoBar() {
             </div>
           )}
 
+          {/* 万相 3.0 专属：参考文档 / 网页链接输入 */}
+          {vModel === 'wan-3.0' && vMode !== 'omni' && (
+            <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+              <span className="text-[10px] text-[var(--canvas-text-2)] font-medium shrink-0 flex items-center gap-1">
+                <Link2 size={11} />
+                参考链接
+              </span>
+              <input
+                value={wanRefLink}
+                onChange={(e) => setWanRefLink(e.target.value)}
+                onBlur={() => updateNode(node.id, { wanRefLink: wanRefLink.trim() })}
+                placeholder="可选：粘贴文档（pdf/docx/md…）或公开网页 URL，万相 3.0 会参考它生成"
+                className="min-w-0 flex-1 h-7 rounded-md border border-[var(--canvas-node-border)] bg-[var(--canvas-panel)] px-2 text-[11px] text-[var(--canvas-text-1)] outline-none placeholder:text-[var(--canvas-text-3)] focus:border-[var(--canvas-node-border-selected)]"
+              />
+              {wanRefLink.trim() && (
+                <span className="shrink-0 text-[9px] text-[var(--canvas-text-3)]">
+                  {classifyWan3LinkUrl(wanRefLink) === 'document' ? '按文档传入' : '按网页传入'}
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Textarea */}
           <div className="px-4 pt-3 pb-3 relative">
             <textarea
@@ -2143,6 +2190,10 @@ export default function NodeInfoBar() {
                     setVResolution('720p');
                     setVDuration(Math.min(30, Math.max(4, vDuration)));
                   }
+                  if (val === 'wan-3.0') {
+                    setVResolution('720P');
+                    setVDuration(Math.min(30, Math.max(2, vDuration)));
+                  }
                   updateNode(node.id, {
                     modelVersion: val === 'minimax-h3'
                       ? 'minimax-hailuo-h3'
@@ -2156,6 +2207,7 @@ export default function NodeInfoBar() {
                   { value: 'seedance-2.0-fast', label: 'Seedance 2.0 Fast' },
                   { value: 'seedance-2.0-mini', label: 'Seedance 2.0 Mini' },
                   { value: 'minimax-h3', label: 'MiniMax H3' },
+                  { value: 'wan-3.0', label: '万相 3.0' },
                 ]}
                 title="模型"
               />

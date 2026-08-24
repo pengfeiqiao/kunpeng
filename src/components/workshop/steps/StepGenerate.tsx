@@ -324,6 +324,7 @@ export default function StepGenerate() {
             <option value="seedance-2.5">Seedance 2.5</option>
             <option value="minimax-h3">MiniMax H3</option>
             <option value="seedance-2.0-mini">Seedance 2.0 Mini</option>
+            <option value="wan-3.0">万相 3.0</option>
           </select>
         </label>
         <label className="block min-w-[130px]">
@@ -729,11 +730,12 @@ function ShotCard({ shot, checked, onToggle }: { shot: WsShot; checked: boolean;
             className="shrink-0 px-1 py-0.5 rounded text-[10px] bg-[var(--canvas-panel)] border border-[var(--canvas-node-border)] text-[var(--canvas-text-2)] focus:outline-none focus-visible:border-[var(--canvas-accent)]"
             title={shot.videoModel ? `单独模型: ${shot.videoModel}` : `继承全局: ${data?.videoModel ?? 'Seedance 2.0'}`}
           >
-            <option value="">{data?.videoModel === 'seedance-2.5' ? '全局(2.5)' : data?.videoModel === 'seedance-2.0-mini' ? '全局(Mini)' : data?.videoModel === 'minimax-h3' ? '全局(H3)' : '全局(2.0)'}</option>
+            <option value="">{data?.videoModel === 'seedance-2.5' ? '全局(2.5)' : data?.videoModel === 'seedance-2.0-mini' ? '全局(Mini)' : data?.videoModel === 'minimax-h3' ? '全局(H3)' : data?.videoModel === 'wan-3.0' ? '全局(万相3)' : '全局(2.0)'}</option>
             <option value="seedance-2.0">Seedance 2.0</option>
             <option value="seedance-2.5">Seedance 2.5</option>
             <option value="minimax-h3">MiniMax H3</option>
             <option value="seedance-2.0-mini">Mini</option>
+            <option value="wan-3.0">万相 3.0</option>
           </select>
           <select
             value={shot.videoRatio ?? ''}

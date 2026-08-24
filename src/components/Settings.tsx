@@ -454,6 +454,7 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
     kuaiziApiKey, setKuaiziApiKey,
     seedanceEngine, setSeedanceEngine,
     minimaxH3Channel, setMinimaxH3Channel,
+    wan3Channel, setWan3Channel,
     kimiEditModel, setKimiEditModel,
     kimiEditUseCos, setKimiEditUseCos,
     doubaoSpeechApiKey, setDoubaoSpeechApiKey,
@@ -651,8 +652,9 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
             <div className="flex rounded-md bg-zinc-100 p-0.5">
               {([
                 { id: 'auto', label: '自动容灾（推荐）', hint: '按近期成功率与延迟自动选路' },
-                { id: 'runninghub', label: 'RunningHub 优先', hint: '优先 RunningHub，失败自动容灾 APIMart' },
-                { id: 'apimart', label: 'APIMart 优先', hint: '优先 APIMart，失败自动容灾 RunningHub' },
+                { id: 'runninghub', label: 'RunningHub 优先', hint: '优先 RunningHub，失败自动容灾其余渠道' },
+                { id: 'apimart', label: 'APIMart 优先', hint: '优先 APIMart，失败自动容灾其余渠道' },
+                { id: 'kuaizi', label: '筷子丽帧优先', hint: '优先筷子丽帧，失败自动容灾其余渠道' },
               ] as const).map((opt) => (
                 <button
                   key={opt.id}
@@ -670,7 +672,35 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
               ))}
             </div>
             <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
-              H3 在 RunningHub 与 APIMart 双渠道间容灾；积分不足/认证失败等不扣费错误会自动切换渠道（两个 Key 分别在下方「RunningHub」与「Omni MG 渠道 → APIMart」配置）。
+              H3 在 RunningHub、APIMart 与筷子丽帧三渠道间容灾；积分不足/认证失败等不扣费错误会自动切换渠道（三个 Key 分别在下方「RunningHub」「Omni MG 渠道 → APIMart」与「筷子丽帧」配置）。
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">万相 3.0 渠道</label>
+            <div className="flex rounded-md bg-zinc-100 p-0.5">
+              {([
+                { id: 'auto', label: '筷子主渠道（推荐）', hint: '默认筷子丽帧，失败按 RunningHub → APIMart 顺序容灾' },
+                { id: 'kuaizi', label: '筷子丽帧优先', hint: '同默认；失败自动容灾其余渠道' },
+                { id: 'runninghub', label: 'RunningHub 优先', hint: '优先 RunningHub，失败自动容灾其余渠道' },
+                { id: 'apimart', label: 'APIMart 优先', hint: '优先 APIMart，失败自动容灾其余渠道' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setWan3Channel(opt.id)}
+                  title={opt.hint}
+                  className={`min-w-[58px] rounded-[5px] px-2.5 py-1.5 text-center text-xs font-medium transition-colors ${
+                    wan3Channel === opt.id
+                      ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+              万相 3.0（wan3.0-video）是阿里全能参考视频模型，支持图/视频/音频/文档/网页链接参考。默认筷子丽帧为主渠道，失败自动容灾 RunningHub 与 APIMart；参考图最多 10 张、参考视频/音频各最多 5 段，文档与网页链接互斥。
             </p>
           </div>
         </div>
@@ -679,7 +709,7 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
       <CollapsibleSection title="筷子丽帧" description="Seedance 2.0 默认视频通道" defaultOpen={false}>
             <KeyInputRow
               label="API Key"
-              hint="筷子丽帧 Seedance 2.0 / 2.5 视频生成（Seedance 2.0 默认通道）"
+              hint="筷子丽帧 Seedance 2.0 / 2.5 视频生成（Seedance 2.0 默认通道）；同时是万相 3.0 主渠道与 MiniMax H3 容灾渠道"
               value={rk('kuaizi', kuaiziApiKey)}
               onChange={setKuaiziApiKey}
               show={showKeys.has('kuaizi')}
