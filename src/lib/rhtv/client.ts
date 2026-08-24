@@ -23,6 +23,7 @@ import {
   type RhtvQueryResponse,
   type RhtvSubmitResponse,
 } from './types';
+import { extractRhtvWebappId } from './webappId';
 
 export type RhtvSite = 'cn' | 'ai';
 
@@ -60,6 +61,17 @@ export function getRhtvApiKey(): string {
   return getRhtvSite() === 'ai'
     ? resolveApiKey(s, 'runninghubIntl', s.runninghubIntlApiKey).trim()
     : resolveApiKey(s, 'runninghub', s.runninghubApiKey).trim();
+}
+
+/**
+ * 自定义 AI 应用：用户在设置里填了自己的 webappId（或粘贴的应用链接）时，
+ * AI 应用通道提交改走用户自己的工作流；留空回退内置应用。
+ * 注意节点结构（nodeInfoList）仍按内置工作流组装，自定义应用必须是同款
+ * 工作流的副本，否则 RunningHub 会因节点不存在而拒单。
+ */
+export function effectiveRhtvWebappId(builtInWebappId: string): string {
+  const custom = extractRhtvWebappId(useSettingsStore.getState().runninghubCustomWebappId ?? '');
+  return custom || builtInWebappId;
 }
 
 export function requireRhtvApiKey(): string {

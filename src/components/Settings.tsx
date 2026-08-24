@@ -454,6 +454,7 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
     runninghubApiKey, setRunninghubApiKey,
     runninghubSite, setRunninghubSite,
     runninghubIntlApiKey, setRunninghubIntlApiKey,
+    runninghubCustomWebappId, setRunninghubCustomWebappId,
     kuaiziApiKey, setKuaiziApiKey,
     seedanceEngine, setSeedanceEngine,
     minimaxH3Channel, setMinimaxH3Channel,
@@ -766,6 +767,18 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
           onToggleShow={() => toggleShow('runninghubIntl')}
           placeholder="输入国际站 API Key..."
         />
+        <div className="mt-3 border-t border-zinc-100 pt-3">
+          <label className="block text-xs font-medium text-zinc-700 mb-1">自定义 AI 应用（高级，可选）</label>
+          <input
+            value={runninghubCustomWebappId}
+            onChange={(e) => setRunninghubCustomWebappId(e.target.value)}
+            placeholder="粘贴 webappId 或应用链接，留空使用内置应用"
+            className="w-full h-8 rounded-md border border-zinc-200 bg-white px-2.5 text-xs text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
+          />
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+            粘贴你自己部署的 RunningHub AI 应用 ID 或完整链接（自动提取数字 ID）。设置后「AI 应用通道」的请求（如 Topaz 放大）改走你自己的工作流和账号额度；该应用必须是内置同款工作流的副本（输入节点结构一致），否则会被 RunningHub 拒单。留空回退内置应用。
+          </p>
+        </div>
       </CollapsibleSection>
 
       <CollapsibleSection title="火山方舟 Seedance" description="Seedance 视频生成服务（含 Seedance 2.5 / Seedream 5.0 模型目录）" defaultOpen={false}>

@@ -25,7 +25,7 @@ import {
   type CanvasTask,
 } from '@/stores/canvasTaskStore';
 import { rhtvSubmit } from '@/lib/rhtv/client';
-import { rhtvSubmitApp, type RhtvAppNodeInfo } from '@/lib/rhtv/client';
+import { effectiveRhtvWebappId, rhtvSubmitApp, type RhtvAppNodeInfo } from '@/lib/rhtv/client';
 import { rhtvPollTask } from '@/lib/rhtv/poll';
 import { rhtvResolveMedia } from '@/lib/rhtv/upload';
 import { rhtvResolveMediaForApp } from '@/lib/rhtv/upload';
@@ -625,7 +625,7 @@ async function cascadeFallback(
       let submitResp: RhtvSubmitResponse;
       if (useAppApi) {
         const nodeInfoList = buildNodeInfoList(rhEngine, req.prompt, payload, resolvedRefs, [], []);
-        submitResp = await rhtvSubmitApp(rhEngine.appConfig!.webappId, nodeInfoList);
+        submitResp = await rhtvSubmitApp(effectiveRhtvWebappId(rhEngine.appConfig!.webappId), nodeInfoList);
       } else {
         if (rhEngine.imageParam && resolvedRefs.length > 0) {
           payload[rhEngine.imageParam.key] = rhEngine.imageParam.multiple ? resolvedRefs : resolvedRefs[0];
@@ -789,7 +789,7 @@ export async function runImageFallback(task: CanvasTask): Promise<{
       let submitResp: RhtvSubmitResponse;
       if (useAppApi) {
         const nodeInfoList = buildNodeInfoList(rhEngine, task.prompt, payload, resolvedRefs, [], []);
-        submitResp = await rhtvSubmitApp(rhEngine.appConfig!.webappId, nodeInfoList);
+        submitResp = await rhtvSubmitApp(effectiveRhtvWebappId(rhEngine.appConfig!.webappId), nodeInfoList);
       } else {
         if (rhEngine.imageParam && resolvedRefs.length > 0) {
           payload[rhEngine.imageParam.key] = rhEngine.imageParam.multiple ? resolvedRefs : resolvedRefs[0];
@@ -2352,7 +2352,7 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
       const nodeInfoList = buildNodeInfoList(engine, req.prompt, payload, resolvedRefs, resolvedVideos, resolvedAudio);
       submittedNodeInfoList = nodeInfoList;
       console.log(`[canvasGen] RHTV AI 应用提交: ${engine.label}, images=${resolvedRefs.length}, videos=${resolvedVideos.length}, audios=${resolvedAudio.length}, nodeInfo=${nodeInfoList.length}`);
-      submitResp = await rhtvSubmitApp(engine.appConfig!.webappId, nodeInfoList, ac.signal);
+      submitResp = await rhtvSubmitApp(effectiveRhtvWebappId(engine.appConfig!.webappId), nodeInfoList, ac.signal);
     } else {
       // Standard model API path (domestic engines)
       if (engine.mode === 'start-end-video') {

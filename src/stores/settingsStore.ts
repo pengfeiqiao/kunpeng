@@ -222,6 +222,9 @@ interface SettingsState {
   /** RunningHub 国际站 API Key（runninghub.ai），仅在 runninghubSite='ai' 时使用。 */
   runninghubIntlApiKey: string;
   setRunninghubIntlApiKey: (key: string) => void;
+  /** RunningHub 自定义 AI 应用 webappId（可粘贴应用链接自动提取）；设置后 AI 应用通道改走用户自己的工作流，留空用内置应用。 */
+  runninghubCustomWebappId: string;
+  setRunninghubCustomWebappId: (id: string) => void;
   kuaiziApiKey: string;
   setKuaiziApiKey: (key: string) => void;
   useRhtvSeedance: boolean;
@@ -420,6 +423,8 @@ export const useSettingsStore = create<SettingsState>()(
       setRunninghubSite: (runninghubSite) => set({ runninghubSite }),
       runninghubIntlApiKey: '',
       setRunninghubIntlApiKey: (runninghubIntlApiKey) => set((s) => ({ runninghubIntlApiKey, ...mirrorCredentialWrite(s, 'runninghubIntl', runninghubIntlApiKey) })),
+      runninghubCustomWebappId: '',
+      setRunninghubCustomWebappId: (runninghubCustomWebappId) => set({ runninghubCustomWebappId }),
       kuaiziApiKey: '',
       setKuaiziApiKey: (kuaiziApiKey) => set((s) => ({ kuaiziApiKey, ...mirrorCredentialWrite(s, 'kuaizi', kuaiziApiKey) })),
       useRhtvSeedance: false,
@@ -791,6 +796,7 @@ export const useSettingsStore = create<SettingsState>()(
         result.wan3Channel = result.wan3Channel ?? 'auto';
         result.runninghubSite = result.runninghubSite ?? 'cn';
         result.runninghubIntlApiKey = result.runninghubIntlApiKey ?? '';
+        result.runninghubCustomWebappId = result.runninghubCustomWebappId ?? '';
         result.workspaceAgentModels = {
           canvas: 'global',
           workshop: 'global',
