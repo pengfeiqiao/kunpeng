@@ -9,10 +9,11 @@
  */
 import { fetch as tauriFetch, ResponseType, Body } from '@tauri-apps/api/http';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
-import { isAmbiguousPaidSubmitStatus, PaidSubmissionUnknownError, PaidTaskCreatedError } from '@/lib/billingSafety';
+import { PaidSubmissionUnknownError, PaidTaskCreatedError } from '@/lib/billingSafety';
 import { rhtvDownloadAll } from '@/lib/rhtv/download';
 import { appendArtifact } from '@/lib/artifacts';
 import { appendGenerationLog } from '@/lib/aigc/genLogger';
+import { classifyKuaiziSubmitHttpError } from './errors.ts';
 import {
   appendKuaiziLog,
   getKuaiziApiKey,
@@ -36,6 +37,8 @@ export interface KuaiziH3RunRequest {
   audioUrls?: string[];
   params?: Record<string, unknown>;
   onProgress?: (phase: string) => void;
+  /** 远端任务创建成功立即回调（上层据此把 task_id 写入任务存储，供中断恢复）。 */
+  onProviderTaskCreated?: (taskId: string) => void;
   signal?: AbortSignal;
 }
 
@@ -47,7 +50,7 @@ export interface KuaiziH3RunResult {
 
 type KuaiziH3Status = 'queued' | 'running' | 'succeeded' | 'failed';
 
-interface KuaiziH3Task {
+export interface KuaiziH3Task {
   id?: string;
   status?: KuaiziH3Status;
   content?: { url?: string };
@@ -77,10 +80,11 @@ async function kuaiziH3CreateTask(payload: Record<string, unknown>, signal?: Abo
   const data = res.data as { task_id?: string; error?: { message?: string } };
   if (!res.ok) {
     const detail = data?.error?.message || JSON.stringify(res.data).slice(0, 300);
-    if (isKuaiziH3Balance(res.status, detail)) {
-      throw new KuaiziBusinessError('balance', `筷子 MiniMax H3 余额不足（HTTP ${res.status}），请充值后重试: ${detail}`);
+    const kind = classifyKuaiziSubmitHttpError(res.status, detail);
+    if (kind === 'rejected_safe') {
+      throw new KuaiziBusinessError('balance', `筷子 MiniMax H3 创建被拒绝（HTTP ${res.status}，未扣费）: ${detail}`);
     }
-    if (isAmbiguousPaidSubmitStatus(res.status)) {
+    if (kind === 'ambiguous') {
       throw new PaidSubmissionUnknownError('筷子 MiniMax H3', `HTTP ${res.status}: ${detail}`);
     }
     throw new Error(`筷子 MiniMax H3 创建任务失败 HTTP ${res.status}: ${detail}`);
@@ -91,7 +95,8 @@ async function kuaiziH3CreateTask(payload: Record<string, unknown>, signal?: Abo
   return data.task_id;
 }
 
-async function kuaiziH3QueryTask(taskId: string, signal?: AbortSignal): Promise<KuaiziH3Task> {
+/** 单次查询（恢复钩子也用）。任务未到终态时只保证 id/status 有值。 */
+export async function kuaiziH3QueryTask(taskId: string, signal?: AbortSignal): Promise<KuaiziH3Task> {
   const key = getKuaiziApiKey();
   const res = await tauriFetch(`${BASE_URL}${QUERY_PATH}/${encodeURIComponent(taskId)}`, {
     method: 'GET',
@@ -102,8 +107,10 @@ async function kuaiziH3QueryTask(taskId: string, signal?: AbortSignal): Promise<
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   if (!res.ok) {
     const detail = JSON.stringify(res.data).slice(0, 300);
-    if (isKuaiziH3Balance(res.status, detail)) {
-      throw new KuaiziBusinessError('balance', `筷子 MiniMax H3 余额不足（HTTP ${res.status}），请充值后重试: ${detail}`);
+    // 查询阶段的 429 是限流（瞬态），不是余额问题——任务已创建，交给轮询退避重试；
+    // 绝不能在这里归为 balance，否则上层会把仍在运行的付费任务误判为可降级而重复提交。
+    if (res.status === 429) {
+      throw new Error(`筷子 MiniMax H3 查询限流 HTTP 429: ${detail}`);
     }
     throw new Error(`筷子 MiniMax H3 查询失败 HTTP ${res.status}: ${detail}`);
   }
@@ -174,6 +181,7 @@ export async function runKuaiziMinimaxH3Generation(req: KuaiziH3RunRequest): Pro
 
   req.onProgress?.('提交筷子 MiniMax H3 任务…');
   const taskId = await kuaiziH3CreateTask(payload, req.signal);
+  try { req.onProviderTaskCreated?.(taskId); } catch { /* caller progress hook must not break generation */ }
   await appendKuaiziLog({ timestamp: new Date().toISOString(), provider: 'kuaizi-minimax-h3', event: 'create_response', taskId });
 
   let resultPaths: string[];

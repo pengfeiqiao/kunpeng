@@ -41,6 +41,26 @@ export function findCustomMediaApi(engineId: string): CustomMediaApi | undefined
     .find((api) => api.id === id && api.enabled);
 }
 
+/**
+ * 插件删除/停用后清理悬空的全局选择（普通对话生图/生视频默认模型）。
+ * 返回被重置的位置描述（用于展示）。画布节点与工坊分镜里的引用保留，
+ * 生成时会得到明确的“插件不存在”错误而不是静默换模型。
+ */
+export function resetCustomMediaSelections(pluginId: string): string[] {
+  const s = useSettingsStore.getState();
+  const engineId = `${CUSTOM_MEDIA_ENGINE_PREFIX}${pluginId}`;
+  const reset: string[] = [];
+  if (s.chatImageModel === engineId) {
+    s.setChatImageModel('gpt-image-2');
+    reset.push('普通对话生图模型已重置为 GPT Image 2');
+  }
+  if (s.chatVideoModel === engineId) {
+    s.setChatVideoModel('seedance-2.0');
+    reset.push('普通对话生视频模型已重置为 Seedance 2.0');
+  }
+  return reset;
+}
+
 function requireCustomKey(api: CustomMediaApi): string {
   const key = resolveSlotApiKey(useSettingsStore.getState(), api).trim();
   if (!key) throw new Error(`自定义插件「${api.label}」未配置 API Key，请在设置中填写`);
@@ -86,31 +106,48 @@ async function customSubmit(api: CustomMediaApi, payload: Record<string, unknown
   return { taskId };
 }
 
+/** 单次任务查询（恢复钩子也用）。返回统一状态：succeeded 时带 urls。 */
+export async function customQueryTask(
+  api: CustomMediaApi,
+  taskId: string,
+  signal?: AbortSignal,
+): Promise<{ status: 'pending' | 'running' | 'succeeded' | 'failed'; urls: string[]; progress?: number; error?: string }> {
+  const key = requireCustomKey(api);
+  const base = normalizeCustomBaseUrl(api.baseUrl);
+  const res = await tauriFetch(`${base}${customTaskPath(taskId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${key}` },
+    responseType: ResponseType.JSON,
+    timeout: 60,
+  });
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  if (!res.ok) {
+    throw new Error(`${api.label} 查询失败 HTTP ${res.status}: ${apimartError(res.data) || ''}`.trim());
+  }
+  const state = parseApimartTask(res.data, api.kind === 'video' ? 'video' : 'image');
+  return { status: state.status, urls: state.urls, progress: state.progress, error: state.error };
+}
+
 async function customPollTask(
   api: CustomMediaApi,
   taskId: string,
   opts: { signal?: AbortSignal; onProgress?: (message: string) => void } = {},
 ): Promise<string[]> {
-  const key = requireCustomKey(api);
-  const base = normalizeCustomBaseUrl(api.baseUrl);
   const startedAt = Date.now();
   const maxMs = api.kind === 'video' ? 15 * 60_000 : 8 * 60_000;
   const intervalMs = 5_000;
   await new Promise((resolve) => setTimeout(resolve, 4_000));
   while (Date.now() - startedAt < maxMs) {
     if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    const res = await tauriFetch(`${base}${customTaskPath(taskId)}`, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${key}` },
-      responseType: ResponseType.JSON,
-      timeout: 60,
-    });
-    if (!res.ok) {
+    let state: Awaited<ReturnType<typeof customQueryTask>>;
+    try {
+      state = await customQueryTask(api, taskId, opts.signal);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
       // 查询阶段瞬态失败：等待后重试（任务已在远端，绝不重发提交）
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
       continue;
     }
-    const state = parseApimartTask(res.data, api.kind === 'video' ? 'video' : 'image');
     if (state.status === 'succeeded') return state.urls;
     if (state.status === 'failed') throw new CustomMediaTaskFailedError(state.error || `${api.label} 任务失败`);
     opts.onProgress?.(`${state.status}${state.progress !== undefined ? ` ${Math.round(state.progress)}%` : ''} · ${Math.round((Date.now() - startedAt) / 1000)}s`);
@@ -127,6 +164,8 @@ export interface CustomMediaRunRequest {
   audioUrls?: string[];
   params?: Record<string, unknown>;
   onProgress?: (phase: string) => void;
+  /** 远端任务创建成功立即回调（上层据此把 task_id 写入任务存储，供中断恢复）。 */
+  onProviderTaskCreated?: (taskId: string) => void;
   signal?: AbortSignal;
 }
 
@@ -212,6 +251,7 @@ export async function runCustomMediaApi(req: CustomMediaRunRequest): Promise<Cus
     urls = [parsed.url];
   } else {
     providerTaskId = submitted.taskId!;
+    try { req.onProviderTaskCreated?.(providerTaskId); } catch { /* caller progress hook must not break generation */ }
     req.onProgress?.('等待生成…');
     try {
       urls = await customPollTask(api, providerTaskId, {

@@ -31,8 +31,9 @@ export function buildKuaiziH3Payload(input: {
   for (const url of videoUrls) content.push({ type: 'video_url', video_url: { url }, role: 'reference_video' });
   for (const url of audioUrls) content.push({ type: 'audio_url', audio_url: { url }, role: 'reference_audio' });
 
+  // H3 时长 5-15 秒（与 UI/工具说明一致；虽然筷子文档允许 4s，统一按 5 起步避免渠道差异）
   const rawDuration = Math.round(Number(input.duration ?? 5));
-  const duration = Number.isFinite(rawDuration) ? Math.min(15, Math.max(4, rawDuration)) : 5;
+  const duration = Number.isFinite(rawDuration) ? Math.min(15, Math.max(5, rawDuration)) : 5;
   const resolution = String(input.resolution || '2K').toUpperCase() === '768P' ? '768P' : '2K';
   const hasMedia = content.length > 1;
   const requestedRatio = String(input.ratio || 'adaptive');

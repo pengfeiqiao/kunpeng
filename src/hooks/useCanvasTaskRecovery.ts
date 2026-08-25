@@ -35,14 +35,17 @@ import {
 import {
   APIMART_MINIMAX_H3_ENDPOINT,
   APIMART_SEEDREAM_ENDPOINT,
+  APIMART_WAN3_ENDPOINT,
   queryApimartTask,
 } from '@/lib/apimart/client';
+import { kuaiziH3QueryTask } from '@/lib/kuaizi/minimaxH3';
+import { kuaiziWan3QueryTask } from '@/lib/kuaizi/wan3';
+import { customQueryTask, findCustomMediaApi, isCustomMediaEngine } from '@/lib/customMedia/runner';
 
 const ACTIVE = new Set(['queued', 'uploading', 'running', 'downloading']);
 const POLL_INTERVAL_MS = 8_000;
 const STALE_AFTER_MS = 90_000;
 const WORKSHOP_STALE_AFTER_MS = 30_000;
-const MAX_RECOVERY_ATTEMPTS = 30;
 /** 恢复轮询的用户可见等待线：超过后不再说“马上完成”，但仍继续查远端。
  * 视频模型偶发排队会到 20 分钟左右；一到 20 分钟就判失败会丢失迟到结果。 */
 const MAX_TASK_AGE_IMAGE_MS = 10 * 60_000;
@@ -72,7 +75,18 @@ function isApimartMidjourneyTask(task: CanvasTask): boolean {
 }
 
 function isApimartGenerationTask(task: CanvasTask): boolean {
-  return task.endpoint === APIMART_SEEDREAM_ENDPOINT || task.endpoint === APIMART_MINIMAX_H3_ENDPOINT;
+  return task.endpoint === APIMART_SEEDREAM_ENDPOINT
+    || task.endpoint === APIMART_MINIMAX_H3_ENDPOINT
+    || task.endpoint === APIMART_WAN3_ENDPOINT;
+}
+
+/** 筷子系任务按协议分派：Seedance（POST 查询）与 H3/万相（GET 查询）接口不同。 */
+function isKuaiziH3Task(task: CanvasTask): boolean {
+  return task.endpoint === 'kuaizi/minimax-h3';
+}
+
+function isKuaiziWan3Task(task: CanvasTask): boolean {
+  return task.endpoint === 'kuaizi/wan-3.0';
 }
 
 function isDreaminaImageTask(task: CanvasTask): boolean {
@@ -469,6 +483,87 @@ async function recoverOne(task: CanvasTask): Promise<void> {
     }
   }
 
+  if (isKuaiziH3Task(task)) {
+    const h3 = await kuaiziH3QueryTask(task.rhTaskId);
+    const elapsed = Math.max(0, Date.now() - task.createdAt);
+    if (h3.status === 'succeeded') {
+      const url = h3.content?.url;
+      if (!url) throw new RhtvBusinessError('task_failed', '筷子 MiniMax H3 已成功但没有返回视频地址');
+      useCanvasTaskStore.getState().updateTask(task.id, {
+        status: 'downloading', progress: 'H3 已完成，恢复下载视频…', resultUrls: [url],
+      });
+      const paths = await rhtvDownloadAll([url], 'video', task.engineId, (phase) => {
+        useCanvasTaskStore.getState().updateTask(task.id, { status: 'downloading', progress: phase });
+      });
+      finalizeTask(task, paths, [url]);
+      return;
+    }
+    if (h3.status === 'failed') {
+      throw new RhtvBusinessError('task_failed', h3.error?.message || '筷子 MiniMax H3 任务失败');
+    }
+    useCanvasTaskStore.getState().updateTask(task.id, {
+      status: 'running',
+      progress: `H3 后台恢复轮询：${h3.status ?? 'running'} · ${Math.round(elapsed / 1000)}s`,
+      recoveryAttempts: 0,
+    });
+    return;
+  }
+
+  if (isKuaiziWan3Task(task)) {
+    const output = await kuaiziWan3QueryTask(task.rhTaskId);
+    const elapsed = Math.max(0, Date.now() - task.createdAt);
+    if (output.task_status === 'SUCCEEDED') {
+      if (!output.video_url) throw new RhtvBusinessError('task_failed', '筷子 万相3.0 已成功但没有返回 video_url');
+      useCanvasTaskStore.getState().updateTask(task.id, {
+        status: 'downloading', progress: '万相 3.0 已完成，恢复下载视频…', resultUrls: [output.video_url],
+      });
+      const paths = await rhtvDownloadAll([output.video_url], 'video', task.engineId, (phase) => {
+        useCanvasTaskStore.getState().updateTask(task.id, { status: 'downloading', progress: phase });
+      });
+      finalizeTask(task, paths, [output.video_url]);
+      return;
+    }
+    if (output.task_status === 'FAILED' || output.task_status === 'CANCELED') {
+      throw new RhtvBusinessError('task_failed', output.message || output.code || '筷子 万相3.0 任务失败');
+    }
+    useCanvasTaskStore.getState().updateTask(task.id, {
+      status: 'running',
+      progress: `万相 3.0 后台恢复轮询：${output.task_status ?? 'RUNNING'} · ${Math.round(elapsed / 1000)}s`,
+      recoveryAttempts: 0,
+    });
+    return;
+  }
+
+  // 自定义模型插件（custom-media:{插件id}）：按插件自己的 baseUrl/Key 查询
+  if (isCustomMediaEngine(task.engineId)) {
+    const api = findCustomMediaApi(task.engineId);
+    if (!api) {
+      throw new RhtvBusinessError('task_failed', `自定义插件已删除或停用（${task.engineId}），无法恢复远端任务；如远端已出结果请按 taskId 到插件后台手动下载`);
+    }
+    const state = await customQueryTask(api, task.rhTaskId);
+    const elapsed = Math.max(0, Date.now() - task.createdAt);
+    if (state.status === 'succeeded') {
+      if (state.urls.length === 0) throw new RhtvBusinessError('task_failed', `${api.label} 已成功但没有返回产物`);
+      useCanvasTaskStore.getState().updateTask(task.id, {
+        status: 'downloading', progress: `${api.label} 已完成，恢复下载…`, resultUrls: state.urls,
+      });
+      const paths = await rhtvDownloadAll(state.urls, task.kind, task.engineId, (phase) => {
+        useCanvasTaskStore.getState().updateTask(task.id, { status: 'downloading', progress: phase });
+      });
+      finalizeTask(task, paths, state.urls);
+      return;
+    }
+    if (state.status === 'failed') {
+      throw new RhtvBusinessError('task_failed', state.error || `${api.label} 任务失败`);
+    }
+    useCanvasTaskStore.getState().updateTask(task.id, {
+      status: 'running',
+      progress: `${api.label} 后台恢复轮询：${state.status} · ${Math.round(elapsed / 1000)}s`,
+      recoveryAttempts: 0,
+    });
+    return;
+  }
+
   if (isKuaiziTask(task)) {
     const resp = await kuaiziQueryTask(task.rhTaskId);
     const data = resp.data!;
@@ -627,19 +722,16 @@ export function useCanvasTaskRecovery(): void {
               failTask(task, msg);
               recoveredIds.current.delete(task.id);
             } else {
+              // 瞬态错误（网络/5xx/超时）不再按次数判死：付费任务允许迟到，
+              // 持续退避重试直到 taskAgeLimitMs 硬期限（到期由 recoverOne 统一
+              // 抛 RhtvBusinessError 判 failed）。曾经 30 次就放弃，一次几小时
+              // 的断网就会永久丢失已付费的远端任务。
               const attempts = (task.recoveryAttempts ?? 0) + 1;
               useCanvasTaskStore.getState().updateTask(task.id, {
                 recoveryAttempts: attempts,
-                ...(attempts >= MAX_RECOVERY_ATTEMPTS
-                  ? { status: 'failed' as const, error: `恢复重试 ${MAX_RECOVERY_ATTEMPTS} 次仍然失败: ${msg.slice(0, 80)}`, finishedAt: Date.now() }
-                  : { status: 'running' as const, progress: `后台恢复轮询暂时失败(${attempts}/${MAX_RECOVERY_ATTEMPTS})：${msg.slice(0, 80)}` }),
+                status: 'running' as const,
+                progress: `后台恢复轮询暂时失败（第 ${attempts} 次，将持续重试至硬期限）：${msg.slice(0, 80)}`,
               });
-              if (attempts >= MAX_RECOVERY_ATTEMPTS) {
-                if (task.nodeId && isLatestTaskForNode(task)) {
-                  useCanvasStore.getState().updateNode(task.nodeId, { isGenerating: false });
-                }
-                recoveredIds.current.delete(task.id);
-              }
             }
           }
         }));

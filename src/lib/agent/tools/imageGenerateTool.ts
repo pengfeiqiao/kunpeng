@@ -32,8 +32,7 @@ export const imageGenerateTool: Tool = {
         prompt: { type: 'string', description: '完整生图提示词' },
         model: {
           type: 'string',
-          enum: IMAGE_MODELS,
-          description: '可选；省略时使用普通对话底部当前选择的生图模型',
+          description: '可选；省略时使用普通对话底部当前选择的生图模型。内置值：gpt-image-2、seedream-v5-pro、midjourney-v81、midjourney-v82；自定义图片插件用 custom-media:{插件id}（先 media_api_plugin list 查看）',
         },
         aspect_ratio: {
           type: 'string',

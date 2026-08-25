@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
 import { useSettingsStore, type CustomMediaApi } from '@/stores/settingsStore';
+import { resetCustomMediaSelections } from '@/lib/customMedia/runner';
 
 const inputCls =
   'w-full bg-white border border-zinc-200 rounded-md px-2.5 py-1.5 outline-none transition-colors focus:border-zinc-400 text-xs';
@@ -95,9 +96,14 @@ export default function CustomMediaPluginSettings({ kind }: { kind: 'image' | 'v
   const apis = (customMediaApis ?? []).filter((api) => api.kind === kind);
 
   const updateAt = (id: string, next: CustomMediaApi) => {
+    // 停用时重置悬空的普通对话默认选择
+    if (!next.enabled) resetCustomMediaSelections(id);
     setCustomMediaApis((customMediaApis ?? []).map((api) => (api.id === id ? next : api)));
   };
   const removeAt = (id: string) => {
+    // 删除前重置悬空的普通对话默认选择；画布节点/工坊分镜引用保留，
+    // 生成时会得到明确的“插件不存在”错误
+    resetCustomMediaSelections(id);
     setCustomMediaApis((customMediaApis ?? []).filter((api) => api.id !== id));
   };
   const addOne = () => {

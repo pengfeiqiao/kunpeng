@@ -9,7 +9,7 @@
  */
 import { fetch as tauriFetch, ResponseType, Body } from '@tauri-apps/api/http';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
-import { isAmbiguousPaidSubmitStatus, PaidSubmissionUnknownError, PaidTaskCreatedError } from '@/lib/billingSafety';
+import { PaidSubmissionUnknownError, PaidTaskCreatedError } from '@/lib/billingSafety';
 import { rhtvDownloadAll } from '@/lib/rhtv/download';
 import { appendArtifact } from '@/lib/artifacts';
 import { appendGenerationLog } from '@/lib/aigc/genLogger';
@@ -21,6 +21,7 @@ import {
   requireKuaiziApiKey,
   resolveKuaiziMediaRef,
 } from './seedance.ts';
+import { classifyKuaiziSubmitHttpError } from './errors.ts';
 import { buildKuaiziWan3Payload } from './wan3Payload.ts';
 
 export { buildKuaiziWan3Payload, type KuaiziWan3MediaType } from './wan3Payload.ts';
@@ -40,6 +41,8 @@ export interface KuaiziWan3RunRequest {
   linkUrl?: string;
   params?: Record<string, unknown>;
   onProgress?: (phase: string) => void;
+  /** 远端任务创建成功立即回调（上层据此把 task_id 写入任务存储，供中断恢复）。 */
+  onProviderTaskCreated?: (taskId: string) => void;
   signal?: AbortSignal;
 }
 
@@ -51,7 +54,7 @@ export interface KuaiziWan3RunResult {
 
 type KuaiziWan3Status = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED' | 'UNKNOWN';
 
-interface KuaiziWan3Output {
+export interface KuaiziWan3Output {
   task_id?: string;
   task_status?: KuaiziWan3Status;
   video_url?: string;
@@ -86,10 +89,11 @@ async function kuaiziWan3CreateTask(payload: Record<string, unknown>, signal?: A
   const data = res.data as { output?: KuaiziWan3Output; code?: string; message?: string };
   if (!res.ok) {
     const detail = data?.message || data?.code || JSON.stringify(res.data).slice(0, 300);
-    if (isKuaiziWan3Balance(res.status, `${data?.code ?? ''} ${detail}`)) {
-      throw new KuaiziBusinessError('balance', `筷子 万相3.0 余额不足（HTTP ${res.status}），请充值后重试: ${detail}`);
+    const kind = classifyKuaiziSubmitHttpError(res.status, `${data?.code ?? ''} ${detail}`);
+    if (kind === 'rejected_safe') {
+      throw new KuaiziBusinessError('balance', `筷子 万相3.0 创建被拒绝（HTTP ${res.status}，未扣费）: ${detail}`);
     }
-    if (isAmbiguousPaidSubmitStatus(res.status)) {
+    if (kind === 'ambiguous') {
       throw new PaidSubmissionUnknownError('筷子 万相3.0', `HTTP ${res.status}: ${detail}`);
     }
     throw new Error(`筷子 万相3.0 创建任务失败 HTTP ${res.status}: ${detail}`);
@@ -101,7 +105,8 @@ async function kuaiziWan3CreateTask(payload: Record<string, unknown>, signal?: A
   return taskId;
 }
 
-async function kuaiziWan3QueryTask(taskId: string, signal?: AbortSignal): Promise<KuaiziWan3Output> {
+/** 单次查询（恢复钩子也用）。 */
+export async function kuaiziWan3QueryTask(taskId: string, signal?: AbortSignal): Promise<KuaiziWan3Output> {
   const key = getKuaiziApiKey();
   const res = await tauriFetch(`${BASE_URL}${QUERY_PATH}/${encodeURIComponent(taskId)}`, {
     method: 'GET',
@@ -112,8 +117,10 @@ async function kuaiziWan3QueryTask(taskId: string, signal?: AbortSignal): Promis
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   if (!res.ok) {
     const detail = JSON.stringify(res.data).slice(0, 300);
-    if (isKuaiziWan3Balance(res.status, detail)) {
-      throw new KuaiziBusinessError('balance', `筷子 万相3.0 余额不足（HTTP ${res.status}），请充值后重试: ${detail}`);
+    // 查询阶段的 429 是限流（瞬态），不是余额问题——任务已创建，交给轮询退避重试；
+    // 绝不能在这里归为 balance，否则上层会把仍在运行的付费任务误判为可降级而重复提交。
+    if (res.status === 429) {
+      throw new Error(`筷子 万相3.0 查询限流 HTTP 429: ${detail}`);
     }
     throw new Error(`筷子 万相3.0 查询失败 HTTP ${res.status}: ${detail}`);
   }
@@ -194,6 +201,7 @@ export async function runKuaiziWan3Generation(req: KuaiziWan3RunRequest): Promis
 
   req.onProgress?.('提交筷子 万相3.0 任务…');
   const taskId = await kuaiziWan3CreateTask(payload, req.signal);
+  try { req.onProviderTaskCreated?.(taskId); } catch { /* caller progress hook must not break generation */ }
   await appendKuaiziLog({ timestamp: new Date().toISOString(), provider: 'kuaizi-wan3', event: 'create_response', taskId });
 
   let resultPaths: string[];

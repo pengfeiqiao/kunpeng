@@ -86,11 +86,11 @@ test('h3 payload: t2v ratio cannot stay adaptive', () => {
   assert.equal(explicit.ratio, '9:16');
 });
 
-test('h3 payload: clamps duration to 4-15 and resolution to 768P/2K', () => {
+test('h3 payload: clamps duration to 5-15 and resolution to 768P/2K', () => {
   const hi = buildKuaiziH3Payload({ prompt: 'x', duration: 99, resolution: '4K' }) as { duration: number; resolution: string };
   assert.equal(hi.duration, 15);
   assert.equal(hi.resolution, '2K');
   const low = buildKuaiziH3Payload({ prompt: 'x', duration: 1, resolution: '768P' }) as { duration: number; resolution: string };
-  assert.equal(low.duration, 4);
+  assert.equal(low.duration, 5);
   assert.equal(low.resolution, '768P');
 });

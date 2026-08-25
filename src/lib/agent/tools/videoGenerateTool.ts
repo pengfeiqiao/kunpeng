@@ -72,8 +72,7 @@ export const videoGenerateTool: Tool = {
         prompt: { type: 'string', description: `视频提示词。只能引用本次实际传入的素材，图片/视频/音频编号按数组顺序排列。${PERFORMANCE_BRIEF}` },
         engine: {
           type: 'string',
-          enum: ['minimax-h3', 'seedance-2.0', 'seedance-2.0-fast', 'seedance-2.0-mini', 'seedance-2.5', 'wan-3.0'],
-          description: '可选。省略时沿用普通对话底部选择的生视频模型',
+          description: '可选。省略时沿用普通对话底部选择的生视频模型。内置值：minimax-h3、seedance-2.0、seedance-2.0-fast、seedance-2.0-mini、seedance-2.5、wan-3.0；自定义视频插件用 custom-media:{插件id}（先 media_api_plugin list 查看）',
         },
         image_urls: { type: 'array', items: { type: 'string' }, description: '参考图片路径或 URL；MiniMax H3 最多 9 张，万相 3.0 最多 10 张' },
         video_urls: { type: 'array', items: { type: 'string' }, description: '参考视频路径或 URL；MiniMax H3 最多 3 个，万相 3.0 最多 5 个' },

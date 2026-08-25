@@ -248,7 +248,7 @@ export function buildApimartMinimaxH3Payload(input: {
     throw new Error(`MiniMax H3 最多支持 3 段参考音频，当前 ${input.audioUrls!.length} 段。`);
   }
   const durationValue = Math.round(Number(input.duration ?? 5));
-  const duration = Number.isFinite(durationValue) ? Math.min(15, Math.max(4, durationValue)) : 5;
+  const duration = Number.isFinite(durationValue) ? Math.min(15, Math.max(5, durationValue)) : 5;
   const resolution = String(input.resolution || '2K').toUpperCase() === '768P' ? '768P' : '2K';
   const requestedRatio = String(input.aspectRatio || 'adaptive');
   const aspectRatio = H3_RATIOS.has(requestedRatio) ? requestedRatio : 'adaptive';

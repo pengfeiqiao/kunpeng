@@ -25,7 +25,7 @@ import {
   type CanvasTask,
 } from '@/stores/canvasTaskStore';
 import { rhtvSubmit } from '@/lib/rhtv/client';
-import { effectiveRhtvWebappId, rhtvSubmitApp, type RhtvAppNodeInfo } from '@/lib/rhtv/client';
+import { effectiveRhtvWebappId, getRhtvApiKey, rhtvSubmitApp, type RhtvAppNodeInfo } from '@/lib/rhtv/client';
 import { rhtvPollTask } from '@/lib/rhtv/poll';
 import { rhtvResolveMedia } from '@/lib/rhtv/upload';
 import { rhtvResolveMediaForApp } from '@/lib/rhtv/upload';
@@ -1519,7 +1519,7 @@ async function runKuaiziVideoChannel(
 async function runMinimaxH3Generation(req: CoreGenRequest): Promise<CoreGenResult> {
   const settings = useSettingsStore.getState();
   const available: MinimaxH3Channel[] = [];
-  if (resolveApiKey(settings, 'runninghub', settings.runninghubApiKey).trim()) available.push('runninghub');
+  if (getRhtvApiKey()) available.push('runninghub');
   if (hasApimartApiKey()) available.push('apimart');
   if (getKuaiziApiKey()) available.push('kuaizi');
   // 用户在「设置 → 视频与语音」里可以指定 H3 优先渠道；auto 保持按
@@ -1553,6 +1553,7 @@ async function runMinimaxH3Generation(req: CoreGenRequest): Promise<CoreGenResul
               params: req.params,
               signal: args.signal,
               onProgress: args.onProgress,
+              onProviderTaskCreated: args.onProviderTaskCreated,
             }),
           })
         : await runStandardGeneration(req);
@@ -1621,6 +1622,10 @@ async function runCustomMediaGeneration(req: CoreGenRequest): Promise<CoreGenRes
       audioUrls: req.audioUrls,
       params: req.params,
       signal: ac.signal,
+      onProviderTaskCreated: (remoteTaskId) => {
+        providerTaskId = remoteTaskId;
+        update({ rhTaskId: remoteTaskId, status: 'running', progress: `已提交${api.label}任务，等待生成…` });
+      },
       onProgress: (phase) => {
         providerTaskId = providerTaskId || '';
         const status = /下载/.test(phase) ? 'downloading' : /上传/.test(phase) ? 'uploading' : 'running';
@@ -1999,7 +2004,7 @@ async function runWan3Generation(req: CoreGenRequest): Promise<CoreGenResult> {
   // 主渠道顺序：筷子 → RunningHub → APIMart（按已配置的 Key 过滤）
   const available: Wan3Channel[] = WAN3_CHANNEL_PREFERENCE.filter((channel) => {
     if (channel === 'kuaizi') return Boolean(getKuaiziApiKey());
-    if (channel === 'runninghub') return Boolean(resolveApiKey(settings, 'runninghub', settings.runninghubApiKey).trim());
+    if (channel === 'runninghub') return Boolean(getRhtvApiKey());
     return hasApimartApiKey();
   });
   const pref = settings.wan3Channel ?? 'auto';
@@ -2031,6 +2036,7 @@ async function runWan3Generation(req: CoreGenRequest): Promise<CoreGenResult> {
             params: req.params,
             signal: args.signal,
             onProgress: args.onProgress,
+            onProviderTaskCreated: args.onProviderTaskCreated,
           }),
         })
       : channel === 'apimart'

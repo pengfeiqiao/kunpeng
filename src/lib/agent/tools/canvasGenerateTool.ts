@@ -60,8 +60,7 @@ export const canvasGenerateTool: Tool = {
         },
         engine: {
           type: 'string',
-          enum: ENGINE_IDS,
-          description: '引擎 ID',
+          description: `引擎 ID。内置：${ENGINE_IDS.join('、')}；自定义模型插件用 custom-media:{插件id}（先 media_api_plugin list 查看）`,
         },
         prompt: {
           type: 'string',

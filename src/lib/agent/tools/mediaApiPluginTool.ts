@@ -7,6 +7,7 @@
  */
 import type { Tool } from '../types';
 import { useSettingsStore, type CustomMediaApi } from '@/stores/settingsStore';
+import { resetCustomMediaSelections } from '@/lib/customMedia/runner';
 
 function summarize(api: CustomMediaApi): string {
   return `${api.id}｜${api.label}｜${api.kind === 'image' ? '图片' : '视频'}｜${api.modelId}｜${api.baseUrl}｜协议 ${api.protocol}｜${api.enabled ? '启用' : '停用'}｜Key ${api.apiKey || api.credentialId ? '已配置' : '未配置'}`;
@@ -99,9 +100,13 @@ export const mediaApiPluginTool: Tool = {
 
     if (op === 'remove') {
       const removed = apis[index];
+      const reset = resetCustomMediaSelections(id);
       apis.splice(index, 1);
       useSettingsStore.getState().setCustomMediaApis(apis);
-      return { success: true, output: `已删除插件：${removed.label}（custom-media:${removed.id}）` };
+      return {
+        success: true,
+        output: `已删除插件：${removed.label}（custom-media:${removed.id}）${reset.length > 0 ? `。${reset.join('；')}` : ''}。画布节点/工坊分镜里残留的引用会在生成时得到明确提示。`,
+      };
     }
 
     if (op === 'toggle') {
@@ -109,8 +114,12 @@ export const mediaApiPluginTool: Tool = {
         ...apis[index],
         enabled: typeof params.enabled === 'boolean' ? params.enabled : !apis[index].enabled,
       };
+      const reset = apis[index].enabled ? [] : resetCustomMediaSelections(id);
       useSettingsStore.getState().setCustomMediaApis(apis);
-      return { success: true, output: `已${apis[index].enabled ? '启用' : '停用'}插件：${summarize(apis[index])}` };
+      return {
+        success: true,
+        output: `已${apis[index].enabled ? '启用' : '停用'}插件：${summarize(apis[index])}${reset.length > 0 ? `。${reset.join('；')}` : ''}`,
+      };
     }
 
     if (op === 'update') {
@@ -127,9 +136,10 @@ export const mediaApiPluginTool: Tool = {
       if (next.kind === 'video' && next.protocol === 'openai-images') {
         return { success: false, output: '', error: '视频插件只支持 apimart-async 异步任务协议。' };
       }
+      const reset = next.enabled ? [] : resetCustomMediaSelections(id);
       apis[index] = next;
       useSettingsStore.getState().setCustomMediaApis(apis);
-      return { success: true, output: `已更新插件：${summarize(next)}` };
+      return { success: true, output: `已更新插件：${summarize(next)}${reset.length > 0 ? `。${reset.join('；')}` : ''}` };
     }
 
     return { success: false, output: '', error: `不支持的 op: ${op}` };
