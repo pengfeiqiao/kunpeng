@@ -57,6 +57,7 @@ import {
 } from '@/lib/kuaizi/seedance';
 import { runKuaiziMinimaxH3Generation } from '@/lib/kuaizi/minimaxH3';
 import { runKuaiziWan3Generation } from '@/lib/kuaizi/wan3';
+import { findCustomMediaApi, isCustomMediaEngine, runCustomMediaApi, CustomMediaTaskFailedError } from '@/lib/customMedia/runner';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveApiKey } from '@/lib/credentials';
 import {
@@ -1575,6 +1576,103 @@ async function runMinimaxH3Generation(req: CoreGenRequest): Promise<CoreGenResul
   return runVideoChannelCascade({ available, first, runChannel });
 }
 
+// ── 自定义模型插件（custom-media:{id}，issue #7）────────────────────────────────
+
+async function runCustomMediaGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
+  const api = findCustomMediaApi(req.engineId);
+  if (!api) {
+    return {
+      success: false, taskId: '', resultPaths: [], resultUrls: [],
+      error: `未找到启用的自定义模型插件：${req.engineId}。请在「设置 → 自定义模型插件」中添加或启用。`,
+    };
+  }
+  const refs = req.referenceUrls ?? [];
+  const taskId = useCanvasTaskStore.getState().addTask({
+    nodeId: req.nodeId ?? '',
+    kind: api.kind,
+    engineId: req.engineId,
+    engineLabel: `${api.label}（自定义插件）`,
+    endpoint: `custom-media/${api.modelId}`,
+    prompt: req.prompt,
+    referenceUrls: refs.length > 0 ? refs : undefined,
+    params: req.params,
+    projectId: req.projectId,
+    workshopShotNo: req.workshopShotNo,
+    workshopShotKind: req.workshopShotKind,
+    workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    inFlight: true,
+  });
+  const ac = new AbortController();
+  taskAborts.set(taskId, ac);
+  try { req.onTaskCreated?.(taskId); } catch { /* caller callback must not break a paid task */ }
+  const update = (patch: Partial<CanvasTask>) =>
+    useCanvasTaskStore.getState().updateTask(taskId, patch);
+  let providerTaskId = '';
+
+  try {
+    await acquireSlot(taskId);
+    if (ac.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    update({ status: 'running', progress: `准备${api.label}…` });
+    const result = await runCustomMediaApi({
+      engineId: req.engineId,
+      prompt: req.prompt,
+      referenceUrls: refs,
+      videoUrls: req.videoUrls,
+      audioUrls: req.audioUrls,
+      params: req.params,
+      signal: ac.signal,
+      onProgress: (phase) => {
+        providerTaskId = providerTaskId || '';
+        const status = /下载/.test(phase) ? 'downloading' : /上传/.test(phase) ? 'uploading' : 'running';
+        update({ status, progress: phase });
+      },
+    });
+    providerTaskId = result.providerTaskId ?? '';
+    update({
+      status: 'succeeded',
+      progress: '完成',
+      rhTaskId: providerTaskId || undefined,
+      resultPaths: result.resultPaths,
+      finishedAt: Date.now(),
+    });
+    return {
+      success: true,
+      taskId,
+      resultPaths: result.resultPaths,
+      resultUrls: result.resultUrls,
+      engineKind: api.kind,
+      providerTaskId: providerTaskId || undefined,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      update({ status: 'failed', error: '已取消', finishedAt: Date.now() });
+      return { success: false, taskId, resultPaths: [], resultUrls: [], engineKind: api.kind, error: '已取消' };
+    }
+    if (err instanceof PaidTaskCreatedError) providerTaskId = err.taskId;
+    // 已有远端任务且非 failed 终态：保持归属转后台，不做任何重发（防重复扣费）
+    if (providerTaskId && !(err instanceof CustomMediaTaskFailedError)) {
+      update({ status: 'running', rhTaskId: providerTaskId, progress: '连接暂时中断，后台继续查询结果…', error: undefined });
+      return {
+        success: false, taskId, resultPaths: [], resultUrls: [], engineKind: api.kind,
+        error: `${message}（后台仍在继续查询结果）`, providerTaskId, backgroundPending: true,
+      };
+    }
+    const submissionUncertain = err instanceof PaidSubmissionUnknownError || mustNotAutoResubmit(err);
+    update({ status: 'failed', error: message, progress: message, finishedAt: Date.now() });
+    return {
+      success: false, taskId, resultPaths: [], resultUrls: [], engineKind: api.kind, error: message,
+      providerTaskId: providerTaskId || undefined,
+      providerFailed: err instanceof CustomMediaTaskFailedError,
+      submissionUncertain,
+    };
+  } finally {
+    taskAborts.delete(taskId);
+    useCanvasTaskStore.getState().updateTask(taskId, { inFlight: false });
+    releaseSlot();
+  }
+}
+
 // ── 万相 3.0（wan-3.0）：筷子主渠道 + RunningHub + APIMart 三渠道容灾 ──────────
 
 const WAN3_RHTV_ENDPOINT = 'alibaba/wan-3.0/reference-to-video';
@@ -1959,6 +2057,7 @@ async function runWan3Generation(req: CoreGenRequest): Promise<CoreGenResult> {
 }
 
 export async function runGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
+  if (isCustomMediaEngine(req.engineId)) return runCustomMediaGeneration(req);
   if (isMidjourneyEngine(req.engineId)) return runMidjourneyGeneration(req);
   if (req.engineId === 'minimax-hailuo-h3') return runMinimaxH3Generation(req);
   if (req.engineId === 'wan-3.0') return runWan3Generation(req);
@@ -2930,14 +3029,17 @@ async function runSeedance25Generation(req: CoreGenRequest): Promise<CoreGenResu
 // ── Canvas entry: node semantics on top of runGeneration ─────────────────────
 export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenResult> {
   const isDreaminaSeedance25 = req.engineId === DREAMINA_SEEDANCE_25_ENGINE_ID;
+  const isCustomMediaRoute = isCustomMediaEngine(req.engineId);
   const isKuaiziRoute = req.engineId === KUAIZI_SEEDANCE_ENGINE_ID ||
     (isSeedanceVideoEngine(req.engineId) && shouldUseKuaiziForSeedance());
   const isMidjourneyRoute = isMidjourneyEngine(req.engineId);
   const dedicatedEngineKind = isMidjourneyRoute
     ? 'image' as const
-    : isKuaiziRoute || isDreaminaSeedance25
-      ? 'video' as const
-      : undefined;
+    : isCustomMediaRoute
+      ? (findCustomMediaApi(req.engineId)?.kind ?? 'image') as 'image' | 'video'
+      : isKuaiziRoute || isDreaminaSeedance25
+        ? 'video' as const
+        : undefined;
   // Midjourney V8.2 is an APIMart-only route and deliberately does not live in
   // the generic RunningHub canvas engine registry. Do not reject it before
   // runGeneration() can hand it to the dedicated APIMart implementation.

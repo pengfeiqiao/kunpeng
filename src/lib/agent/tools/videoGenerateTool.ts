@@ -3,6 +3,7 @@ import { runGeneration } from '@/lib/canvasGen';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { DREAMINA_SEEDANCE_25_ENGINE_ID } from '@/lib/dreamina/video';
 import { PERFORMANCE_BRIEF } from '@/lib/videoPrompt/performance';
+import { findCustomMediaApi } from '@/lib/customMedia/runner';
 
 type ChatVideoEngine =
   | 'minimax-h3'
@@ -105,6 +106,48 @@ export const videoGenerateTool: Tool = {
       ?? useSettingsStore.getState().chatVideoModel
       ?? 'seedance-2.0',
     ) as ChatVideoEngine;
+
+    // 自定义视频插件（issue #7）：custom-media:{id} 直接走插件执行器
+    if (selected.startsWith('custom-media:')) {
+      const api = findCustomMediaApi(selected);
+      if (!api || api.kind !== 'video') {
+        return { success: false, output: '', error: `未找到启用的自定义视频插件：${selected}（可在设置 → 自定义模型插件中检查）` };
+      }
+      const rawDuration = Number(params.duration ?? 5);
+      const duration = Number.isFinite(rawDuration) ? Math.min(30, Math.max(2, Math.round(rawDuration || 5))) : 5;
+      const result = await runGeneration({
+        engineId: selected,
+        prompt,
+        referenceUrls: imageUrls,
+        videoUrls,
+        audioUrls,
+        params: {
+          resolution: String(params.resolution ?? '720P'),
+          duration: String(duration),
+          ratio: String(params.ratio ?? 'adaptive'),
+        },
+      });
+      if (!result.success) {
+        return {
+          success: false,
+          output: '',
+          error: result.error || `${api.label} 视频生成失败`,
+          ...(result.automaticRetryBlocked ? { terminal: true, terminalMessage: result.error } : {}),
+        };
+      }
+      const paths = result.resultPaths;
+      return {
+        success: true,
+        terminal: true,
+        terminalMessage: `${api.label} 视频已生成。\n${paths.map((path) => `![生成视频](${path})`).join('\n')}`,
+        output: [
+          `${api.label}（自定义插件）视频生成完成。`,
+          ...paths.map((path, index) => `${paths.length > 1 ? `视频 ${index + 1}` : '视频'}：${path}`),
+          '结果已保存到本地并进入产物栏；本次没有创建或修改画布节点。',
+        ].join('\n'),
+      };
+    }
+
     const normalized = normalizeEngine(selected, hasReferences);
     if (!normalized.engineId) {
       return { success: false, output: '', error: normalized.error || '无法确定视频模型' };

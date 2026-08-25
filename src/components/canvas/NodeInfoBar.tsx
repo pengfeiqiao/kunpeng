@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useCanvasStore } from '@/stores/canvasStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { ImageIcon, Film, Sparkles, ArrowUp, ChevronDown, Maximize2, X, Check, Clock, AudioLines, Aperture, Palette, Link2 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { TextNodeData, ImageNodeData } from '@/types/canvas';
@@ -323,6 +324,7 @@ function usePriceEstimate(endpoint: string | null, params: Record<string, unknow
 
 export default function NodeInfoBar() {
   const selectedNodeId = useCanvasStore((state) => state.selectedNodeId);
+  const customMediaApis = useSettingsStore((state) => state.customMediaApis);
   const node = useCanvasStore((state) => (
     state.selectedNodeId
       ? state.nodes.find((item) => item.id === state.selectedNodeId) ?? null
@@ -759,7 +761,9 @@ export default function NodeInfoBar() {
         ? `midjourney-${mjVersion.replace('.', '')}`
         : imgSource === 'seedream-v5-pro'
           ? 'seedream-v5-pro'
-          : 'gpt-image-2';
+          : imgSource.startsWith('custom-media:')
+            ? imgSource
+            : 'gpt-image-2';
       const result = await generateForNode({
         nodeId: node.id,
         engineId: imageEngineId,
@@ -1032,6 +1036,9 @@ export default function NodeInfoBar() {
                 { value: 'seedream-v5-pro', label: 'Seedream 5 Pro' },
                 { value: 'midjourney', label: 'Midjourney' },
                 { value: 'dreamina', label: '即梦' },
+                ...(customMediaApis ?? [])
+                  .filter((api) => api.kind === 'image' && api.enabled)
+                  .map((api) => ({ value: `custom-media:${api.id}`, label: api.label })),
               ]}
               title="引擎（GPT/Seedream 使用智能通道；Midjourney 走 APIMart）"
             />
@@ -1633,6 +1640,7 @@ export default function NodeInfoBar() {
       const isMiniModel = vModel.includes('mini');
       const isH3Model = vModel === 'minimax-h3';
       const isWan3Model = vModel === 'wan-3.0';
+      const isCustomMediaModel = vModel.startsWith('custom-media:');
       const isSeedance25Model = vModel === 'seedance-2.5';
       // 只有图/音/视频参考全部为空才落 t2v——只连音频/视频（无图）时必须
       // 保持 multimodal 引擎，否则参考素材被 t2v 引擎静默丢弃。
@@ -1648,6 +1656,9 @@ export default function NodeInfoBar() {
       } else if (isWan3Model) {
         // 万相 3.0 全能参考单端点：文生/图/视频/音频/文档/网页同引擎 id
         engineId = 'wan-3.0';
+      } else if (isCustomMediaModel) {
+        // 自定义视频插件：引擎 id 即 custom-media:{插件id}
+        engineId = vModel;
       } else if ((vMode === 't2v' && refVideoUrls.length === 0) || !hasAnyRef) {
         engineId = isMiniModel ? 'seedance-2.0-mini-t2v' : 'seedance-2.0-t2v';
       } else {
@@ -1676,6 +1687,8 @@ export default function NodeInfoBar() {
           ? { resolution: '2K', ratio: vRatio, duration: String(Math.min(15, Math.max(5, Math.round(vDuration)))) }
           : isWan3Model
           ? { resolution: effectiveVRes, ratio: vRatio, duration: String(Math.min(30, Math.max(2, Math.round(vDuration)))), generateAudio: vGenAudio }
+          : isCustomMediaModel
+          ? { resolution: effectiveVRes, ratio: vRatio, duration: String(Math.min(30, Math.max(2, Math.round(vDuration)))) }
           : { resolution: effectiveVRes, ratio: vRatio, duration: String(vDuration), generateAudio: vGenAudio, realPersonMode: true, ...(isMiniModel ? { mode: 'mini' } : isFastModel ? { mode: 'fast' } : {}), ...(vSeed ? { seed: Number(vSeed) } : {}) },
       });
       if (!result.success) {
@@ -2208,6 +2221,9 @@ export default function NodeInfoBar() {
                   { value: 'seedance-2.0-mini', label: 'Seedance 2.0 Mini' },
                   { value: 'minimax-h3', label: 'MiniMax H3' },
                   { value: 'wan-3.0', label: '万相 3.0' },
+                  ...(customMediaApis ?? [])
+                    .filter((api) => api.kind === 'video' && api.enabled)
+                    .map((api) => ({ value: `custom-media:${api.id}`, label: api.label })),
                 ]}
                 title="模型"
               />

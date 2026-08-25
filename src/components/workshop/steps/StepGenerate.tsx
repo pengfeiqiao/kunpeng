@@ -12,6 +12,7 @@ import { confirm as tauriConfirm, message as tauriMessage, open as openDialog } 
 import { useShallow } from 'zustand/react/shallow';
 import { getSceneReferencePaths, useWorkshopStore } from '@/stores/workshopStore';
 import { useCanvasStore } from '@/stores/canvasStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { nanoid } from 'nanoid';
 import { ensureVideoThumb, useVideoThumb } from '@/lib/canvas/videoThumbs';
 import { MAX_CONCURRENT_CANVAS_TASKS, useCanvasTaskStore } from '@/stores/canvasTaskStore';
@@ -53,6 +54,17 @@ type ShotVideoContext = Pick<
 
 function effectiveVideoModel(shot: WsShot, data: ShotVideoContext): string {
   return shot.videoModel || data.videoModel || 'seedance-2.0';
+}
+
+/** 自定义视频插件选项（issue #7）：启用的视频插件追加到模型下拉尾部 */
+function useCustomVideoModelOptions(): { value: string; label: string }[] {
+  const customMediaApis = useSettingsStore((s) => s.customMediaApis);
+  return useMemo(
+    () => (customMediaApis ?? [])
+      .filter((api) => api.kind === 'video' && api.enabled)
+      .map((api) => ({ value: `custom-media:${api.id}`, label: api.label })),
+    [customMediaApis],
+  );
 }
 
 function effectiveVideoPromptTemplate(
@@ -190,6 +202,7 @@ export default function StepGenerate() {
   })));
   const project = useWorkshopStore((s) => s.project);
   const generateAll = useWorkshopStore((s) => s.generateAll);
+  const customVideoOptions = useCustomVideoModelOptions();
   const setVideoRatio = useWorkshopStore((s) => s.setVideoRatio);
   const setVideoModel = useWorkshopStore((s) => s.setVideoModel);
   const setVideoPromptTemplate = useWorkshopStore((s) => s.setVideoPromptTemplate);
@@ -325,6 +338,9 @@ export default function StepGenerate() {
             <option value="minimax-h3">MiniMax H3</option>
             <option value="seedance-2.0-mini">Seedance 2.0 Mini</option>
             <option value="wan-3.0">万相 3.0</option>
+            {customVideoOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
           </select>
         </label>
         <label className="block min-w-[130px]">
@@ -426,6 +442,7 @@ function ShotAudioRow({ audios, limitSec = 15 }: { audios: NonNullable<WsShot['g
 }
 
 function ShotCard({ shot, checked, onToggle }: { shot: WsShot; checked: boolean; onToggle: () => void }) {
+  const customVideoOptions = useCustomVideoModelOptions();
   // 只订视频生成上下文子集（ShotVideoContext）：分镜文本等无关写入不会让全部卡片重渲染
   const data = useWorkshopStore(useShallow((s) => s.data && ({
     videoModel: s.data.videoModel,
@@ -730,12 +747,15 @@ function ShotCard({ shot, checked, onToggle }: { shot: WsShot; checked: boolean;
             className="shrink-0 px-1 py-0.5 rounded text-[10px] bg-[var(--canvas-panel)] border border-[var(--canvas-node-border)] text-[var(--canvas-text-2)] focus:outline-none focus-visible:border-[var(--canvas-accent)]"
             title={shot.videoModel ? `单独模型: ${shot.videoModel}` : `继承全局: ${data?.videoModel ?? 'Seedance 2.0'}`}
           >
-            <option value="">{data?.videoModel === 'seedance-2.5' ? '全局(2.5)' : data?.videoModel === 'seedance-2.0-mini' ? '全局(Mini)' : data?.videoModel === 'minimax-h3' ? '全局(H3)' : data?.videoModel === 'wan-3.0' ? '全局(万相3)' : '全局(2.0)'}</option>
+            <option value="">{data?.videoModel === 'seedance-2.5' ? '全局(2.5)' : data?.videoModel === 'seedance-2.0-mini' ? '全局(Mini)' : data?.videoModel === 'minimax-h3' ? '全局(H3)' : data?.videoModel === 'wan-3.0' ? '全局(万相3)' : data?.videoModel?.startsWith('custom-media:') ? '全局(插件)' : '全局(2.0)'}</option>
             <option value="seedance-2.0">Seedance 2.0</option>
             <option value="seedance-2.5">Seedance 2.5</option>
             <option value="minimax-h3">MiniMax H3</option>
             <option value="seedance-2.0-mini">Mini</option>
             <option value="wan-3.0">万相 3.0</option>
+            {customVideoOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
           </select>
           <select
             value={shot.videoRatio ?? ''}

@@ -1482,6 +1482,8 @@ export const useWorkshopStore = create<WorkshopState>((set, get) => ({
     const isH3 = effectiveModel === 'minimax-h3';
     // 万相 3.0 全能参考单端点：文生/图/视频/音频参考同引擎 id
     const isWan3 = effectiveModel === 'wan-3.0';
+    // 自定义视频插件（issue #7）：引擎 id 即 custom-media:{插件id}
+    const isCustomMedia = effectiveModel.startsWith('custom-media:');
     const engineId = kind === 'image'
       ? 'gpt-image-2'
       : isSeedance25
@@ -1490,11 +1492,13 @@ export const useWorkshopStore = create<WorkshopState>((set, get) => ({
         ? 'minimax-hailuo-h3'
         : isWan3
           ? 'wan-3.0'
-          : isMini
-            ? (refs.length > 0 ? 'seedance-2.0-mini-i2v' : 'seedance-2.0-mini-t2v')
-            : (refs.length > 0 ? 'seedance-2.0' : 'seedance-2.0-t2v');
+          : isCustomMedia
+            ? effectiveModel
+            : isMini
+              ? (refs.length > 0 ? 'seedance-2.0-mini-i2v' : 'seedance-2.0-mini-t2v')
+              : (refs.length > 0 ? 'seedance-2.0' : 'seedance-2.0-t2v');
 
-    if (kind === 'video' && refs.length > 0 && !isH3 && !isWan3) {
+    if (kind === 'video' && refs.length > 0 && !isH3 && !isWan3 && !isCustomMedia) {
       const requiredRefs = refs.map((_, i) => ({ index: i + 1, label: refLabels[i] ?? `参考图 ${i + 1}` }));
       const validation = validateSeedancePrompt(finalPrompt, {
         refCount: refs.length,
@@ -1566,6 +1570,13 @@ export const useWorkshopStore = create<WorkshopState>((set, get) => ({
             : isWan3
               ? {
                   // 万相 3.0：480P/720P/1080P，时长 2-30
+                  resolution: '720P',
+                  duration: String(Math.min(30, Math.max(2, shot.durationSec ?? 5))),
+                  ratio: effectiveRatio!,
+                }
+            : isCustomMedia
+              ? {
+                  // 自定义视频插件：通用分辨率/比例/时长透传
                   resolution: '720P',
                   duration: String(Math.min(30, Math.max(2, shot.durationSec ?? 5))),
                   ratio: effectiveRatio!,

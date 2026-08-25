@@ -9,7 +9,6 @@ import type { AgentMeta } from '@/types/agent';
 
 /** 生图 API 提供商 */
 export type ImageProvider = 'dmxapi' | 'aihubmix' | 'zexapi';
-
 /** 固化的提供商信息 */
 export const IMAGE_PROVIDERS: Record<ImageProvider, { label: string; baseUrl: string }> = {
   dmxapi: { label: 'DMXAPI', baseUrl: 'https://www.dmxapi.cn' },
@@ -43,6 +42,30 @@ export interface ImageApiSlot {
   priority: number;
   mode?: 'text-to-image' | 'image-to-image';
   tier?: 'cheap' | 'standard';
+}
+
+/**
+ * 自定义图片/视频模型插件（issue #7）：像语言模型一样手动编辑
+ * base_url + model_id 接入三方模型，也可由 agent 代为配置。
+ * 引擎 id 约定 `custom-media:{id}`，由 runCustomMediaGeneration 统一执行。
+ *
+ * 协议：
+ * - openai-images：POST {baseUrl}/v1/images/generations 同步返回 b64/url（OpenAI Images 兼容）
+ * - apimart-async：POST {baseUrl}/v1/{images|videos}/generations 拿 task_id，
+ *   轮询 GET {baseUrl}/v1/tasks/{task_id}（APIMart/aggregator 通用异步任务协议）
+ */
+export interface CustomMediaApi {
+  id: string;
+  label: string;
+  kind: 'image' | 'video';
+  baseUrl: string;
+  modelId: string;
+  /** @deprecated 兼容路径：优先用 credentialId 引用凭证注册表，apiKey 仅作回退。 */
+  apiKey: string;
+  /** 引用凭证注册表（settingsStore.credentials）中的凭证；读取时优先于 apiKey。 */
+  credentialId?: string;
+  protocol: 'openai-images' | 'apimart-async';
+  enabled: boolean;
 }
 
 /**
@@ -306,8 +329,8 @@ interface SettingsState {
 
   // Composer model preferences. These guide normal-chat generation tools;
   // canvas/workshop nodes keep their own per-node model settings.
-  chatImageModel: 'gpt-image-2' | 'seedream-v5-pro' | 'midjourney-v81' | 'midjourney-v82';
-  chatVideoModel: 'seedance-2.0' | 'seedance-2.0-fast' | 'seedance-2.0-mini' | 'seedance-2.5' | 'minimax-h3' | 'omni-mg-animation' | 'wan-3.0';
+  chatImageModel: 'gpt-image-2' | 'seedream-v5-pro' | 'midjourney-v81' | 'midjourney-v82' | `custom-media:${string}`;
+  chatVideoModel: 'seedance-2.0' | 'seedance-2.0-fast' | 'seedance-2.0-mini' | 'seedance-2.5' | 'minimax-h3' | 'omni-mg-animation' | 'wan-3.0' | `custom-media:${string}`;
   setChatImageModel: (model: SettingsState['chatImageModel']) => void;
   setChatVideoModel: (model: SettingsState['chatVideoModel']) => void;
 
@@ -340,6 +363,9 @@ interface SettingsState {
 
   // 生图 API 槽位（多 API 降级链）
   imageApiSlots: ImageApiSlot[];
+  /** 自定义图片/视频模型插件（issue #7），引擎 id 为 custom-media:{id}。 */
+  customMediaApis: CustomMediaApi[];
+  setCustomMediaApis: (apis: CustomMediaApi[]) => void;
   setImageApiSlots: (slots: ImageApiSlot[]) => void;
   // 测速缓存（slotId → {latencyMs, testedAt}）
   imageApiLatency: Record<string, { latencyMs: number; testedAt: number }>;
@@ -565,6 +591,8 @@ export const useSettingsStore = create<SettingsState>()(
 
       // 生图 API 槽位
       imageApiSlots: [],
+      customMediaApis: [],
+      setCustomMediaApis: (customMediaApis) => set({ customMediaApis }),
       setImageApiSlots: (imageApiSlots) =>
         set((state) => {
           // 槽位挂了 credentialId 时，把内联 apiKey 的修改镜像写回凭证
@@ -832,6 +860,7 @@ export const useSettingsStore = create<SettingsState>()(
         result.runninghubIntlApiKey = result.runninghubIntlApiKey ?? '';
         result.runninghubCustomWebappId = result.runninghubCustomWebappId ?? '';
         result.webSearchApiMode = result.webSearchApiMode ?? 'auto';
+        result.customMediaApis = result.customMediaApis ?? [];
         result.webSearchCustomBaseUrl = result.webSearchCustomBaseUrl ?? '';
         result.webSearchCustomApiKey = result.webSearchCustomApiKey ?? '';
         result.webSearchCustomModel = result.webSearchCustomModel ?? '';

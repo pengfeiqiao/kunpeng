@@ -39,6 +39,21 @@ export default function ComposerModelPicker({ disabled }: { disabled?: boolean }
   const setChatImageModel = useSettingsStore((s) => s.setChatImageModel);
   const chatVideoModel = useSettingsStore((s) => s.chatVideoModel);
   const setChatVideoModel = useSettingsStore((s) => s.setChatVideoModel);
+  const customMediaApis = useSettingsStore((s) => s.customMediaApis);
+
+  // 自定义模型插件（issue #7）：启用的插件追加到图片/视频模型列表尾部
+  const imageModels = useMemo(() => [
+    ...IMAGE_MODELS,
+    ...(customMediaApis ?? [])
+      .filter((api) => api.kind === 'image' && api.enabled)
+      .map((api) => ({ value: `custom-media:${api.id}` as const, label: api.label, detail: `自定义插件 · ${api.modelId}` })),
+  ], [customMediaApis]);
+  const videoModels = useMemo(() => [
+    ...VIDEO_MODELS,
+    ...(customMediaApis ?? [])
+      .filter((api) => api.kind === 'video' && api.enabled)
+      .map((api) => ({ value: `custom-media:${api.id}` as const, label: api.label, detail: `自定义插件 · ${api.modelId}` })),
+  ], [customMediaApis]);
 
   useEffect(() => {
     if (!open) return;
@@ -133,10 +148,10 @@ export default function ComposerModelPicker({ disabled }: { disabled?: boolean }
                   </div>
                 ));
               })()}
-              {tab === 'image' && IMAGE_MODELS.map((model) => (
+              {tab === 'image' && imageModels.map((model) => (
                 <ModelRow key={model.value} {...model} active={chatImageModel === model.value} onClick={() => setChatImageModel(model.value)} />
               ))}
-              {tab === 'video' && VIDEO_MODELS.map((model) => (
+              {tab === 'video' && videoModels.map((model) => (
                 <ModelRow key={model.value} {...model} active={chatVideoModel === model.value} onClick={() => setChatVideoModel(model.value)} />
               ))}
             </div>

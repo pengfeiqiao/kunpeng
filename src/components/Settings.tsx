@@ -11,6 +11,7 @@ import { invoke } from '@tauri-apps/api/tauri';
 import { open as openDialog, save as saveDialog, message as tauriMessage } from '@tauri-apps/api/dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/api/fs';
 import { SkillLibrary } from './skills';
+import CustomMediaPluginSettings from './CustomMediaPluginSettings';
 import LogPanel from './LogPanel';
 import ProviderSettings from './settings/ProviderSettings';
 import ImageApiSettings from './settings/ImageApiSettings';
@@ -421,6 +422,7 @@ const SETTINGS_EXPORT_CREDENTIAL_KEYS = new Set([
   'cosSecretKey',
   'providerApiKeys',
   'imageApiSlots', // slots carry per-channel apiKey
+  'customMediaApis', // plugins carry per-entry apiKey
   'credentials',
   'credentialRefs',
 ]);
@@ -628,10 +630,18 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
           />
         </div>
       </CollapsibleSection>
+
+      <CollapsibleSection title="自定义图片模型插件" description="以 base_url + model_id 接入三方生图模型（issue #7）；也可让对话里的 Agent 代为配置" defaultOpen={false}>
+        <CustomMediaPluginSettings kind="image" />
+      </CollapsibleSection>
       </>}
 
       {/* 视频生成 */}
       {section === 'videos' && <>
+      <CollapsibleSection title="自定义视频模型插件" description="以 base_url + model_id 接入三方生视频模型（issue #7）；也可让对话里的 Agent 代为配置" defaultOpen={false}>
+        <CustomMediaPluginSettings kind="video" />
+      </CollapsibleSection>
+
       <CollapsibleSection title="视频引擎" description="Seedance 2.0 与 MiniMax H3 的通道选择；画布、工坊、剪辑与普通对话共用" defaultOpen>
         <div className="space-y-4">
           <div>
