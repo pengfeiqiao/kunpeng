@@ -12,6 +12,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/tauri';
 import { open as openDialog, message as tauriMessage } from '@tauri-apps/api/dialog';
 import { copyFile } from '@tauri-apps/api/fs';
 import { listArtifacts, type ArtifactEntry, type ArtifactType } from '@/lib/artifacts';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useVideoThumb } from '@/lib/canvas/videoThumbs';
 import { useProjectStore } from '@/stores/projectStore';
 import { useCanvasStore } from '@/stores/canvasStore';
@@ -50,6 +51,7 @@ export default function ArtifactLibrary() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const projects = useProjectStore((s) => s.projects);
   const setActiveView = useChatStore((s) => s.setActiveView);
+  const sidebarCollapsed = useSettingsStore((s) => s.sidebarCollapsed);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -158,7 +160,8 @@ export default function ArtifactLibrary() {
     <div className="flex-1 flex flex-col bg-stone-50 min-h-0">
       {/* Header / filters */}
       <div className="px-8 pt-6 pb-3 border-b border-stone-200 bg-white">
-        <div className="flex items-center justify-between mb-4">
+        {/* 收起时左移让位给 App 层全局 SidebarHandle（浮于左上角，与标题同栏）；padding 不参与 justify-between 分配，标题仍左对齐 */}
+        <div className={`flex items-center justify-between mb-4${sidebarCollapsed ? ' pl-5' : ''}`}>
           <div>
             <h1 className="text-xl font-semibold text-stone-800">产物库</h1>
             <p className="text-[13px] text-stone-400 mt-0.5">

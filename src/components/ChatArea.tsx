@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, Menu, PanelRight } from 'lucide-react';
+import { AlertCircle, PanelRight } from 'lucide-react';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import { useChatStore, useSettingsStore } from '@/stores';
@@ -37,7 +37,7 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
   const decisionHistoryLength = useAskUserStore((state) => state.history.length);
 
   const currentSession = useChatStore((s) => s.sessions.find(ss => ss.id === s.currentSessionId));
-  const { sidebarCollapsed, toggleSidebar, sessionTitles } = useSettingsStore();
+  const { sidebarCollapsed, sessionTitles } = useSettingsStore();
   const { playNotification } = useSound();
   const listRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -160,15 +160,8 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
     <div className="relative flex h-full flex-col bg-[rgb(var(--c-bg))]">
       <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-[rgb(var(--c-border))] px-4">
         <div className="flex min-w-0 items-center gap-2.5">
-          {sidebarCollapsed && (
-            <button
-              onClick={toggleSidebar}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-[rgb(var(--c-text-muted))] transition-colors hover:bg-[rgb(var(--c-border))] hover:text-[rgb(var(--c-text))]"
-              title="展开侧栏"
-            >
-              <Menu size={17} />
-            </button>
-          )}
+          {/* 收起时留原把手等宽占位：App 层全局 SidebarHandle 浮在此处，标题不位移 */}
+          {sidebarCollapsed && <div className="h-8 w-8 shrink-0" />}
           <div className="min-w-0">
             <h1 className="flex min-w-0 items-center gap-2 text-[14px] font-medium text-[rgb(var(--c-text))]">
               <span className="truncate">{displayTitle}</span>
