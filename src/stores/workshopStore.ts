@@ -414,6 +414,7 @@ interface WorkshopState {
   setVideoRatio: (ratio: string) => void;
   /** 设置全局视频模型（分镜未单独设置时 fallback） */
   setVideoModel: (model: string) => void;
+  setImageModel: (model: string) => void;
   /** 设置全局视频提示词模板（分镜未单独设置时 fallback） */
   setVideoPromptTemplate: (template: 'legacy' | 'universal') => void;
 
@@ -1193,6 +1194,13 @@ export const useWorkshopStore = create<WorkshopState>((set, get) => ({
     get().scheduleSave();
   },
 
+  setImageModel: (model) => {
+    const { data } = get();
+    if (!data) return;
+    set({ data: { ...data, imageModel: model || undefined } });
+    get().scheduleSave();
+  },
+
   setVideoPromptTemplate: (template) => {
     const { data } = get();
     if (!data) return;
@@ -1484,8 +1492,10 @@ export const useWorkshopStore = create<WorkshopState>((set, get) => ({
     const isWan3 = effectiveModel === 'wan-3.0';
     // 自定义视频插件（issue #7）：引擎 id 即 custom-media:{插件id}
     const isCustomMedia = effectiveModel.startsWith('custom-media:');
+    // 生图模型：默认 gpt-image-2 智能路由池；自定义图片插件直接透传引擎 id
+    const imageEngine = data.imageModel?.startsWith('custom-media:') ? data.imageModel : 'gpt-image-2';
     const engineId = kind === 'image'
-      ? 'gpt-image-2'
+      ? imageEngine
       : isSeedance25
         ? DREAMINA_SEEDANCE_25_ENGINE_ID
         : isH3
@@ -1587,7 +1597,9 @@ export const useWorkshopStore = create<WorkshopState>((set, get) => ({
                 generateAudio: true,
                 generate_audio: true,
               }
-          : {},
+          : imageEngine.startsWith('custom-media:')
+            ? { aspectRatio: effectiveRatio || 'auto' }
+            : {},
         workshopShotNo: shotNo,
         workshopShotKind: kind,
         projectId: data.projectId,

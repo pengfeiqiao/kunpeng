@@ -67,6 +67,17 @@ function useCustomVideoModelOptions(): { value: string; label: string }[] {
   );
 }
 
+/** 自定义图片插件选项：启用的图片插件追加到生图模型下拉尾部 */
+function useCustomImageModelOptions(): { value: string; label: string }[] {
+  const customMediaApis = useSettingsStore((s) => s.customMediaApis);
+  return useMemo(
+    () => (customMediaApis ?? [])
+      .filter((api) => api.kind === 'image' && api.enabled)
+      .map((api) => ({ value: `custom-media:${api.id}`, label: api.label })),
+    [customMediaApis],
+  );
+}
+
 function effectiveVideoPromptTemplate(
   shot: WsShot,
   data: ShotVideoContext,
@@ -196,6 +207,7 @@ export default function StepGenerate() {
   const data = useWorkshopStore(useShallow((s) => s.data && ({
     shots: s.data.shots,
     videoModel: s.data.videoModel,
+    imageModel: s.data.imageModel,
     videoRatio: s.data.videoRatio,
     videoPromptTemplate: s.data.videoPromptTemplate,
     generateStatus: s.data.steps.generate.status,
@@ -205,6 +217,8 @@ export default function StepGenerate() {
   const customVideoOptions = useCustomVideoModelOptions();
   const setVideoRatio = useWorkshopStore((s) => s.setVideoRatio);
   const setVideoModel = useWorkshopStore((s) => s.setVideoModel);
+  const setImageModel = useWorkshopStore((s) => s.setImageModel);
+  const customImageOptions = useCustomImageModelOptions();
   const setVideoPromptTemplate = useWorkshopStore((s) => s.setVideoPromptTemplate);
   const markStepStatus = useWorkshopStore((s) => s.markStepStatus);
   const setCurrentStep = useWorkshopStore((s) => s.setCurrentStep);
@@ -326,6 +340,19 @@ export default function StepGenerate() {
             <div className="text-[10px] text-[var(--canvas-text-3)]">应用于未单独设置的分镜</div>
           </div>
         </div>
+        <label className="block min-w-[190px]">
+          <span className="mb-1.5 block text-[10px] font-medium text-[var(--canvas-text-3)]">生图模型</span>
+          <select
+            value={data.imageModel ?? ''}
+            onChange={(e) => setImageModel(e.target.value)}
+            className="h-9 w-full cursor-pointer rounded-lg border border-[var(--canvas-node-border)] bg-[var(--canvas-panel)] px-3 text-[11px] text-[var(--canvas-text-1)] outline-none transition-colors hover:border-[var(--canvas-node-border-selected)] focus:border-[var(--canvas-node-border-selected)]"
+          >
+            <option value="">GPT-Image-2 智能通道（默认）</option>
+            {customImageOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
         <label className="block min-w-[190px]">
           <span className="mb-1.5 block text-[10px] font-medium text-[var(--canvas-text-3)]">视频模型</span>
           <select
