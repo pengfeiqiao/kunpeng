@@ -594,7 +594,7 @@ pub async fn dsh_start(
         // openai-completions 协议 + 官方 /v1 base（pi-ai 自行拼接路径）。
         json!({
             "id": "llm-pi-ai",
-            "name": llm_pi_ai.to_string_lossy(),
+            "name": module_specifier(&llm_pi_ai),
             "config": {
                 "providers": {
                     "deepseek": {
