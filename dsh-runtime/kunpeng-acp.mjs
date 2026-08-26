@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -197,8 +196,11 @@ Schema.union([normalPolicySchema, alwaysPolicySchema]);
 *
 * App-attribution vocabulary for provider requests.
 * @module @deepseek-ai/dsh-llm/attribution
+*
+* KUNPENG: fork 部署在 runtime 根目录，`../package.json` 不存在（上游文件在
+* dsh-acp/lib/ 下才有）。该值仅用于 User-Agent 归因，固定为 fork 版本号。
 */
-const { version } = createRequire(import.meta.url)("../package.json");
+const version = "0.1.0-rc.6-kunpeng";
 //#endregion
 //#region lib/types/codec.js
 /**
