@@ -1,5 +1,6 @@
 import { quickChat } from '@/lib/agent/quickChat';
 import { auditUniversalVideoPrompt } from './audit';
+import { AI_DRAMA_BAN, PERFORMANCE_GUIDE } from './performance.ts';
 
 export { auditUniversalVideoPrompt } from './audit';
 export type { VideoPromptAuditResult } from './audit';
@@ -57,6 +58,10 @@ const SYSTEM_PROMPT = `你是专业影视导演与视频生成提示词编辑器
 9. 保留原文明确要求的对白、旁白和声音；没有则不得新增。默认无字幕、贴纸、水印、随机文字和无关背景音乐。
 10. 不输出“潜台词”、创作解释、教程、候选方案或自检过程。简单镜头可以缩短各节，但不得省略素材关联、时间轴和一致性要求。
 
+${PERFORMANCE_GUIDE}
+
+${AI_DRAMA_BAN}
+
 提交前在内部完成一致性检查：素材编号、左右/前后方位、阵营、攻击目标、身体部位数量、肢体占用、动作因果、机位切换、时间段总长必须互相一致。只输出检查后的最终版本。`;
 
 const CLASSIC_SYSTEM_PROMPT = `你是专业影视导演与多镜头视频提示词编辑器。只输出可直接提交视频模型的最终提示词，不解释，不使用 Markdown 代码块。
@@ -74,6 +79,10 @@ const CLASSIC_SYSTEM_PROMPT = `你是专业影视导演与多镜头视频提示�
 5. 时间轴覆盖完整时长。每个镜头只采用一种主要机位和一种主要运镜，镜头切换要有明确叙事原因。
 6. 原文有台词、VO、音效或音乐时准确保留；没有则不新增。默认无字幕、贴纸、水印、随机文字和无关背景音乐。
 7. 导演约束卡只约束站位、视线、机位和动作关系，不复制灰模材质；分镜板只作为镜头顺序、构图和景别变化参考。
+
+${PERFORMANCE_GUIDE}
+
+${AI_DRAMA_BAN}
 
 提交前在内部检查素材编号、人物关系、对白、站位、动作因果、机位轴线和时间总长。只输出最终版本。`;
 

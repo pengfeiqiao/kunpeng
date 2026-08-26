@@ -9,11 +9,10 @@
 import { fetch as tauriFetch, ResponseType, Body } from '@tauri-apps/api/http';
 import { readBinaryFile } from '@tauri-apps/api/fs';
 import { invoke } from '@tauri-apps/api/tauri';
-import { requireRhtvApiKey } from './client';
+import { appUploadUrl, requireRhtvApiKey } from './client';
 import { RhtvBusinessError } from './types';
 
 const DATA_URI_MAX_BYTES = 5 * 1024 * 1024;
-const APP_UPLOAD_URL = 'https://www.runninghub.cn/task/openapi/upload';
 
 const MIME_BY_EXT: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif',
@@ -90,12 +89,12 @@ export async function rhtvUploadForApp(localPath: string): Promise<string> {
   const name = localPath.split('/').pop() || 'file';
 
   try {
-    return await invoke<string>('runninghub_app_upload', { apiKey: key, filePath: localPath });
+    return await invoke<string>('runninghub_app_upload', { apiKey: key, filePath: localPath, uploadUrl: appUploadUrl() });
   } catch (err) {
     console.warn('[rhtv] native AI-app upload failed, fallback to Tauri http:', err);
   }
 
-  const res = await tauriFetch(APP_UPLOAD_URL, {
+  const res = await tauriFetch(appUploadUrl(), {
     method: 'POST',
     body: Body.form({
       apiKey: key,

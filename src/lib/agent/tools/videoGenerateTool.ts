@@ -2,6 +2,8 @@ import type { Tool } from '../types';
 import { runGeneration } from '@/lib/canvasGen';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { DREAMINA_SEEDANCE_25_ENGINE_ID } from '@/lib/dreamina/video';
+import { PERFORMANCE_BRIEF } from '@/lib/videoPrompt/performance';
+import { findCustomMediaApi } from '@/lib/customMedia/runner';
 
 type ChatVideoEngine =
   | 'minimax-h3'
@@ -9,6 +11,7 @@ type ChatVideoEngine =
   | 'seedance-2.0-fast'
   | 'seedance-2.0-mini'
   | 'seedance-2.5'
+  | 'wan-3.0'
   | 'omni-mg-animation';
 
 function stringList(value: unknown): string[] {
@@ -42,6 +45,10 @@ function normalizeEngine(
     case 'seedance-2.5':
     case DREAMINA_SEEDANCE_25_ENGINE_ID:
       return { engineId: DREAMINA_SEEDANCE_25_ENGINE_ID, label: '即梦 Seedance 2.5' };
+    case 'wan-3.0':
+    case 'wan3.0':
+    case 'wan3':
+      return { engineId: 'wan-3.0', label: '万相 3.0' };
     case 'omni-mg-animation':
       return { error: 'Omni MG 需要母版和关键帧工作流，请改用 mg_generate_with_reference_boards；普通视频不需要进入画布。' };
     default:
@@ -54,23 +61,25 @@ export const videoGenerateTool: Tool = {
     name: 'video_generate',
     description:
       '普通对话直接生成视频并返回本地文件，不创建画布节点，也不切换视图。'
-      + '支持 MiniMax H3、Seedance 2.0、Seedance 2.0 Fast、Seedance 2.0 Mini 和即梦 Seedance 2.5。'
+      + '支持 MiniMax H3、Seedance 2.0、Seedance 2.0 Fast、Seedance 2.0 Mini、即梦 Seedance 2.5 和万相 3.0（wan-3.0）。'
+      + '万相 3.0 是阿里全能参考视频模型：文生/图/视频/音频参考之外，还支持 file_url（文档）与 link_url（公开网页）输入；用户给了文档或网页链接并指定万相时直接用这两个参数。'
       + 'APIMart 通道自动并行检测 api.apimart.ai、apib.ai、aiuxu.com、aishuch.com 并选择当前最快健康线路；遇到 TCP 超时时先调用 apimart_route_status({refresh:true})，不要用 bash/curl 猜线路。'
-      + '用户指定 MiniMax/H3/海螺 H3 时直接使用 minimax-h3；没有指定模型时使用普通对话工具栏当前选择。'
+      + '用户指定 MiniMax/H3/海螺 H3 时直接使用 minimax-h3；指定万相/wan/wan3.0 时使用 wan-3.0；没有指定模型时使用普通对话工具栏当前选择。'
       + '只有用户明确要求把结果放入画布时，才改用 canvas_generate。多个普通对话视频可以在同一轮发出多个 video_generate 调用。',
     parameters: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', description: '视频提示词。只能引用本次实际传入的素材，图片/视频/音频编号按数组顺序排列' },
+        prompt: { type: 'string', description: `视频提示词。只能引用本次实际传入的素材，图片/视频/音频编号按数组顺序排列。${PERFORMANCE_BRIEF}` },
         engine: {
           type: 'string',
-          enum: ['minimax-h3', 'seedance-2.0', 'seedance-2.0-fast', 'seedance-2.0-mini', 'seedance-2.5'],
-          description: '可选。省略时沿用普通对话底部选择的生视频模型',
+          description: '可选。省略时沿用普通对话底部选择的生视频模型。内置值：minimax-h3、seedance-2.0、seedance-2.0-fast、seedance-2.0-mini、seedance-2.5、wan-3.0；自定义视频插件用 custom-media:{插件id}（先 media_api_plugin list 查看）',
         },
-        image_urls: { type: 'array', items: { type: 'string' }, description: '参考图片路径或 URL；MiniMax H3 最多 9 张' },
-        video_urls: { type: 'array', items: { type: 'string' }, description: '参考视频路径或 URL；MiniMax H3 最多 3 个' },
-        audio_urls: { type: 'array', items: { type: 'string' }, description: '参考音频路径或 URL；MiniMax H3 最多 3 个' },
-        duration: { type: 'number', description: '时长。MiniMax H3 为 5-15 秒；Seedance 通常为 4-15 秒' },
+        image_urls: { type: 'array', items: { type: 'string' }, description: '参考图片路径或 URL；MiniMax H3 最多 9 张，万相 3.0 最多 10 张' },
+        video_urls: { type: 'array', items: { type: 'string' }, description: '参考视频路径或 URL；MiniMax H3 最多 3 个，万相 3.0 最多 5 个' },
+        audio_urls: { type: 'array', items: { type: 'string' }, description: '参考音频路径或 URL；MiniMax H3 最多 3 个，万相 3.0 最多 5 个' },
+        file_url: { type: 'string', description: '仅万相 3.0：参考文档 URL（docx/pdf/md 等公网可访问地址），与 link_url 互斥' },
+        link_url: { type: 'string', description: '仅万相 3.0：公开网页 URL（免登录），与 file_url 互斥' },
+        duration: { type: 'number', description: '时长。MiniMax H3 为 5-15 秒；Seedance 通常为 4-15 秒；万相 3.0 为 2-30 秒（-1 由模型决定）' },
         ratio: {
           type: 'string',
           enum: ['adaptive', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16'],
@@ -96,6 +105,48 @@ export const videoGenerateTool: Tool = {
       ?? useSettingsStore.getState().chatVideoModel
       ?? 'seedance-2.0',
     ) as ChatVideoEngine;
+
+    // 自定义视频插件（issue #7）：custom-media:{id} 直接走插件执行器
+    if (selected.startsWith('custom-media:')) {
+      const api = findCustomMediaApi(selected);
+      if (!api || api.kind !== 'video') {
+        return { success: false, output: '', error: `未找到启用的自定义视频插件：${selected}（可在设置 → 自定义模型插件中检查）` };
+      }
+      const rawDuration = Number(params.duration ?? 5);
+      const duration = Number.isFinite(rawDuration) ? Math.min(30, Math.max(2, Math.round(rawDuration || 5))) : 5;
+      const result = await runGeneration({
+        engineId: selected,
+        prompt,
+        referenceUrls: imageUrls,
+        videoUrls,
+        audioUrls,
+        params: {
+          resolution: String(params.resolution ?? '720P'),
+          duration: String(duration),
+          ratio: String(params.ratio ?? 'adaptive'),
+        },
+      });
+      if (!result.success) {
+        return {
+          success: false,
+          output: '',
+          error: result.error || `${api.label} 视频生成失败`,
+          ...(result.automaticRetryBlocked ? { terminal: true, terminalMessage: result.error } : {}),
+        };
+      }
+      const paths = result.resultPaths;
+      return {
+        success: true,
+        terminal: true,
+        terminalMessage: `${api.label} 视频已生成。\n${paths.map((path) => `![生成视频](${path})`).join('\n')}`,
+        output: [
+          `${api.label}（自定义插件）视频生成完成。`,
+          ...paths.map((path, index) => `${paths.length > 1 ? `视频 ${index + 1}` : '视频'}：${path}`),
+          '结果已保存到本地并进入产物栏；本次没有创建或修改画布节点。',
+        ].join('\n'),
+      };
+    }
+
     const normalized = normalizeEngine(selected, hasReferences);
     if (!normalized.engineId) {
       return { success: false, output: '', error: normalized.error || '无法确定视频模型' };
@@ -107,13 +158,33 @@ export const videoGenerateTool: Tool = {
       if (audioUrls.length > 3) return { success: false, output: '', error: `MiniMax H3 最多 3 个参考音频，当前 ${audioUrls.length} 个` };
     }
 
+    const fileUrl = String(params.file_url ?? '').trim();
+    const linkUrl = String(params.link_url ?? '').trim();
+    if (normalized.engineId === 'wan-3.0') {
+      if (imageUrls.length > 10) return { success: false, output: '', error: `万相 3.0 最多 10 张参考图，当前 ${imageUrls.length} 张` };
+      if (videoUrls.length > 5) return { success: false, output: '', error: `万相 3.0 最多 5 个参考视频，当前 ${videoUrls.length} 个` };
+      if (audioUrls.length > 5) return { success: false, output: '', error: `万相 3.0 最多 5 个参考音频，当前 ${audioUrls.length} 个` };
+      if (fileUrl && linkUrl) return { success: false, output: '', error: '万相 3.0 的 file_url（文档）与 link_url（网页链接）互斥，只能传一个' };
+    } else if (fileUrl || linkUrl) {
+      return { success: false, output: '', error: 'file_url / link_url 仅万相 3.0 支持，请将 engine 设为 wan-3.0' };
+    }
+
     const rawDuration = Number(params.duration ?? 5);
     const duration = normalized.engineId === 'minimax-hailuo-h3'
       ? Math.min(15, Math.max(5, Math.round(rawDuration || 5)))
-      : Math.min(30, Math.max(4, Math.round(rawDuration || 5)));
+      : normalized.engineId === 'wan-3.0'
+        ? (rawDuration === -1 ? -1 : Math.min(30, Math.max(2, Math.round(rawDuration || 5))))
+        : Math.min(30, Math.max(4, Math.round(rawDuration || 5)));
     const ratio = String(params.ratio ?? 'adaptive');
     const generationParams: Record<string, string | number | boolean> = normalized.engineId === 'minimax-hailuo-h3'
       ? { resolution: '2K', duration: String(duration), ratio }
+      : normalized.engineId === 'wan-3.0'
+        ? {
+            resolution: String(params.resolution ?? '720P'),
+            duration: String(duration),
+            ratio,
+            generateAudio: params.generate_audio !== false,
+          }
       : {
           resolution: String(params.resolution ?? '720p'),
           duration: String(duration),
@@ -127,6 +198,8 @@ export const videoGenerateTool: Tool = {
       referenceUrls: imageUrls,
       videoUrls,
       audioUrls,
+      documentUrl: fileUrl || undefined,
+      linkUrl: linkUrl || undefined,
       params: generationParams,
     });
     if (!result.success) {

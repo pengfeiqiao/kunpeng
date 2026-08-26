@@ -12,6 +12,7 @@ import {
 import { open as openDialog, message as tauriMessage } from '@tauri-apps/api/dialog';
 import { useProjectStore, type Project } from '@/stores/projectStore';
 import { useChatStore } from '@/stores/chatStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useWorkshopStore } from '@/stores/workshopStore';
 import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
 import { listProjects, deleteProject as deleteAigcProject, writeProject, type AigcProject } from '@/lib/aigc/projectStore';
@@ -38,6 +39,7 @@ export default function ProjectListView() {
   const canvasProjects = useProjectStore((s) => s.projects);
   const initialize = useProjectStore((s) => s.initialize);
   const setActiveView = useChatStore((s) => s.setActiveView);
+  const sidebarCollapsed = useSettingsStore((s) => s.sidebarCollapsed);
   const openUnified = useUnifiedProjectStore((s) => s.openUnified);
   const createAndOpen = useWorkshopStore((s) => s.createAndOpen);
 
@@ -215,7 +217,8 @@ export default function ProjectListView() {
   return (
     <div className="flex-1 overflow-y-auto bg-stone-50">
       <div className="max-w-5xl mx-auto px-8 py-8">
-        <div className="flex items-center justify-between mb-6">
+        {/* 收起时左移让位给 App 层全局 SidebarHandle（浮于左上角，与标题同栏）；padding 不参与 justify-between 分配，标题仍左对齐 */}
+        <div className={`flex items-center justify-between mb-6${sidebarCollapsed ? ' pl-5' : ''}`}>
           <div>
             <h1 className="text-xl font-semibold text-stone-800">项目</h1>
             <p className="text-[13px] text-stone-400 mt-0.5">

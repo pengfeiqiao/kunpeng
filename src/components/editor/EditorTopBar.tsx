@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Subtitles, Download, SlidersHorizontal, Keyboard, Loader2,
-  PanelLeftOpen, PanelLeftClose, Sparkles, ChevronDown,
+  PanelLeftClose, Sparkles, ChevronDown,
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/editorStore';
 import { dispatchEditorPrompt } from './EditorChatPanel';
@@ -84,13 +84,18 @@ export default function EditorTopBar({ onAutoSubtitle, onSmartCut, onAiSmooth, t
       className="flex items-center gap-1 px-3 shrink-0"
       style={{ height: 44, background: 'var(--canvas-panel)', borderBottom: '1px solid var(--canvas-node-border)' }}
     >
-      <button
-        onClick={toggleSidebar}
-        title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-        className="flex items-center px-1.5 py-1 rounded-md text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)] hover:bg-[rgba(255,255,255,0.06)] transition-colors shrink-0"
-      >
-        {sidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
-      </button>
+      {/* 收起侧边栏；收起时留等宽占位给 App 层全局 SidebarHandle（浮于左上角），标题不位移 */}
+      {sidebarCollapsed ? (
+        <div className="w-[26px] shrink-0" />
+      ) : (
+        <button
+          onClick={toggleSidebar}
+          title="收起侧边栏"
+          className="flex items-center px-1.5 py-1 rounded-md text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)] hover:bg-[rgba(255,255,255,0.06)] transition-colors shrink-0"
+        >
+          <PanelLeftClose size={14} />
+        </button>
+      )}
       <div className="ml-0.5 min-w-[108px]">
         <p className="text-[12px] font-semibold text-[var(--canvas-text-1)] leading-tight">鲲鹏剪辑</p>
         <p className="text-[9px] text-[var(--canvas-text-3)] leading-tight">时间线 01</p>

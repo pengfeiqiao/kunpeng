@@ -248,7 +248,7 @@ export function buildApimartMinimaxH3Payload(input: {
     throw new Error(`MiniMax H3 最多支持 3 段参考音频，当前 ${input.audioUrls!.length} 段。`);
   }
   const durationValue = Math.round(Number(input.duration ?? 5));
-  const duration = Number.isFinite(durationValue) ? Math.min(15, Math.max(4, durationValue)) : 5;
+  const duration = Number.isFinite(durationValue) ? Math.min(15, Math.max(5, durationValue)) : 5;
   const resolution = String(input.resolution || '2K').toUpperCase() === '768P' ? '768P' : '2K';
   const requestedRatio = String(input.aspectRatio || 'adaptive');
   const aspectRatio = H3_RATIOS.has(requestedRatio) ? requestedRatio : 'adaptive';
@@ -268,5 +268,61 @@ export function buildApimartMinimaxH3Payload(input: {
   if (imageUrls.length) payload.image_urls = imageUrls;
   if (videoUrls.length) payload.video_urls = videoUrls;
   if (audioUrls.length) payload.audio_urls = audioUrls;
+  return payload;
+}
+
+const WAN3_RATIOS = new Set(['adaptive', '16:9', '4:3', '1:1', '3:4', '9:16']);
+
+/**
+ * APIMart 万相 3.0（wan3.0-video，/v1/videos/generations，异步任务）。
+ * 素材统一走参考族：有任意素材时显式 generation_type=reference，
+ * 避免裸 image_urls 被默认归到首尾帧族（图1=首帧、图2=尾帧）。
+ * file_url 与 link_url 互斥；duration 2-30 或 -1（模型决定）。
+ */
+export function buildApimartWan3Payload(input: {
+  prompt: string;
+  imageUrls?: string[];
+  videoUrls?: string[];
+  audioUrls?: string[];
+  fileUrl?: string;
+  linkUrl?: string;
+  duration?: string | number;
+  resolution?: string;
+  aspectRatio?: string;
+  audio?: boolean;
+}): Record<string, unknown> {
+  const imageUrls = input.imageUrls ?? [];
+  const videoUrls = input.videoUrls ?? [];
+  const audioUrls = input.audioUrls ?? [];
+  if (imageUrls.length > 10) throw new Error(`万相 3.0 最多支持 10 张参考图，当前 ${imageUrls.length} 张。`);
+  if (videoUrls.length > 5) throw new Error(`万相 3.0 最多支持 5 段参考视频，当前 ${videoUrls.length} 段。`);
+  if (audioUrls.length > 5) throw new Error(`万相 3.0 最多支持 5 段参考音频，当前 ${audioUrls.length} 段。`);
+  if (input.fileUrl && input.linkUrl) throw new Error('万相 3.0 的文档（file_url）与网页链接（link_url）互斥，只能传一个。');
+  if (!input.prompt.trim() && imageUrls.length + videoUrls.length + audioUrls.length === 0 && !input.fileUrl && !input.linkUrl) {
+    throw new Error('万相 3.0 要求 prompt 与素材至少提供其一。');
+  }
+
+  const rawDuration = Math.round(Number(input.duration ?? 5));
+  const duration = rawDuration === -1 ? -1 : Number.isFinite(rawDuration) ? Math.min(30, Math.max(2, rawDuration)) : 5;
+  const resolutionRaw = String(input.resolution || '1080P').toUpperCase();
+  const resolution = ['480P', '720P', '1080P'].includes(resolutionRaw) ? resolutionRaw : '1080P';
+  const requestedSize = String(input.aspectRatio || 'adaptive');
+  const size = WAN3_RATIOS.has(requestedSize) ? requestedSize : 'adaptive';
+
+  const hasMedia = imageUrls.length + videoUrls.length + audioUrls.length > 0 || input.fileUrl || input.linkUrl;
+  const payload: Record<string, unknown> = {
+    model: 'wan3.0-video',
+    prompt: input.prompt,
+    duration,
+    resolution,
+    size,
+    audio: input.audio !== false,
+  };
+  if (hasMedia) payload.generation_type = 'reference';
+  if (imageUrls.length) payload.image_urls = imageUrls;
+  if (videoUrls.length) payload.video_urls = videoUrls;
+  if (audioUrls.length) payload.audio_urls = audioUrls;
+  if (input.fileUrl) payload.file_url = input.fileUrl;
+  if (input.linkUrl) payload.link_url = input.linkUrl;
   return payload;
 }

@@ -4,7 +4,6 @@ import type { Connection, Node, NodeChange, NodePositionChange } from 'reactflow
 import 'reactflow/dist/style.css';
 import '@reactflow/node-resizer/dist/style.css';
 import { useCanvasStore } from '@/stores/canvasStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { nanoid } from 'nanoid';
 import TextNode from './nodes/TextNode';
 import ImageNode from './nodes/ImageNode';
@@ -67,8 +66,6 @@ function CanvasViewInner({ onSendMessage, onAbort }: CanvasViewProps) {
   const onEdgesChange = useCanvasStore((s) => s.onEdgesChange);
   const onConnect = useCanvasStore((s) => s.onConnect);
   const setSelectedNodeId = useCanvasStore((s) => s.setSelectedNodeId);
-  const sidebarCollapsed = useSettingsStore((s) => s.sidebarCollapsed);
-  const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
   const nativeDropPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -692,18 +689,6 @@ function CanvasViewInner({ onSendMessage, onAbort }: CanvasViewProps) {
             <div className="text-[var(--canvas-text-3)] text-xs">从左侧面板添加节点，或使用右下角气泡让鲲鹏帮你创建流水线</div>
           </div>
         </div>
-      )}
-
-      {sidebarCollapsed && (
-        <button
-          onClick={toggleSidebar}
-          className="absolute top-3 left-3 z-20 p-2 rounded-lg cv-panel cv-btn backdrop-blur-sm"
-          title="展开侧边栏"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
-          </svg>
-        </button>
       )}
 
       <CanvasChatBubble onSendMessage={onSendMessage} onAbort={onAbort} />

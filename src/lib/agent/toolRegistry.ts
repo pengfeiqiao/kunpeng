@@ -150,6 +150,8 @@ import { webFetchTool } from './tools/webFetchTool';
 import { webSearchTool } from './tools/webSearchTool';
 import { browserControlTool, browserInstallTool } from './tools/browserTool';
 import { visionTool } from './tools/visionTool';
+import { capabilityApiConfigTool } from './tools/capabilityApiConfigTool';
+import { mediaApiPluginTool } from './tools/mediaApiPluginTool';
 import { sleepTool, scheduleCronTool } from './tools/scheduleCronTool';
 import { aigcOptimizePromptTool } from './tools/genTools';
 import { allTouliuTools } from './tools/touliuTools';
@@ -184,6 +186,8 @@ export function createDefaultRegistry(): ToolRegistry {
   registry.register(browserControlTool);
   registry.register(browserInstallTool);
   registry.register(visionTool);
+  registry.register(capabilityApiConfigTool);
+  registry.register(mediaApiPluginTool);
   registry.register(sleepTool);
   registry.register(scheduleCronTool);
   registry.register(taskStatusTool);

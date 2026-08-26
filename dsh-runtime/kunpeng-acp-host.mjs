@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import z from '@deepseek-ai/schemastery';
-import * as acp from '@deepseek-ai/dsh-acp';
+// KUNPENG: fork 的 ACP 桥（支持 image 块 → attachment store），上游 dsh-acp 只读不改
+import * as acp from './kunpeng-acp.mjs';
+import AttachmentLocal from '@deepseek-ai/dsh-attachment-local';
 import * as agentCore from '@deepseek-ai/dsh-agent-spine-demo';
 import * as mcpClient from '@deepseek-ai/dsh-mcp-client';
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection';
@@ -151,6 +153,17 @@ export async function apply(ctx, config) {
     });
     await query;
     yield query.dispose;
+
+    // KUNPENG: durable attachment store —— pi-ai 视觉路由的图片输入依赖它
+    // （图片字节落盘为内容寻址引用，线上请求时再 base64 内联）。
+    // 单图上限对齐 DeepSeek 官方视觉限制（32MiB）。
+    const attachments = ctx.plugin(AttachmentLocal, {
+      dshHome: process.env.DSH_HOME || join(process.env.HOME || '', '.dsh'),
+      maxImageBytes: 32 * 1024 * 1024,
+      maxMessageImageBytes: 64 * 1024 * 1024,
+    });
+    await attachments;
+    yield attachments.dispose;
 
     const transport = ctx.plugin(acp, {
       provider: config.provider,

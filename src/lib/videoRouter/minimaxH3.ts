@@ -1,4 +1,4 @@
-export type MinimaxH3Channel = 'runninghub' | 'apimart';
+export type MinimaxH3Channel = 'runninghub' | 'apimart' | 'kuaizi';
 
 export interface MinimaxH3Metric {
   channel: MinimaxH3Channel;

@@ -3,7 +3,7 @@
  * POST /openapi/v2/price-preview/{endpoint}，body 与正式提交一致。
  * 实测返回 { estimatedPrice, currency: "CNY", isFreeThisCall, freeLimit… }。
  */
-import { getRhtvApiKey, RHTV_BASE } from './client';
+import { getRhtvApiKey, rhtvBase } from './client';
 import type { RhtvParams } from './types';
 
 export interface PricePreview {
@@ -26,7 +26,7 @@ export async function previewPrice(endpoint: string, params: RhtvParams): Promis
   if (!apiKey) return null;
 
   try {
-    const resp = await fetch(`${RHTV_BASE}/price-preview/${endpoint}`, {
+    const resp = await fetch(`${rhtvBase()}/price-preview/${endpoint}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(params),

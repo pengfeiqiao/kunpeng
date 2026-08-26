@@ -23,22 +23,64 @@ import {
   type RhtvQueryResponse,
   type RhtvSubmitResponse,
 } from './types';
+import { extractRhtvWebappId } from './webappId';
 
+export type RhtvSite = 'cn' | 'ai';
+
+/** 当前 RunningHub 站点：cn=国内站（默认）、ai=国际站。 */
+export function getRhtvSite(): RhtvSite {
+  return useSettingsStore.getState().runninghubSite === 'ai' ? 'ai' : 'cn';
+}
+
+export function rhtvHost(): string {
+  return getRhtvSite() === 'ai' ? 'https://www.runninghub.ai' : 'https://www.runninghub.cn';
+}
+
+export function rhtvBase(): string {
+  return `${rhtvHost()}/openapi/v2`;
+}
+
+function accountStatusUrl(): string {
+  return `${rhtvHost()}/uc/openapi/accountStatus`;
+}
+
+function appSubmitUrl(): string {
+  return `${rhtvHost()}/task/openapi/ai-app/run`;
+}
+
+/** AI 应用老通道的媒体上传地址（upload.ts 使用）。 */
+export function appUploadUrl(): string {
+  return `${rhtvHost()}/task/openapi/upload`;
+}
+
+/** @deprecated 站点可切换，改用 rhtvBase()；仅保留给文档引用。 */
 export const RHTV_BASE = 'https://www.runninghub.cn/openapi/v2';
-const ACCOUNT_STATUS_URL = 'https://www.runninghub.cn/uc/openapi/accountStatus';
-const APP_SUBMIT_URL = 'https://www.runninghub.cn/task/openapi/ai-app/run';
 
 export function getRhtvApiKey(): string {
   const s = useSettingsStore.getState();
-  return resolveApiKey(s, 'runninghub', s.runninghubApiKey).trim();
+  return getRhtvSite() === 'ai'
+    ? resolveApiKey(s, 'runninghubIntl', s.runninghubIntlApiKey).trim()
+    : resolveApiKey(s, 'runninghub', s.runninghubApiKey).trim();
+}
+
+/**
+ * 自定义 AI 应用：用户在设置里填了自己的 webappId（或粘贴的应用链接）时，
+ * AI 应用通道提交改走用户自己的工作流；留空回退内置应用。
+ * 注意节点结构（nodeInfoList）仍按内置工作流组装，自定义应用必须是同款
+ * 工作流的副本，否则 RunningHub 会因节点不存在而拒单。
+ */
+export function effectiveRhtvWebappId(builtInWebappId: string): string {
+  const custom = extractRhtvWebappId(useSettingsStore.getState().runninghubCustomWebappId ?? '');
+  return custom || builtInWebappId;
 }
 
 export function requireRhtvApiKey(): string {
   const key = getRhtvApiKey();
   if (!key) {
+    const site = getRhtvSite() === 'ai' ? '国际站（runninghub.ai）' : '国内站（runninghub.cn）';
     throw new RhtvBusinessError(
       'auth',
-      '未配置 RunningHub API Key，请在「设置」中填写',
+      `未配置 RunningHub ${site} API Key，请在「设置 → API 密钥 → RunningHub」中填写对应站点的 Key`,
     );
   }
   return key;
@@ -130,7 +172,7 @@ export async function rhtvSubmit(
 ): Promise<RhtvSubmitResponse> {
   if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
   try {
-    const resp = await postJson<RhtvSubmitResponse>(`${RHTV_BASE}/${endpoint}`, params, 120);
+    const resp = await postJson<RhtvSubmitResponse>(`${rhtvBase()}/${endpoint}`, params, 120);
     return normalizeSubmitReceipt(resp, 'RunningHub');
   } catch (err) {
     if (err instanceof RhtvBusinessError) throw err;
@@ -159,7 +201,7 @@ export async function rhtvSubmitApp(
   const key = requireRhtvApiKey();
   if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
   try {
-      const resp = await postJson<RhtvSubmitResponse>(APP_SUBMIT_URL, {
+      const resp = await postJson<RhtvSubmitResponse>(appSubmitUrl(), {
         apiKey: key,
         // RunningHub webappId is a 19-digit integer. Sending it as a JS Number
         // rounds the value past MAX_SAFE_INTEGER and makes valid apps look
@@ -201,7 +243,7 @@ export async function rhtvQuery(
 ): Promise<RhtvQueryResponse> {
   return withRetry(
     async () => {
-      const resp = await postJson<RhtvQueryResponse>(`${RHTV_BASE}/query`, { taskId }, 30);
+      const resp = await postJson<RhtvQueryResponse>(`${rhtvBase()}/query`, { taskId }, 30);
       return {
         ...resp,
         taskId: resp.taskId ?? resp.data?.taskId ?? taskId,
@@ -225,7 +267,7 @@ export interface RhtvAccountStatus {
 /** Account health: balance + concurrent task count (for local queueing). */
 export async function rhtvAccountStatus(): Promise<RhtvAccountStatus> {
   const key = requireRhtvApiKey();
-  const res = await tauriFetch(ACCOUNT_STATUS_URL, {
+  const res = await tauriFetch(accountStatusUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
     body: Body.json({ apikey: key }),

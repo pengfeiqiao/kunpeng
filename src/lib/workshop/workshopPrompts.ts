@@ -3,6 +3,7 @@
  * 由步骤组件的按钮触发，经 WorkshopChatPanel 发给 agent。
  */
 import type { WorkshopData, WorkshopStepId } from './types';
+import { PERFORMANCE_BRIEF } from '../videoPrompt/performance.ts';
 
 /** 把风格关键词格式化为 prompt 附加段（兜底用，主路径走 StyleSelector.buildStyleSection） */
 export function formatStyleSection(style?: WorkshopData['style']): string {
@@ -113,6 +114,7 @@ ${templateRule}
 - 整条提示词必须完整覆盖景别/运镜、机位或焦点、人物动作与微表演、环境或既有道具反馈；各子镜头按剧情需要分配，不要求每个子镜头机械凑齐全部栏目。
 - 每条都要写出剪辑节奏：切换点为什么发生，使用建立镜头、过肩反打、插入镜头、反应镜头、动作接动作、视线引导、慢推压迫、手持不稳定、移焦揭示、遮挡转场等适合本镜的技巧。
 - 情绪必须通过表演外化：眼神停顿、下颌收紧、手指发白、肩背塌下、呼吸变浅、嘴角克制等；禁止只写“悲伤/愤怒/紧张”。
+- ${PERFORMANCE_BRIEF}
 - 关键动作优先写三层反馈：动作本身 → 已存在接触材质变化 → 环境响应；没有接触或道具时不要硬造破裂、碎片和新物件。
 - 对话镜头要有表演节奏：说话前停顿、听到后的反应、视线回避/逼视、手部小动作；台词写在对应镜头行的 {} 内。
 - 每条 videoPrompt 默认 700-950 中文字、约 800 字；长镜头例外也要不少于 520 字。imagePrompt 建议 80-220 中文字。过短说明没有达到导演级细节。
@@ -127,7 +129,7 @@ export function buildOptimizeShotPrompt(shotNo: string): string {
 事实锁：本任务只优化提示词，不得修改 description、dialogue 或剧本人物关系。人物、人物关系、对白、关键动作目标和剧情结果只能来自 sourceExcerpt/description/dialogue；所有台词、VO、旁白必须逐字来自该镜 dialogue，没有就不写。电影级细节继续保留并加强：可以丰富机位、运镜、焦点、光影、材质、空间层次、呼吸、视线、手部细节和剪辑节奏，但不能为了凑项目新增人物关系、对白或剧情事件。只有用户明确说要改剧本/对白时，才先修改分镜事实再重写提示词。
 imagePrompt：必须继承 bibles，用 @图片N 引用场景和角色参考图；编号严格按 workshop_get_state 的 imageReferenceOrder，默认只使用最终场景资产，只有 imageReferenceOrder 中确实出现多张场景图时才全部写入；强调复刻参考图人物形象保持人脸一致，含景别/构图/光线/画风关键词；如启用色卡，只在最后一句写「画面配色严格参考 @图片N（色卡），用于统一整体色彩」，禁止写 @色卡，也禁止在多个短句反复写色卡/色调。
 videoPrompt：先读取项目和本镜 videoPromptTemplate。经典版按 aigc-memory/prompt-templates/seedance/README.md 的既有多镜头结构；新版使用【素材身份】【空间与初始站位】【一句话概述】【时间戳动作与机位】【物理与一致性】【视觉与声音】六段式结构。参考图编号严格按 videoReferenceOrder。若本镜有高清分镜板，第一句话必须把所有分镜板 @图片一/@图片二… 全部写出，并明确它们是“本镜景别变化和画面参考”，不要当场景图处理，也不要写成必须完全按每格逐镜切分。若 videoReferenceOrder 出现导演约束卡，必须在开头以“@导演约束卡（对应 @图片N）”明确引用，并读取 directorConstraintCard.prompt，把站位、视线、机位、动线和动作关系落实进正文；不能只把图片放进请求却不在提示词中使用。若有色卡，只在全文最后一句统一点名一次，例如「全片画面配色严格参考 @图片N（色卡），用于统一色彩风格。」不要在每个子镜头重复写。VO 只在真实存在旁白/画外内心独白/解说时才写；当 dialogue/description 明确写了旁白、画外音、内心独白、解说时必须写 VO 行。没有旁白就整行省略，禁止写“本句没有VO/本镜没有旁白/无画外音”等占位说明。有配音/音色资产不等于一定要写 VO，画面内人物说话/唱词仍写进镜头描述行；台词/音效/音乐符号按模板执行。默认写成 700-950 字、约 800 字的导演分镜；非长镜头含 3-5 个子镜头，必须写出建立/推进/反应/情绪落点/悬念收束的节奏变化。只有明确适合长镜头/一镜到底时才减少切点，并写清连续调度、走位、移焦和节奏段落。
-必须补足导演级表演调度：空间锚点、人物站位、景别/机位/焦点设计、剪辑切换点、微表情/呼吸/手部细节、已有材质反馈、环境响应；不要扩写剧情。
+必须补足导演级表演调度：空间锚点、人物站位、景别/机位/焦点设计、剪辑切换点、微表情/呼吸/手部细节、已有材质反馈、环境响应；不要扩写剧情。${PERFORMANCE_BRIEF}
 站位连续性：先读取 bibles.continuity.blockingContinuity 和本镜 description。提示词必须明确固定人物相对场景锚点、彼此方位、朝向和视线；正反打只改变摄影机观察方向，不得把世界空间关系镜像。若本镜发生走位，必须写明从何处经何路径到何处，并把结果作为结尾状态。
 调用 workshop_set_prompts 时必须传 expectedRefSignature。保持与前后镜头的画风、光线、角色形象连贯。完成后简述改了什么。`;
 }
@@ -215,7 +217,7 @@ export function buildAutoRunPrompt(): string {
 - workshop_generate（kind:"asset"）生成资产图，等待我确认
 
 第④步 提示词：
-- workshop_set_prompts 为全部分镜写 imagePrompt（中文，必须按 imageReferenceOrder 用 @图片N 引用场景和角色参考图；默认只使用最终场景资产，只有 imageReferenceOrder 中确实出现多张场景图时才全部写入；强调复刻参考图人物形象保持人脸一致，写成导演可执行首帧画面）+ videoPrompt（遵守 aigc-memory/prompt-templates/seedance/README.md 和 multi-shot.md；严格使用 videoReferenceOrder；如果本镜有高清分镜板，第一句话必须全部 @ 并明确作为本镜景别变化和画面参考；如果出现导演约束卡，必须按其真实 @图片N 明确引用并把 directorConstraintCard.prompt 的空间调度落实进子镜头；默认每镜 3-5 个子镜头、700-950 字约 800 字，必须有好莱坞导演/剪辑师级的景别变化、机位/焦点设计、表演节奏、剪辑切换、光线、材质反馈、环境响应；只有明确适合长镜头/一镜到底时才减少切点；MJ 资产卡的提示词用英文短语式）
+- workshop_set_prompts 为全部分镜写 imagePrompt（中文，必须按 imageReferenceOrder 用 @图片N 引用场景和角色参考图；默认只使用最终场景资产，只有 imageReferenceOrder 中确实出现多张场景图时才全部写入；强调复刻参考图人物形象保持人脸一致，写成导演可执行首帧画面）+ videoPrompt（遵守 aigc-memory/prompt-templates/seedance/README.md 和 multi-shot.md；严格使用 videoReferenceOrder；如果本镜有高清分镜板，第一句话必须全部 @ 并明确作为本镜景别变化和画面参考；如果出现导演约束卡，必须按其真实 @图片N 明确引用并把 directorConstraintCard.prompt 的空间调度落实进子镜头；默认每镜 3-5 个子镜头、700-950 字约 800 字，必须有好莱坞导演/剪辑师级的景别变化、机位/焦点设计、表演节奏、剪辑切换、光线、材质反馈、环境响应；只有明确适合长镜头/一镜到底时才减少切点；${PERFORMANCE_BRIEF}；MJ 资产卡的提示词用英文短语式）
 
 第⑤步 生成：
 - workshop_generate（kind:"image", targets:"missing"）生成分镜图，再 workshop_generate（kind:"video", targets:"missing"）生成视频，等待我确认

@@ -9,7 +9,6 @@ import type { AgentMeta } from '@/types/agent';
 
 /** 生图 API 提供商 */
 export type ImageProvider = 'dmxapi' | 'aihubmix' | 'zexapi';
-
 /** 固化的提供商信息 */
 export const IMAGE_PROVIDERS: Record<ImageProvider, { label: string; baseUrl: string }> = {
   dmxapi: { label: 'DMXAPI', baseUrl: 'https://www.dmxapi.cn' },
@@ -43,6 +42,30 @@ export interface ImageApiSlot {
   priority: number;
   mode?: 'text-to-image' | 'image-to-image';
   tier?: 'cheap' | 'standard';
+}
+
+/**
+ * 自定义图片/视频模型插件（issue #7）：像语言模型一样手动编辑
+ * base_url + model_id 接入三方模型，也可由 agent 代为配置。
+ * 引擎 id 约定 `custom-media:{id}`，由 runCustomMediaGeneration 统一执行。
+ *
+ * 协议：
+ * - openai-images：POST {baseUrl}/v1/images/generations 同步返回 b64/url（OpenAI Images 兼容）
+ * - apimart-async：POST {baseUrl}/v1/{images|videos}/generations 拿 task_id，
+ *   轮询 GET {baseUrl}/v1/tasks/{task_id}（APIMart/aggregator 通用异步任务协议）
+ */
+export interface CustomMediaApi {
+  id: string;
+  label: string;
+  kind: 'image' | 'video';
+  baseUrl: string;
+  modelId: string;
+  /** @deprecated 兼容路径：优先用 credentialId 引用凭证注册表，apiKey 仅作回退。 */
+  apiKey: string;
+  /** 引用凭证注册表（settingsStore.credentials）中的凭证；读取时优先于 apiKey。 */
+  credentialId?: string;
+  protocol: 'openai-images' | 'apimart-async';
+  enabled: boolean;
 }
 
 /**
@@ -216,6 +239,15 @@ interface SettingsState {
   setHappyHorseApiKey: (key: string) => void;
   runninghubApiKey: string;
   setRunninghubApiKey: (key: string) => void;
+  /** RunningHub 站点：cn=国内站（runninghub.cn，默认）、ai=国际站（runninghub.ai）。两站账号与 Key 互不通用。 */
+  runninghubSite: 'cn' | 'ai';
+  setRunninghubSite: (site: 'cn' | 'ai') => void;
+  /** RunningHub 国际站 API Key（runninghub.ai），仅在 runninghubSite='ai' 时使用。 */
+  runninghubIntlApiKey: string;
+  setRunninghubIntlApiKey: (key: string) => void;
+  /** RunningHub 自定义 AI 应用 webappId（可粘贴应用链接自动提取）；设置后 AI 应用通道改走用户自己的工作流，留空用内置应用。 */
+  runninghubCustomWebappId: string;
+  setRunninghubCustomWebappId: (id: string) => void;
   kuaiziApiKey: string;
   setKuaiziApiKey: (key: string) => void;
   useRhtvSeedance: boolean;
@@ -224,9 +256,12 @@ interface SettingsState {
    *  取代旧的 useRhtvSeedance 布尔（v31 迁移保留原选择）。 */
   seedanceEngine: 'kuaizi' | 'runninghub' | 'ark';
   setSeedanceEngine: (engine: 'kuaizi' | 'runninghub' | 'ark') => void;
-  /** MiniMax H3 渠道偏好：auto=按健康度自动容灾（默认）；runninghub/apimart=优先该渠道，失败仍容灾另一个。 */
-  minimaxH3Channel: 'auto' | 'runninghub' | 'apimart';
-  setMinimaxH3Channel: (channel: 'auto' | 'runninghub' | 'apimart') => void;
+  /** MiniMax H3 渠道偏好：auto=按健康度自动容灾（默认）；runninghub/apimart/kuaizi=优先该渠道，失败仍容灾其余渠道。 */
+  minimaxH3Channel: 'auto' | 'runninghub' | 'apimart' | 'kuaizi';
+  setMinimaxH3Channel: (channel: 'auto' | 'runninghub' | 'apimart' | 'kuaizi') => void;
+  /** 万相 3.0 渠道偏好：auto=筷子主渠道按健康度容灾（默认）；其余=优先该渠道，失败仍容灾剩余渠道。 */
+  wan3Channel: 'auto' | 'kuaizi' | 'runninghub' | 'apimart';
+  setWan3Channel: (channel: 'auto' | 'kuaizi' | 'runninghub' | 'apimart') => void;
   kimiEditModel: string;
   setKimiEditModel: (model: string) => void;
   kimiEditUseCos: boolean;
@@ -294,8 +329,8 @@ interface SettingsState {
 
   // Composer model preferences. These guide normal-chat generation tools;
   // canvas/workshop nodes keep their own per-node model settings.
-  chatImageModel: 'gpt-image-2' | 'seedream-v5-pro' | 'midjourney-v81' | 'midjourney-v82';
-  chatVideoModel: 'seedance-2.0' | 'seedance-2.0-fast' | 'seedance-2.0-mini' | 'seedance-2.5' | 'minimax-h3' | 'omni-mg-animation';
+  chatImageModel: 'gpt-image-2' | 'seedream-v5-pro' | 'midjourney-v81' | 'midjourney-v82' | `custom-media:${string}`;
+  chatVideoModel: 'seedance-2.0' | 'seedance-2.0-fast' | 'seedance-2.0-mini' | 'seedance-2.5' | 'minimax-h3' | 'omni-mg-animation' | 'wan-3.0' | `custom-media:${string}`;
   setChatImageModel: (model: SettingsState['chatImageModel']) => void;
   setChatVideoModel: (model: SettingsState['chatVideoModel']) => void;
 
@@ -306,10 +341,31 @@ interface SettingsState {
   setNotificationsEnabled: (enabled: boolean) => void;
   // 联网搜索开关（默认关闭；开启后 web_search 工具才暴露给模型）
   webSearchEnabled: boolean;
+  /** 联网搜索模块 API：auto=内置（DMX perplexity→腾讯）；custom=OpenAI 兼容端点。 */
+  webSearchApiMode: 'auto' | 'custom';
+  setWebSearchApiMode: (mode: 'auto' | 'custom') => void;
+  webSearchCustomBaseUrl: string;
+  setWebSearchCustomBaseUrl: (url: string) => void;
+  webSearchCustomApiKey: string;
+  setWebSearchCustomApiKey: (key: string) => void;
+  webSearchCustomModel: string;
+  setWebSearchCustomModel: (model: string) => void;
+  /** 识图模块 API：auto=内置容灾链（原生 Kimi → DMX kimi-k3 → 豆包…）；custom=OpenAI 兼容端点。 */
+  visionApiMode: 'auto' | 'custom';
+  setVisionApiMode: (mode: 'auto' | 'custom') => void;
+  visionCustomBaseUrl: string;
+  setVisionCustomBaseUrl: (url: string) => void;
+  visionCustomApiKey: string;
+  setVisionCustomApiKey: (key: string) => void;
+  visionCustomModel: string;
+  setVisionCustomModel: (model: string) => void;
   setWebSearchEnabled: (enabled: boolean) => void;
 
   // 生图 API 槽位（多 API 降级链）
   imageApiSlots: ImageApiSlot[];
+  /** 自定义图片/视频模型插件（issue #7），引擎 id 为 custom-media:{id}。 */
+  customMediaApis: CustomMediaApi[];
+  setCustomMediaApis: (apis: CustomMediaApi[]) => void;
   setImageApiSlots: (slots: ImageApiSlot[]) => void;
   // 测速缓存（slotId → {latencyMs, testedAt}）
   imageApiLatency: Record<string, { latencyMs: number; testedAt: number }>;
@@ -407,6 +463,12 @@ export const useSettingsStore = create<SettingsState>()(
       setHappyHorseApiKey: (happyHorseApiKey) => set((s) => ({ happyHorseApiKey, ...mirrorCredentialWrite(s, 'happyHorse', happyHorseApiKey) })),
       runninghubApiKey: '',
       setRunninghubApiKey: (runninghubApiKey) => set((s) => ({ runninghubApiKey, ...mirrorCredentialWrite(s, 'runninghub', runninghubApiKey) })),
+      runninghubSite: 'cn',
+      setRunninghubSite: (runninghubSite) => set({ runninghubSite }),
+      runninghubIntlApiKey: '',
+      setRunninghubIntlApiKey: (runninghubIntlApiKey) => set((s) => ({ runninghubIntlApiKey, ...mirrorCredentialWrite(s, 'runninghubIntl', runninghubIntlApiKey) })),
+      runninghubCustomWebappId: '',
+      setRunninghubCustomWebappId: (runninghubCustomWebappId) => set({ runninghubCustomWebappId }),
       kuaiziApiKey: '',
       setKuaiziApiKey: (kuaiziApiKey) => set((s) => ({ kuaiziApiKey, ...mirrorCredentialWrite(s, 'kuaizi', kuaiziApiKey) })),
       useRhtvSeedance: false,
@@ -415,6 +477,8 @@ export const useSettingsStore = create<SettingsState>()(
       setSeedanceEngine: (seedanceEngine) => set({ seedanceEngine }),
       minimaxH3Channel: 'auto',
       setMinimaxH3Channel: (minimaxH3Channel) => set({ minimaxH3Channel }),
+      wan3Channel: 'auto',
+      setWan3Channel: (wan3Channel) => set({ wan3Channel }),
       kimiEditModel: '',
       setKimiEditModel: (kimiEditModel) => set({ kimiEditModel }),
       kimiEditUseCos: true,
@@ -507,10 +571,28 @@ export const useSettingsStore = create<SettingsState>()(
       notificationsEnabled: true,
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       webSearchEnabled: false,
+      webSearchApiMode: 'auto',
+      setWebSearchApiMode: (webSearchApiMode) => set({ webSearchApiMode }),
+      webSearchCustomBaseUrl: '',
+      setWebSearchCustomBaseUrl: (webSearchCustomBaseUrl) => set({ webSearchCustomBaseUrl }),
+      webSearchCustomApiKey: '',
+      setWebSearchCustomApiKey: (webSearchCustomApiKey) => set({ webSearchCustomApiKey }),
+      webSearchCustomModel: '',
+      setWebSearchCustomModel: (webSearchCustomModel) => set({ webSearchCustomModel }),
+      visionApiMode: 'auto',
+      setVisionApiMode: (visionApiMode) => set({ visionApiMode }),
+      visionCustomBaseUrl: '',
+      setVisionCustomBaseUrl: (visionCustomBaseUrl) => set({ visionCustomBaseUrl }),
+      visionCustomApiKey: '',
+      setVisionCustomApiKey: (visionCustomApiKey) => set({ visionCustomApiKey }),
+      visionCustomModel: '',
+      setVisionCustomModel: (visionCustomModel) => set({ visionCustomModel }),
       setWebSearchEnabled: (webSearchEnabled) => set({ webSearchEnabled }),
 
       // 生图 API 槽位
       imageApiSlots: [],
+      customMediaApis: [],
+      setCustomMediaApis: (customMediaApis) => set({ customMediaApis }),
       setImageApiSlots: (imageApiSlots) =>
         set((state) => {
           // 槽位挂了 credentialId 时，把内联 apiKey 的修改镜像写回凭证
@@ -773,6 +855,19 @@ export const useSettingsStore = create<SettingsState>()(
         result.deepseekEngine = result.deepseekEngine ?? 'harness';
         result.chatImageModel = result.chatImageModel ?? 'gpt-image-2';
         result.chatVideoModel = result.chatVideoModel ?? 'seedance-2.0';
+        result.wan3Channel = result.wan3Channel ?? 'auto';
+        result.runninghubSite = result.runninghubSite ?? 'cn';
+        result.runninghubIntlApiKey = result.runninghubIntlApiKey ?? '';
+        result.runninghubCustomWebappId = result.runninghubCustomWebappId ?? '';
+        result.webSearchApiMode = result.webSearchApiMode ?? 'auto';
+        result.customMediaApis = result.customMediaApis ?? [];
+        result.webSearchCustomBaseUrl = result.webSearchCustomBaseUrl ?? '';
+        result.webSearchCustomApiKey = result.webSearchCustomApiKey ?? '';
+        result.webSearchCustomModel = result.webSearchCustomModel ?? '';
+        result.visionApiMode = result.visionApiMode ?? 'auto';
+        result.visionCustomBaseUrl = result.visionCustomBaseUrl ?? '';
+        result.visionCustomApiKey = result.visionCustomApiKey ?? '';
+        result.visionCustomModel = result.visionCustomModel ?? '';
         result.workspaceAgentModels = {
           canvas: 'global',
           workshop: 'global',

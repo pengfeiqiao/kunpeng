@@ -168,30 +168,45 @@ export class ContextManager {
       const toolCalls = (msg as { tool_calls?: unknown }).tool_calls;
       const thinkingBlocks = (msg as { thinking_blocks?: unknown }).thinking_blocks;
       const mediaCount = msg.role === 'tool' ? (msg.media?.length ?? 0) : 0;
+      // 用户消息内容块（多模态）：base64/URL 媒体块的传输字节不能当文本计——
+      // 一张 172KB 的图 stringify 出来约 23 万“token”，会立刻打爆上下文窗口，
+      // 触发压缩并把当前带图消息整体丢掉（模型于是只能看到摘要、答非所问）。
+      // 与 tool 消息的 media 一样按块给固定视觉 token 额度。
+      const contentBlocks = Array.isArray(msg.content)
+        ? msg.content as Array<{ type?: string; text?: string }>
+        : null;
+      const blockMediaCount = contentBlocks
+        ? contentBlocks.filter((b) => b && typeof b.type === 'string' && b.type !== 'text').length
+        : 0;
       const cached = this.estimateCache.get(msg);
       if (
         cached
         && cached.content === msg.content
         && cached.toolCalls === toolCalls
         && cached.thinking === thinkingBlocks
-        && cached.mediaCount === mediaCount
+        && cached.mediaCount === mediaCount + blockMediaCount
       ) {
         return total + cached.tokens;
       }
       const content =
-        typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        typeof msg.content === 'string'
+          ? msg.content
+          : contentBlocks
+            ? contentBlocks.map((b) => (b?.type === 'text' ? b.text ?? '' : '')).join('')
+            : JSON.stringify(msg.content);
       const structured =
         (toolCalls ? JSON.stringify(toolCalls) : '') +
         (thinkingBlocks ? JSON.stringify(thinkingBlocks) : '');
       // Do not stringify base64 media into the estimator. A fixed visual-token
       // allowance tracks pressure without treating transport bytes as text.
+      const totalMediaCount = mediaCount + blockMediaCount;
       const tokens =
-        this.estimateTokens((content || '') + structured) + mediaCount * 1800 + 12;
+        this.estimateTokens((content || '') + structured) + totalMediaCount * 1800 + 12;
       this.estimateCache.set(msg, {
         content: msg.content,
         toolCalls,
         thinking: thinkingBlocks,
-        mediaCount,
+        mediaCount: totalMediaCount,
         tokens,
       });
       return total + tokens;

@@ -29,8 +29,7 @@ use cocoa::appkit::{NSColor, NSWindow};
 #[cfg(target_os = "macos")]
 use cocoa::base::{id, nil, NO};
 
-fn mime_of_path(path: &str) -> &'static str {
-    let ext = std::path::Path::new(path)
+fn mime_of_path(path: &str) -> &'static str {    let ext = std::path::Path::new(path)
         .extension()
         .and_then(|s| s.to_str())
         .unwrap_or("")
@@ -51,9 +50,23 @@ fn mime_of_path(path: &str) -> &'static str {
 }
 
 #[tauri::command]
-async fn runninghub_app_upload(api_key: String, file_path: String) -> Result<String, String> {
+async fn runninghub_app_upload(
+    api_key: String,
+    file_path: String,
+    upload_url: Option<String>,
+) -> Result<String, String> {
     // Keep a copy for redacting error bodies that might echo the credential.
     let redact_key = api_key.trim().to_string();
+    // 站点（国内 .cn / 国际 .ai）由前端按设置传入；缺省保持国内站。
+    let upload_url = upload_url
+        .filter(|u| u.starts_with("https://"))
+        .unwrap_or_else(|| "https://www.runninghub.cn/task/openapi/upload".to_string());
+    let upload_host = upload_url
+        .trim_start_matches("https://")
+        .split('/')
+        .next()
+        .unwrap_or("www.runninghub.cn")
+        .to_string();
     let file_name = std::path::Path::new(&file_path)
         .file_name()
         .and_then(|s| s.to_str())
@@ -76,8 +89,8 @@ async fn runninghub_app_upload(api_key: String, file_path: String) -> Result<Str
         .build()
         .map_err(|e| format!("创建上传客户端失败: {}", e))?;
     let resp = client
-        .post("https://www.runninghub.cn/task/openapi/upload")
-        .header("Host", "www.runninghub.cn")
+        .post(&upload_url)
+        .header("Host", &upload_host)
         .multipart(form)
         .send()
         .await
@@ -224,6 +237,62 @@ fn toggle_main_window(app: tauri::AppHandle) {
     }
 }
 
+/// macOS：点击 Dock 图标恢复主窗口（issue #4）。
+/// tao 0.16（Tauri 1.x）未实现 applicationShouldHandleReopen:hasVisibleWindows:，
+/// 且常驻悬浮球窗口让系统默认的"无可见窗口才恢复"判断短路，导致主窗口
+/// 最小化/关闭隐藏后点 Dock 图标无反应。这里给现有 app delegate 类补上
+/// reopen 方法：取消最小化、显示并置前主窗口。
+#[cfg(target_os = "macos")]
+fn install_dock_reopen_handler(app_handle: tauri::AppHandle) {
+    use cocoa::appkit::NSApp;
+    use objc::runtime::{
+        class_addMethod, class_getInstanceMethod, method_setImplementation,
+        object_getClass, Imp, Object, Sel, BOOL, NO, YES,
+    };
+    use std::sync::OnceLock;
+
+    static REOPEN_APP: OnceLock<tauri::AppHandle> = OnceLock::new();
+    let _ = REOPEN_APP.set(app_handle);
+
+    extern "C" fn should_handle_reopen(
+        _this: &Object,
+        _cmd: Sel,
+        _sender: id,
+        _has_visible_windows: BOOL,
+    ) -> BOOL {
+        if let Some(handle) = REOPEN_APP.get() {
+            if let Some(win) = handle.get_window("main") {
+                let _ = win.unminimize();
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }
+        YES
+    }
+
+    unsafe {
+        let ns_app = NSApp();
+        let delegate: id = msg_send![ns_app, delegate];
+        if delegate.is_null() {
+            return;
+        }
+        let cls = object_getClass(delegate) as *mut objc::runtime::Class;
+        let imp: Imp = std::mem::transmute(
+            should_handle_reopen as extern "C" fn(&Object, Sel, id, BOOL) -> BOOL,
+        );
+        // 先尝试新增；tao 若已带默认实现（按 hasVisibleWindows 短路），
+        // class_addMethod 会失败，退而用 method_setImplementation 直接替换。
+        let reopen_sel = sel!(applicationShouldHandleReopen:hasVisibleWindows:);
+        let added = class_addMethod(cls, reopen_sel, imp, b"B@:@B\0".as_ptr() as *const i8);
+        if added == NO {
+            let method = class_getInstanceMethod(cls, reopen_sel) as *mut objc::runtime::Method;
+            if !method.is_null() {
+                method_setImplementation(method, imp);
+            }
+        }
+    }
+}
+
 fn main() {
     let tray_menu = SystemTrayMenu::new()
         .add_item(CustomMenuItem::new("show", "显示鲲鹏"))
@@ -265,6 +334,10 @@ fn main() {
         .setup(|app| {
             // 部署内置资源（AGENT.md/skills/aigc-memory 种子），版本变更时覆盖
             commands::deploy_bundled_resources(&app.handle());
+
+            // macOS：接管 Dock 图标点击，恢复主窗口（issue #4）
+            #[cfg(target_os = "macos")]
+            install_dock_reopen_handler(app.handle());
 
             #[cfg(debug_assertions)]
             {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar from './components/Sidebar';
+import SidebarHandle from './components/SidebarHandle';
 import ChatArea from './components/ChatArea';
 import EditorView from './components/editor/EditorView';
 import WorkshopView from './components/workshop/WorkshopView';
@@ -314,29 +315,33 @@ function App() {
         transition={{ duration: 0.3 }}
       >
         <ProjectTopBar />
-        {activeView === 'chat' ? (
-          <ChatArea
-            isConnected={isReady && hasAnyChatProviderKey({ glmApiKey, providerApiKeys, credentials, credentialRefs })}
-            onSendMessage={sendMessage}
-            onAbort={abort}
-          />
-        ) : activeView === 'canvas' ? (
-          <CanvasView onSendMessage={sendMessage} onAbort={abort} />
-        ) : activeView === 'wechat' ? (
-          <WechatView />
-        ) : activeView === 'lark' ? (
-          <LarkView />
-        ) : activeView === 'projects' ? (
-          <ProjectListView />
-        ) : activeView === 'library' ? (
-          <ArtifactLibrary />
-        ) : activeView === 'workshop' ? (
-          <WorkshopView onSendMessage={sendMessage} onAbort={abort} />
-        ) : activeView === 'copywriting' ? (
-          <CopywritingView onSendMessage={sendMessage} onAbort={abort} />
-        ) : (
-          <EditorView onSendMessage={sendMessage} onAbort={abort} />
-        )}
+        {/* 视图区统一包一层：SidebarHandle 挂这里，所有视图共享一个展开把手，子视图零感知 */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <SidebarHandle />
+          {activeView === 'chat' ? (
+            <ChatArea
+              isConnected={isReady && hasAnyChatProviderKey({ glmApiKey, providerApiKeys, credentials, credentialRefs })}
+              onSendMessage={sendMessage}
+              onAbort={abort}
+            />
+          ) : activeView === 'canvas' ? (
+            <CanvasView onSendMessage={sendMessage} onAbort={abort} />
+          ) : activeView === 'wechat' ? (
+            <WechatView />
+          ) : activeView === 'lark' ? (
+            <LarkView />
+          ) : activeView === 'projects' ? (
+            <ProjectListView />
+          ) : activeView === 'library' ? (
+            <ArtifactLibrary />
+          ) : activeView === 'workshop' ? (
+            <WorkshopView onSendMessage={sendMessage} onAbort={abort} />
+          ) : activeView === 'copywriting' ? (
+            <CopywritingView onSendMessage={sendMessage} onAbort={abort} />
+          ) : (
+            <EditorView onSendMessage={sendMessage} onAbort={abort} />
+          )}
+        </div>
       </motion.div>
 
       {/* Skill Wizard Panel */}

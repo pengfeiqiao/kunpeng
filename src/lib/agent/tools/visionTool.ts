@@ -1,8 +1,9 @@
 /**
  * image_recognition — 图片识别 / 视觉理解（DMXAPI 内置 API 模式）。
  *
- * 6 层容灾：doubao → gemini-2.5-flash → gpt-4o-mini → mimo-v2-omni
- *           → DeepSeek-OCR → qwen3-omni-flash-all
+ * 容灾顺序：原生 Kimi K3（已配置时）→ DMXAPI kimi-k3 → 豆包 lite
+ *           → gpt-4o-mini → mimo-v2-omni → DeepSeek-OCR → qwen3-omni-flash-all
+ * （Gemini 已按成本要求移除）
  *
  * image 参数接受公网 URL、data URI 或本地路径（本地自动转 base64）。
  */

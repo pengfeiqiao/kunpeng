@@ -11,6 +11,7 @@ import { invoke } from '@tauri-apps/api/tauri';
 import { open as openDialog, save as saveDialog, message as tauriMessage } from '@tauri-apps/api/dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/api/fs';
 import { SkillLibrary } from './skills';
+import CustomMediaPluginSettings from './CustomMediaPluginSettings';
 import LogPanel from './LogPanel';
 import ProviderSettings from './settings/ProviderSettings';
 import ImageApiSettings from './settings/ImageApiSettings';
@@ -409,15 +410,19 @@ const SETTINGS_EXPORT_CREDENTIAL_KEYS = new Set([
   'arkApiKey',
   'happyHorseApiKey',
   'runninghubApiKey',
+  'runninghubIntlApiKey',
   'kuaiziApiKey',
   'doubaoSpeechApiKey',
   'omniApiKey',
   'omniZeroFallApiKey',
   'omniApimartApiKey',
+  'visionCustomApiKey',
+  'webSearchCustomApiKey',
   'cosSecretId',
   'cosSecretKey',
   'providerApiKeys',
   'imageApiSlots', // slots carry per-channel apiKey
+  'customMediaApis', // plugins carry per-entry apiKey
   'credentials',
   'credentialRefs',
 ]);
@@ -451,9 +456,13 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
     happyHorseBaseUrl, setHappyHorseBaseUrl,
     happyHorseApiKey, setHappyHorseApiKey,
     runninghubApiKey, setRunninghubApiKey,
+    runninghubSite, setRunninghubSite,
+    runninghubIntlApiKey, setRunninghubIntlApiKey,
+    runninghubCustomWebappId, setRunninghubCustomWebappId,
     kuaiziApiKey, setKuaiziApiKey,
     seedanceEngine, setSeedanceEngine,
     minimaxH3Channel, setMinimaxH3Channel,
+    wan3Channel, setWan3Channel,
     kimiEditModel, setKimiEditModel,
     kimiEditUseCos, setKimiEditUseCos,
     doubaoSpeechApiKey, setDoubaoSpeechApiKey,
@@ -466,6 +475,14 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
     cosSecretId, setCosSecretId,
     cosSecretKey, setCosSecretKey,
     cosTransitEndpoint, setCosTransitEndpoint,
+    webSearchApiMode, setWebSearchApiMode,
+    webSearchCustomBaseUrl, setWebSearchCustomBaseUrl,
+    webSearchCustomApiKey, setWebSearchCustomApiKey,
+    webSearchCustomModel, setWebSearchCustomModel,
+    visionApiMode, setVisionApiMode,
+    visionCustomBaseUrl, setVisionCustomBaseUrl,
+    visionCustomApiKey, setVisionCustomApiKey,
+    visionCustomModel, setVisionCustomModel,
   } = useSettingsStore();
 
   const [showKeys, setShowKeys] = useState<Set<string>>(new Set());
@@ -613,10 +630,18 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
           />
         </div>
       </CollapsibleSection>
+
+      <CollapsibleSection title="自定义图片模型插件" description="以 base_url + model_id 接入三方生图模型（issue #7）；也可让对话里的 Agent 代为配置" defaultOpen={false}>
+        <CustomMediaPluginSettings kind="image" />
+      </CollapsibleSection>
       </>}
 
       {/* 视频生成 */}
       {section === 'videos' && <>
+      <CollapsibleSection title="自定义视频模型插件" description="以 base_url + model_id 接入三方生视频模型（issue #7）；也可让对话里的 Agent 代为配置" defaultOpen={false}>
+        <CustomMediaPluginSettings kind="video" />
+      </CollapsibleSection>
+
       <CollapsibleSection title="视频引擎" description="Seedance 2.0 与 MiniMax H3 的通道选择；画布、工坊、剪辑与普通对话共用" defaultOpen>
         <div className="space-y-4">
           <div>
@@ -651,8 +676,9 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
             <div className="flex rounded-md bg-zinc-100 p-0.5">
               {([
                 { id: 'auto', label: '自动容灾（推荐）', hint: '按近期成功率与延迟自动选路' },
-                { id: 'runninghub', label: 'RunningHub 优先', hint: '优先 RunningHub，失败自动容灾 APIMart' },
-                { id: 'apimart', label: 'APIMart 优先', hint: '优先 APIMart，失败自动容灾 RunningHub' },
+                { id: 'runninghub', label: 'RunningHub 优先', hint: '优先 RunningHub，失败自动容灾其余渠道' },
+                { id: 'apimart', label: 'APIMart 优先', hint: '优先 APIMart，失败自动容灾其余渠道' },
+                { id: 'kuaizi', label: '筷子丽帧优先', hint: '优先筷子丽帧，失败自动容灾其余渠道' },
               ] as const).map((opt) => (
                 <button
                   key={opt.id}
@@ -670,7 +696,35 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
               ))}
             </div>
             <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
-              H3 在 RunningHub 与 APIMart 双渠道间容灾；积分不足/认证失败等不扣费错误会自动切换渠道（两个 Key 分别在下方「RunningHub」与「Omni MG 渠道 → APIMart」配置）。
+              H3 在 RunningHub、APIMart 与筷子丽帧三渠道间容灾；积分不足/认证失败等不扣费错误会自动切换渠道（三个 Key 分别在下方「RunningHub」「Omni MG 渠道 → APIMart」与「筷子丽帧」配置）。
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">万相 3.0 渠道</label>
+            <div className="flex rounded-md bg-zinc-100 p-0.5">
+              {([
+                { id: 'auto', label: '筷子主渠道（推荐）', hint: '默认筷子丽帧，失败按 RunningHub → APIMart 顺序容灾' },
+                { id: 'kuaizi', label: '筷子丽帧优先', hint: '同默认；失败自动容灾其余渠道' },
+                { id: 'runninghub', label: 'RunningHub 优先', hint: '优先 RunningHub，失败自动容灾其余渠道' },
+                { id: 'apimart', label: 'APIMart 优先', hint: '优先 APIMart，失败自动容灾其余渠道' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setWan3Channel(opt.id)}
+                  title={opt.hint}
+                  className={`min-w-[58px] rounded-[5px] px-2.5 py-1.5 text-center text-xs font-medium transition-colors ${
+                    wan3Channel === opt.id
+                      ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+              万相 3.0（wan3.0-video）是阿里全能参考视频模型，支持图/视频/音频/文档/网页链接参考。默认筷子丽帧为主渠道，失败自动容灾 RunningHub 与 APIMart；参考图最多 10 张、参考视频/音频各最多 5 段，文档与网页链接互斥。
             </p>
           </div>
         </div>
@@ -679,7 +733,7 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
       <CollapsibleSection title="筷子丽帧" description="Seedance 2.0 默认视频通道" defaultOpen={false}>
             <KeyInputRow
               label="API Key"
-              hint="筷子丽帧 Seedance 2.0 / 2.5 视频生成（Seedance 2.0 默认通道）"
+              hint="筷子丽帧 Seedance 2.0 / 2.5 视频生成（Seedance 2.0 默认通道）；同时是万相 3.0 主渠道与 MiniMax H3 容灾渠道"
               value={rk('kuaizi', kuaiziApiKey)}
               onChange={setKuaiziApiKey}
               show={showKeys.has('kuaizi')}
@@ -689,15 +743,62 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
       </CollapsibleSection>
 
       <CollapsibleSection title="RunningHub" description="RunningHub 多媒体生成（MiniMax H3 渠道、视频/图片/音频/3D/AI应用）" defaultOpen={false}>
+        <div className="mb-3">
+          <label className="block text-xs text-zinc-500 mb-1">站点</label>
+          <div className="flex rounded-md bg-zinc-100 p-0.5">
+            {([
+              { id: 'cn', label: '国内站 runninghub.cn', hint: '默认；使用下方国内站 API Key' },
+              { id: 'ai', label: '国际站 runninghub.ai', hint: '国际站账号体系独立，使用下方国际站 API Key' },
+            ] as const).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setRunninghubSite(opt.id)}
+                title={opt.hint}
+                className={`min-w-[58px] flex-1 rounded-[5px] px-2.5 py-1.5 text-center text-xs font-medium transition-colors ${
+                  runninghubSite === opt.id
+                    ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/80'
+                    : 'text-zinc-500 hover:text-zinc-900'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+            国内站与国际站的账号和 API Key 互不通用；切换站点后，提交/查询/估价/上传与账户余额都走对应站点。
+          </p>
+        </div>
         <KeyInputRow
-          label="RunningHub API Key"
+          label="RunningHub API Key（国内站）"
           hint="runninghub.cn 企业 API Key；MiniMax H3 的渠道之一"
           value={rk('runninghub', runninghubApiKey)}
           onChange={setRunninghubApiKey}
           show={showKeys.has('runninghub')}
           onToggleShow={() => toggleShow('runninghub')}
-          placeholder="输入 RunningHub API Key..."
+          placeholder="输入国内站 API Key..."
         />
+        <KeyInputRow
+          label="RunningHub API Key（国际站）"
+          hint="runninghub.ai 国际站 API Key；仅站点切到国际站时使用"
+          value={rk('runninghubIntl', runninghubIntlApiKey)}
+          onChange={setRunninghubIntlApiKey}
+          show={showKeys.has('runninghubIntl')}
+          onToggleShow={() => toggleShow('runninghubIntl')}
+          placeholder="输入国际站 API Key..."
+        />
+        <div className="mt-3 border-t border-zinc-100 pt-3">
+          <label className="block text-xs font-medium text-zinc-700 mb-1">自定义 AI 应用（高级，可选）</label>
+          <input
+            value={runninghubCustomWebappId}
+            onChange={(e) => setRunninghubCustomWebappId(e.target.value)}
+            placeholder="粘贴 webappId 或应用链接，留空使用内置应用"
+            className="w-full h-8 rounded-md border border-zinc-200 bg-white px-2.5 text-xs text-zinc-800 outline-none placeholder:text-zinc-400 focus:border-zinc-400"
+          />
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+            粘贴你自己部署的 RunningHub AI 应用 ID 或完整链接（自动提取数字 ID）。设置后「AI 应用通道」的请求（如 Topaz 放大）改走你自己的工作流和账号额度；该应用必须是内置同款工作流的副本（输入节点结构一致），否则会被 RunningHub 拒单。留空回退内置应用。
+          </p>
+        </div>
       </CollapsibleSection>
 
       <CollapsibleSection title="火山方舟 Seedance" description="Seedance 视频生成服务（含 Seedance 2.5 / Seedream 5.0 模型目录）" defaultOpen={false}>
@@ -852,6 +953,94 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
 
       {/* RunningHub */}
       {section === 'integrations' && <>
+
+      {/* 识图与联网（模块 API 自定义） */}
+      <CollapsibleSection title="识图与联网" description="对话中 image_recognition 识图与 web_search 联网搜索的 API 自定义；也可以直接让对话里的 Agent 帮你配置" defaultOpen={false}>
+        <div className="space-y-5">
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">识图模块（image_recognition）</label>
+            <div className="flex rounded-md bg-zinc-100 p-0.5">
+              {([
+                { id: 'auto', label: '自动（推荐）', hint: '原生 Kimi → DMX kimi-k3 → 豆包 lite → GPT-4o-mini 容灾链' },
+                { id: 'custom', label: '自定义端点', hint: 'OpenAI 兼容 chat/completions 端点' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setVisionApiMode(opt.id)}
+                  title={opt.hint}
+                  className={`min-w-[58px] flex-1 rounded-[5px] px-2.5 py-1.5 text-center text-xs font-medium transition-colors ${
+                    visionApiMode === opt.id
+                      ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {visionApiMode === 'custom' && (
+              <div className="mt-2 space-y-2">
+                <input type="text" value={visionCustomBaseUrl} onChange={(e) => setVisionCustomBaseUrl(e.target.value)} className={inputCls} placeholder="Base URL，如 https://api.openai.com/v1 或 https://www.dmxapi.cn" />
+                <input type="text" value={visionCustomModel} onChange={(e) => setVisionCustomModel(e.target.value)} className={inputCls} placeholder="支持视觉的模型名，如 gpt-4o-mini / kimi-k3" />
+                <KeyInputRow
+                  label="识图自定义端点 API Key"
+                  hint="仅用于上方自定义端点"
+                  value={visionCustomApiKey}
+                  onChange={setVisionCustomApiKey}
+                  show={showKeys.has('visionCustom')}
+                  onToggleShow={() => toggleShow('visionCustom')}
+                  placeholder="输入 API Key..."
+                />
+              </div>
+            )}
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+              自动模式按「原生 Kimi → DMXAPI kimi-k3 → 豆包 lite → GPT-4o-mini」容灾；自定义模式只走你填的端点，需要 OpenAI 兼容的 chat/completions 且模型支持图片输入。
+            </p>
+          </div>
+          <div className="border-t border-zinc-100 pt-4">
+            <label className="block text-xs text-zinc-500 mb-1">联网搜索模块（web_search）</label>
+            <div className="flex rounded-md bg-zinc-100 p-0.5">
+              {([
+                { id: 'auto', label: '自动（推荐）', hint: 'DMX perplexity-sonar-pro → 腾讯搜索回退' },
+                { id: 'custom', label: '自定义端点', hint: 'OpenAI 兼容端点，如自建搜索/Perplexity API' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setWebSearchApiMode(opt.id)}
+                  title={opt.hint}
+                  className={`min-w-[58px] flex-1 rounded-[5px] px-2.5 py-1.5 text-center text-xs font-medium transition-colors ${
+                    webSearchApiMode === opt.id
+                      ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200/80'
+                      : 'text-zinc-500 hover:text-zinc-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {webSearchApiMode === 'custom' && (
+              <div className="mt-2 space-y-2">
+                <input type="text" value={webSearchCustomBaseUrl} onChange={(e) => setWebSearchCustomBaseUrl(e.target.value)} className={inputCls} placeholder="Base URL，如 https://api.perplexity.ai 或自建网关" />
+                <input type="text" value={webSearchCustomModel} onChange={(e) => setWebSearchCustomModel(e.target.value)} className={inputCls} placeholder="模型名，如 sonar-pro" />
+                <KeyInputRow
+                  label="联网自定义端点 API Key"
+                  hint="仅用于上方自定义端点"
+                  value={webSearchCustomApiKey}
+                  onChange={setWebSearchCustomApiKey}
+                  show={showKeys.has('webSearchCustom')}
+                  onToggleShow={() => toggleShow('webSearchCustom')}
+                  placeholder="输入 API Key..."
+                />
+              </div>
+            )}
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+              自动模式走 DMXAPI 的 perplexity-sonar-pro，失败回退腾讯搜索；自定义模式把搜索词作为普通对话发给 OpenAI 兼容端点（请选用带联网能力的模型）。不知道怎么填时，可以直接在对话里让 Agent 帮你配置。
+            </p>
+          </div>
+        </div>
+      </CollapsibleSection>
 
       {/* Kimi 剪辑 Agent */}
       <CollapsibleSection title="Kimi 剪辑 Agent" description="参考视频拉片、剪辑计划与成片复盘" defaultOpen={false}>

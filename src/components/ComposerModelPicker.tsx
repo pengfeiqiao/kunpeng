@@ -20,6 +20,7 @@ const VIDEO_MODELS = [
   { value: 'seedance-2.0-fast', label: 'Seedance 2.0 Fast', detail: '速度优先' },
   { value: 'seedance-2.0-mini', label: 'Seedance 2.0 Mini', detail: '低成本备用' },
   { value: 'seedance-2.5', label: 'Seedance 2.5', detail: '即梦 CLI 新版视频' },
+  { value: 'wan-3.0', label: '万相 3.0', detail: '阿里全能参考 · 文档/网页链接直接发给 Agent' },
   { value: 'omni-mg-animation', label: 'Omni MG', detail: 'MG 动画与视频包装' },
 ] as const;
 
@@ -38,6 +39,21 @@ export default function ComposerModelPicker({ disabled }: { disabled?: boolean }
   const setChatImageModel = useSettingsStore((s) => s.setChatImageModel);
   const chatVideoModel = useSettingsStore((s) => s.chatVideoModel);
   const setChatVideoModel = useSettingsStore((s) => s.setChatVideoModel);
+  const customMediaApis = useSettingsStore((s) => s.customMediaApis);
+
+  // 自定义模型插件（issue #7）：启用的插件追加到图片/视频模型列表尾部
+  const imageModels = useMemo(() => [
+    ...IMAGE_MODELS,
+    ...(customMediaApis ?? [])
+      .filter((api) => api.kind === 'image' && api.enabled)
+      .map((api) => ({ value: `custom-media:${api.id}` as const, label: api.label, detail: `自定义插件 · ${api.modelId}` })),
+  ], [customMediaApis]);
+  const videoModels = useMemo(() => [
+    ...VIDEO_MODELS,
+    ...(customMediaApis ?? [])
+      .filter((api) => api.kind === 'video' && api.enabled)
+      .map((api) => ({ value: `custom-media:${api.id}` as const, label: api.label, detail: `自定义插件 · ${api.modelId}` })),
+  ], [customMediaApis]);
 
   useEffect(() => {
     if (!open) return;
@@ -132,10 +148,10 @@ export default function ComposerModelPicker({ disabled }: { disabled?: boolean }
                   </div>
                 ));
               })()}
-              {tab === 'image' && IMAGE_MODELS.map((model) => (
+              {tab === 'image' && imageModels.map((model) => (
                 <ModelRow key={model.value} {...model} active={chatImageModel === model.value} onClick={() => setChatImageModel(model.value)} />
               ))}
-              {tab === 'video' && VIDEO_MODELS.map((model) => (
+              {tab === 'video' && videoModels.map((model) => (
                 <ModelRow key={model.value} {...model} active={chatVideoModel === model.value} onClick={() => setChatVideoModel(model.value)} />
               ))}
             </div>

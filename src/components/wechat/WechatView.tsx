@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { MessageSquare, Send, Loader2, QrCode, ChevronLeft, Menu, Pencil, Check, Plus, X, Paperclip, FileText, Bot, Users, ListChecks } from 'lucide-react';
+import { MessageSquare, Send, Loader2, QrCode, ChevronLeft, Pencil, Check, Plus, X, Paperclip, FileText, Bot, Users, ListChecks } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { open } from '@tauri-apps/api/dialog';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
@@ -654,19 +654,15 @@ function ChatPanel() {
 export default function WechatView() {
   const bots = useWechatStore((s) => s.bots);
   const sidebarCollapsed = useSettingsStore((s) => s.sidebarCollapsed);
-  const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
   const [showLogin, setShowLogin] = useState(false);
 
   const hasBots = Object.keys(bots).length > 0;
 
   return (
     <div className="w-full h-full flex flex-col" style={{ background: 'rgb(var(--c-bg))' }}>
+      {/* 收起时保留原把手条等高占位：App 层全局 SidebarHandle 浮于此处，内容不上移 */}
       {sidebarCollapsed && (
-        <div className="px-4 py-2 border-b" style={{ borderColor: 'rgb(var(--c-border))' }}>
-          <button onClick={toggleSidebar} className="p-2 hover:bg-dark-border rounded-lg transition-colors">
-            <Menu size={20} style={{ color: 'rgb(var(--c-text))' }} />
-          </button>
-        </div>
+        <div className="h-[52px] shrink-0 border-b" style={{ borderColor: 'rgb(var(--c-border))' }} />
       )}
 
       <div className="flex-1 flex min-h-0">

@@ -222,7 +222,7 @@ export async function appendKuaiziLog(entry: Record<string, unknown>): Promise<v
 
 export function isTransientKuaiziError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  return /Network Error|error sending request|timed out|timeout|超时|failed to fetch|connection closed|dns|ECONN|ETIMEDOUT|EPIPE|ENOTFOUND|下载失败 HTTP 5\d\d|HTTP 5\d\d/i.test(msg);
+  return /Network Error|error sending request|timed out|timeout|超时|failed to fetch|connection closed|dns|ECONN|ETIMEDOUT|EPIPE|ENOTFOUND|HTTP 429|下载失败 HTTP 5\d\d|HTTP 5\d\d/i.test(msg);
 }
 
 /**

@@ -3,6 +3,7 @@ import { generateImage } from '@/lib/imageGen/client';
 import { loadMediaInput } from '@/lib/agent/mediaInput';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { runGeneration } from '@/lib/canvasGen';
+import { findCustomMediaApi } from '@/lib/customMedia/runner';
 import {
   applyMidjourneyStylePrompt,
   ensureMidjourneyStyleReference,
@@ -31,8 +32,7 @@ export const imageGenerateTool: Tool = {
         prompt: { type: 'string', description: '完整生图提示词' },
         model: {
           type: 'string',
-          enum: IMAGE_MODELS,
-          description: '可选；省略时使用普通对话底部当前选择的生图模型',
+          description: '可选；省略时使用普通对话底部当前选择的生图模型。内置值：gpt-image-2、seedream-v5-pro、midjourney-v81、midjourney-v82；自定义图片插件用 custom-media:{插件id}（先 media_api_plugin list 查看）',
         },
         aspect_ratio: {
           type: 'string',
@@ -81,6 +81,43 @@ export const imageGenerateTool: Tool = {
   async execute(params) {
     const settings = useSettingsStore.getState();
     const requestedModel = String(params.model || settings.chatImageModel || 'gpt-image-2');
+
+    // 自定义图片插件（issue #7）：custom-media:{id} 直接走插件执行器
+    if (requestedModel.startsWith('custom-media:')) {
+      const referenceUrls = Array.isArray(params.reference_urls)
+        ? params.reference_urls.map(String).filter(Boolean).slice(0, 10)
+        : [];
+      const result = await runGeneration({
+        engineId: requestedModel,
+        prompt: String(params.prompt || ''),
+        referenceUrls,
+        params: {
+          aspectRatio: String(params.aspect_ratio || 'auto'),
+          ...(String(params.resolution || '').trim() ? { resolution: String(params.resolution).trim() } : {}),
+        },
+      });
+      if (!result.success || result.resultPaths.length === 0) {
+        return { success: false, output: '', error: result.error || '自定义插件图片生成失败' };
+      }
+      const path = result.resultPaths[0];
+      const native = await loadMediaInput(path);
+      const api = findCustomMediaApi(requestedModel);
+      return {
+        success: true,
+        output: [
+          '图片生成完成。',
+          `模型：${api?.label ?? requestedModel}（自定义插件）`,
+          `文件：${path}`,
+        ].join('\n'),
+        media: [{
+          type: 'image',
+          source: native.dataUrl.startsWith('data:')
+            ? { type: 'base64', media_type: native.mediaType || 'image/png', data: native.dataUrl.slice(native.dataUrl.indexOf(',') + 1) }
+            : { type: 'url', url: native.dataUrl },
+        }],
+      };
+    }
+
     const model = IMAGE_MODELS.includes(requestedModel) ? requestedModel : 'gpt-image-2';
     const requestedRatio = String(params.aspect_ratio || '16:9');
     const aspectRatio = ASPECT_RATIOS.includes(requestedRatio) ? requestedRatio : '16:9';
