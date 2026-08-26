@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Download, FileUp, PanelLeftOpen } from 'lucide-react';
+import { Download, FileUp } from 'lucide-react';
 import { useCopywritingStore } from '@/stores/copywritingStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import DocSidebar from './DocSidebar';
@@ -20,7 +20,6 @@ export default function CopywritingView({ onSendMessage, onAbort }: Props) {
   const updateDoc = useCopywritingStore(s => s.updateDoc);
   const [showExperience, setShowExperience] = useState(false);
   const sidebarCollapsed = useSettingsStore(s => s.sidebarCollapsed);
-  const toggleSidebar = useSettingsStore(s => s.toggleSidebar);
 
   useEffect(() => {
     if (!loaded) void loadAll();
@@ -54,18 +53,8 @@ export default function CopywritingView({ onSendMessage, onAbort }: Props) {
         className="flex items-center gap-3 px-5 py-2.5 shrink-0"
         style={{ background: 'var(--cw-bg)', borderBottom: '1px solid var(--cw-border)' }}
       >
-        {sidebarCollapsed && (
-          <button
-            onClick={toggleSidebar}
-            className="p-1.5 -ml-2 rounded-md transition-colors"
-            style={{ color: 'var(--cw-text-muted)' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--cw-card)'; e.currentTarget.style.color = 'var(--cw-text-2)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--cw-text-muted)'; }}
-            title="展开侧边栏"
-          >
-            <PanelLeftOpen size={16} />
-          </button>
-        )}
+        {/* 收起时留原把手等宽占位：App 层全局 SidebarHandle 浮于此处，标题不位移 */}
+        {sidebarCollapsed && <div className="-ml-2 w-7 shrink-0" />}
         {activeDoc ? (
           <input
             value={activeDoc.title}

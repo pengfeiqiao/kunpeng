@@ -3,7 +3,7 @@
  * 顶栏 + 左 StepNav + 主区当前步骤 + 右抽屉鲲鹏助手。
  */
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Clapperboard, FileUp, Loader2, PanelLeftClose, PanelLeftOpen, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Clapperboard, FileUp, Loader2, PanelLeftClose, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { confirm as tauriConfirm } from '@tauri-apps/api/dialog';
 import { useWorkshopStore } from '@/stores/workshopStore';
 import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
@@ -36,8 +36,6 @@ export default function WorkshopView({ onSendMessage, onAbort }: Props) {
   const project = useWorkshopStore((s) => s.project);
   // 只订阅 currentStep：store 任何写入都会换 data 引用，整订 data 会让整个工坊壳层每次重写
   const currentStep = useWorkshopStore((s) => s.data?.currentStep);
-  const sidebarCollapsed = useSettingsStore((s) => s.sidebarCollapsed);
-  const toggleSidebar = useSettingsStore((s) => s.toggleSidebar);
   const contentRef = useRef<HTMLDivElement>(null);
   const [altHeld, setAltHeld] = useState(false);
 
@@ -84,15 +82,6 @@ export default function WorkshopView({ onSendMessage, onAbort }: Props) {
         <>
           <TopBar />
           <div className="flex-1 flex min-h-0 relative">
-            {sidebarCollapsed && (
-              <button
-                onClick={toggleSidebar}
-                className="absolute top-3 left-3 z-30 p-2 rounded-lg cv-panel cv-btn backdrop-blur-sm"
-                title="展开侧边栏"
-              >
-                <PanelLeftOpen size={16} />
-              </button>
-            )}
             <StepNav />
             <div ref={contentRef} className="flex-1 min-w-0 overflow-y-auto relative">
               {currentStep === 'script' && <StepScript />}
@@ -133,13 +122,18 @@ function TopBar() {
       className="flex items-center gap-3 px-4 shrink-0"
       style={{ height: 48, background: 'var(--canvas-panel)', borderBottom: '1px solid var(--canvas-node-border)' }}
     >
-      <button
-        onClick={toggleSidebar}
-        className="p-2 rounded-lg text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)] hover:bg-[var(--canvas-controls-hover)] transition-colors"
-        title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-      >
-        {sidebarCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
-      </button>
+      {/* 收起侧边栏；收起时留等宽占位给 App 层全局 SidebarHandle（浮于左上角），后续按钮不位移 */}
+      {sidebarCollapsed ? (
+        <div className="w-[31px] shrink-0" />
+      ) : (
+        <button
+          onClick={toggleSidebar}
+          className="p-2 rounded-lg text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)] hover:bg-[var(--canvas-controls-hover)] transition-colors"
+          title="收起侧边栏"
+        >
+          <PanelLeftClose size={15} />
+        </button>
+      )}
       <button
         onClick={close}
         className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[12px] text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)] hover:bg-[var(--canvas-controls-hover)] transition-colors"
