@@ -198,7 +198,21 @@ Schema.union([normalPolicySchema, alwaysPolicySchema]);
 * App-attribution vocabulary for provider requests.
 * @module @deepseek-ai/dsh-llm/attribution
 */
-const { version } = createRequire(import.meta.url)("../package.json");
+// KUNPENG PATCH（部署布局容错）：上游 bundle 的 `../package.json` 假设文件
+// 位于 node_modules/<pkg>/lib/ 内；本 fork 被 vendored 到运行时根后，开发
+// 布局下 ../ 解析到仓库根 package.json，而部署布局（~/.kunpeng/dsh/<ver>/）
+// 下 ../ 指向不存在的 ~/.kunpeng/dsh/package.json 直接 MODULE_NOT_FOUND。
+// 依次回退：../package.json（保留上游行为）→ ./package.json（运行时根，
+// 即 dsh-runtime 自身的 0.1.0-rc.6，语义上正是原 dsh-acp 包版本）→ 硬编码。
+const { version } = (() => {
+	const req = createRequire(import.meta.url);
+	for (const candidate of ["../package.json", "./package.json"]) {
+		try {
+			return req(candidate);
+		} catch { /* 布局回退 */ }
+	}
+	return { version: "0.1.0-rc.6" };
+})();
 //#endregion
 //#region lib/types/codec.js
 /**
