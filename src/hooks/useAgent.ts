@@ -1700,6 +1700,11 @@ export function useAgent(options?: { primary?: boolean }) {
               input += '\n\n[媒体附件说明] 当前执行引擎不能直接接收图片/视频内容块。'
                 + '如需查看上方列出的图片，请调用 image_recognition 工具并传入对应文件路径；'
                 + '视频请使用视频分析/转写工具处理。不要直接 read_file 读取图片/视频二进制。';
+            } else if (hasImageMedia && acpMediaBlocks.length > 0) {
+              // 原生视觉轮次：明确告知图片已直达，防止历史记忆里的
+              // image_recognition 指引让模型重复识别。
+              input += '\n\n[媒体附件说明] 图片已作为原生内容块直接传入，你能直接看到画面内容；'
+                + '请直接看图回答，禁止再调用 image_recognition 做重复识别。';
             }
             const result = await bridge.run({
               runId,
