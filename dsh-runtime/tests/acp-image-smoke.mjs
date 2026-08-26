@@ -13,7 +13,7 @@ const bin = join(root, 'node_modules', '@deepseek-ai', 'dsh-acp-demo', 'lib', 'b
 const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
 if (!apiKey) throw new Error('DEEPSEEK_API_KEY is required');
 
-const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash-vision-exp';
 const baseURL = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
 const imagePath = process.env.SMOKE_IMAGE || '/tmp/smoke-red.png';
 
@@ -50,23 +50,26 @@ const persistenceRoot = join(work, 'sessions');
 
 const config = [
   {
-    id: 'llm-deepseek',
-    name: join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-deepseek', 'lib', 'index.js'),
+    // KUNPENG: 视觉轮次走 pi-ai 适配器（dsh-llm-deepseek 是 text-only 设计），
+    // 模型级声明 input:[text,image]；图片经 attachment store 落盘后 base64 内联进模型。
+    id: 'llm-pi-ai',
+    name: join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-pi-ai', 'lib', 'index.js'),
     config: {
-      apiKeyEnv: 'DEEPSEEK_API_KEY',
-      baseURL,
-      thinking: 'enabled',
-      reasoningEffort: 'high',
-      maxTokens: 4096,
-      defaultContextWindow: 1_000_000,
-      models: [{ id: model, name: model, contextWindow: 1_000_000, maxTokens: 4096 }],
+      providers: {
+        deepseek: {
+          apiKeyEnv: 'DEEPSEEK_API_KEY',
+          api: 'openai-completions',
+          baseURL: `${baseURL}/v1`,
+          models: [{ id: model, name: model, contextWindow: 1_000_000, maxTokens: 4096, input: ['text', 'image'] }],
+        },
+      },
     },
   },
   {
     id: 'acp',
     name: join(root, 'kunpeng-acp-host.mjs'),
     config: {
-      provider: 'deepseek-official',
+      provider: 'deepseek',
       model,
       persona: 'Reply concisely.',
       workspaceContext: false,
@@ -121,6 +124,7 @@ let stderr = '';
 let nextId = 1;
 const pending = new Map();
 let replyText = '';
+let thoughtText = '';
 const redact = (text) => text.replaceAll(apiKey, '[REDACTED]');
 
 child.stderr.setEncoding('utf8');
@@ -131,9 +135,15 @@ child.stderr.on('data', (chunk) => {
     if (!line.startsWith('__KUNPENG_DSH_EVENT__')) continue;
     try {
       const event = JSON.parse(line.slice(21));
-      const chunkData = event?.update?.chunk;
-      if (event?.update?.sessionUpdate === 'agent_message_chunk' && chunkData?.content?.type === 'text') {
+      // 侧通道事件形态不统一：部分包 {update:{...}}，部分是扁平 {sessionUpdate,content}
+      const update = event?.update ?? event;
+      const chunkData = update?.chunk ?? update;
+      if (update?.sessionUpdate === 'agent_message_chunk' && chunkData?.content?.type === 'text') {
         replyText += chunkData.content.text;
+      }
+      // pi-ai 视觉路由的答案可能随思考流输出，判定"是否看到图"两条流都要看
+      if (update?.sessionUpdate === 'agent_thought_chunk' && chunkData?.content?.type === 'text') {
+        thoughtText += chunkData.content.text;
       }
     } catch { /* ignore */ }
   }
@@ -148,6 +158,12 @@ child.stdout.on('data', (chunk) => {
     buffer = buffer.slice(newline + 1);
     if (!line.trim()) continue;
     const message = JSON.parse(line);
+    // ACP 通知（无 id）：正文经 session/update 的 agent_message_chunk 流出
+    if (message.method === 'session/update') {
+      const content = message.params?.update?.content;
+      if (content?.type === 'text') replyText += content.text;
+      continue;
+    }
     if (typeof message.id !== 'number' || message.method) continue;
     const waiter = pending.get(message.id);
     if (!waiter) continue;
@@ -190,32 +206,31 @@ try {
     sessionId: session.sessionId,
     prompt: [
       { type: 'image', data: imageData, mimeType: 'image/png' },
-      { type: 'text', text: '这张图片的主体是什么颜色？只用一种颜色名称回答。如果你根本收不到图片，请回答：收不到图片。' },
+      { type: 'text', text: '请直接描述这张图片里有什么（颜色、形状、内容）。' },
     ],
   });
+  const allText = `${replyText}\n${thoughtText}`;
+  // 判定：最终正文或思考流提到红色（测试图是纯红色块）
+  const sawImage = /红/.test(allText);
   process.stdout.write(`${JSON.stringify({
-    ok: true,
-    note: 'UPSTREAM NOW ACCEPTS IMAGES — re-evaluate the Kunpeng mediaFilter workaround',
+    ok: sawImage,
+    note: sawImage
+      ? 'KUNPENG fork bridge delivers native images to the vision model'
+      : 'model did NOT see the image',
     stopReason: prompt?.stopReason,
     replyText: replyText.slice(0, 500),
+    ...(!sawImage ? { diagnostics: stderr.slice(-8000) } : {}),
   })}\n`);
+  if (!sawImage) process.exitCode = 1;
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  // The Kunpeng media pipeline (src/lib/agent/dsh/mediaFilter.ts) relies on
-  // this upstream invariant: dsh-acp rejects image prompt blocks. Treat the
-  // known rejection as a PASS so this script can run as a manual regression
-  // check; anything else is a real failure.
-  if (/only text and resource_link/.test(message)) {
-    process.stdout.write(`${JSON.stringify({ ok: true, note: 'upstream rejects image prompts as expected', error: message })}\n`);
-  } else {
-    process.stderr.write(`${JSON.stringify({
-      ok: false,
-      error: message,
-      replyText: replyText.slice(0, 500),
-      diagnostics: stderr.slice(-6000),
-    })}\n`);
-    process.exitCode = 1;
-  }
+  process.stderr.write(`${JSON.stringify({
+    ok: false,
+    error: message,
+    replyText: replyText.slice(0, 500),
+    diagnostics: stderr.slice(-6000),
+  })}\n`);
+  process.exitCode = 1;
 } finally {
   child.kill('SIGTERM');
   bridge.close();

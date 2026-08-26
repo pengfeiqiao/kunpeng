@@ -4,18 +4,18 @@ import type { AcpContent } from './types.ts';
 /**
  * Convert a Kunpeng user media block into an ACP prompt content block.
  *
- * The upstream dsh-acp bridge accepts only `text` and `resource_link` prompt
- * content — an `image` block is rejected with invalidParams
- * ("only text and resource_link prompt content is supported") BEFORE any
- * model call, which used to kill the whole Harness turn. Base64 media is
- * therefore dropped here and vision routes through tools (image_recognition)
- * for Harness turns. 带图轮次现在在上游（useAgent）直接改道内置通道的
- * DeepSeek 原生视觉（deepseek-v4-flash-vision-exp 起官方端点支持原生图片
- * 输入），本文件只服务留在 Harness 的非图片轮次。
+ * Kunpeng 的 fork 桥（dsh-runtime/kunpeng-acp.mjs）接受 image 块并经
+ * attachment store 持久化，供声明了 input:[text,image] 的 pi-ai 视觉模型
+ * 路由原生看图。base64 图片 → ACP image 块；公网 URL 媒体仍转
+ * resource_link（运行时不解引用，仅作文本引用）；视频保持
+ * resource_link（视觉模型只收图片，视频走分析/转写工具）。
  */
 export function mediaToAcpContent(block: AgentUserContentBlock): AcpContent | null {
   if (block.type === 'text') return { type: 'text', text: block.text };
   const source = block.source;
+  if (block.type === 'image' && source.type === 'base64') {
+    return { type: 'image', data: source.data, mimeType: source.media_type || 'image/png' };
+  }
   if (source.type === 'base64') return null;
   return {
     type: 'resource_link',

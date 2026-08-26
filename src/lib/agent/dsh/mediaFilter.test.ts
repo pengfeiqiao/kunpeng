@@ -23,11 +23,17 @@ test('text blocks pass through unchanged', () => {
   );
 });
 
-test('base64 image blocks are dropped — ACP rejects them and DeepSeek has no native vision', () => {
-  // Regression guard: dsh-acp answers `Invalid params: only text and
-  // resource_link prompt content is supported` for image blocks, which used
-  // to kill the entire Harness turn ("暂时不可用").
-  assert.equal(mediaToAcpContent(base64Image), null);
+test('base64 image blocks become ACP image blocks (fork bridge + attachment store)', () => {
+  // kunpeng-acp.mjs fork 接受 image 块并经 attachment store 持久化，
+  // pi-ai 视觉路由（模型声明 input:[text,image]）原生看图。
+  assert.deepEqual(mediaToAcpContent(base64Image), {
+    type: 'image',
+    data: 'aGVsbG8=',
+    mimeType: 'image/png',
+  });
+});
+
+test('base64 video blocks are still dropped (vision models only accept images)', () => {
   assert.equal(mediaToAcpContent(base64Video), null);
 });
 
@@ -45,8 +51,9 @@ test('buildAcpPromptContent reports every dropped media block', () => {
     [{ type: 'text', text: 't' }, base64Image, urlImage, base64Video],
     (block) => dropped.push(block.type),
   );
-  assert.equal(out.length, 2);
+  assert.equal(out.length, 3);
   assert.equal(out[0].type, 'text');
-  assert.equal(out[1].type, 'resource_link');
-  assert.deepEqual(dropped, ['image', 'video']);
+  assert.equal(out[1].type, 'image');
+  assert.equal(out[2].type, 'resource_link');
+  assert.deepEqual(dropped, ['video']);
 });

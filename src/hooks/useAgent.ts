@@ -1675,34 +1675,28 @@ export function useAgent(options?: { primary?: boolean }) {
               ? `${context.turnContext}\n\n[用户请求]\n${finalContent}`
               : finalContent;
             if (filePaths?.length) mediaBlocks = await buildDshMediaBlocks(filePaths);
-            // ACP session/prompt rejects image content blocks outright
-            // ("only text and resource_link prompt content is supported"),
-            // which used to kill the whole turn and surface as "Harness 暂时
-            // 不可用"。DeepSeek 官方已上线原生视觉模型
-            // （deepseek-v4-flash-vision-exp，2026-08-21）：带图轮次不再绕
-            // image_recognition，直接换内置通道跑同一个 DeepSeek 模型
-            // （同模型同 key，仅换执行引擎，不跨供应商），图片以原生多模态
-            // 块直达模型。含视频附件的轮次仍留在 Harness（视频本来就要走
-            // 分析/转写工具）。
+            // DeepSeek 视觉模型（deepseek-v4-flash-vision-exp 起）在 Harness
+            // 里原生看图：fork 的 ACP 桥（dsh-runtime/kunpeng-acp.mjs）接受
+            // image 块 → attachment store 持久化 → pi-ai 路由（模型声明
+            // input:[text,image]，见 dsh.rs 的 llm-pi-ai 条目）。
+            // 非视觉 DeepSeek 模型的带图轮次才改道内置通道（内置路径会把
+            // 模型自动切到官方视觉模型，同供应商）。含视频附件的轮次一律
+            // 留在 Harness 走分析/转写工具（视频块不进模型）。
             const hasImageMedia = mediaBlocks.some((block) => block.type === 'image');
             const hasVideoMedia = mediaBlocks.some((block) => block.type === 'video');
-            if (hasImageMedia && !hasVideoMedia) {
+            const harnessModel = primaryRoute.modelId || settings.providerModels.deepseek || 'deepseek-v4-flash-vision-exp';
+            const harnessVisionCapable = /vision/i.test(harnessModel);
+            if (hasImageMedia && !hasVideoMedia && !harnessVisionCapable) {
               executingHarness = false;
-              useDeepseekHarnessStore.getState().markFallback(runId);
-              useRunStepStore.getState().addProgressUpdate(
-                '检测到图片输入：本轮由 DeepSeek 原生视觉直接看图（内置通道，同一模型）。',
-                runId,
-              );
-              void emit('provider-fallback', {
-                from: 'deepseek-harness',
-                to: 'deepseek-builtin',
-                reason: '带图轮次走 DeepSeek 原生视觉',
-              });
               coordinator.setRouteStrategy(deepseekBuiltinRoute(primaryRoute.modelId));
               await coordinator.run(finalContent, callbacks, mediaBlocks);
             } else {
-            const acpMediaBlocks: AgentUserContentBlock[] = [];
-            if (mediaBlocks.length > 0) {
+            // 视觉模型：图片以 ACP image 块原生进 Harness；非视觉模型或含
+            // 视频时维持工具路径（图片块在 mediaFilter 丢 base64 前有 directive 指引）。
+            const acpMediaBlocks: AgentUserContentBlock[] = harnessVisionCapable && !hasVideoMedia
+              ? mediaBlocks
+              : [];
+            if (mediaBlocks.length > 0 && acpMediaBlocks.length === 0) {
               input += '\n\n[媒体附件说明] 当前执行引擎不能直接接收图片/视频内容块。'
                 + '如需查看上方列出的图片，请调用 image_recognition 工具并传入对应文件路径；'
                 + '视频请使用视频分析/转写工具处理。不要直接 read_file 读取图片/视频二进制。';
@@ -1711,7 +1705,7 @@ export function useAgent(options?: { primary?: boolean }) {
               runId,
               apiKey: resolveApiKey(settings, 'provider:deepseek', settings.providerApiKeys.deepseek || ''),
               baseUrl: settings.providerBaseUrls.deepseek || 'https://api.deepseek.com',
-              model: primaryRoute.modelId || settings.providerModels.deepseek || 'deepseek-v4-flash-vision-exp',
+              model: harnessModel,
               // DSH exposes Kunpeng tools through its MCP bridge with a fixed
               // `mcp__kunpeng__` prefix (upstream naming invariant, cannot be
               // disabled). Kunpeng's own prompts reference bare tool names, so
