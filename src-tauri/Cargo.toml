@@ -27,10 +27,13 @@ base64 = "0.21"
 urlencoding = "2"
 futures = "0.3"
 zip = "0.6"
-cocoa = "0.25"
-objc = "0.2"
 libc = "0.2"
 rand = "0.8"
+
+# macOS 透明悬浮窗（NSWindow/WKWebView）专用，其他平台不编译
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.25"
+objc = "0.2"
 
 [features]
 default = ["custom-protocol"]

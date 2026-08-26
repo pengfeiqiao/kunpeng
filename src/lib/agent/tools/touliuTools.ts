@@ -3,25 +3,33 @@ import { useTouliuStore } from '@/stores/touliuStore';
 import type { TouliuDashboard } from '@/stores/touliuStore';
 import { invoke } from '@tauri-apps/api/tauri';
 
+// 巨量投流自动化跑在应用内置的 Chromium（CDP）浏览器上 —— 取代旧的
+// Safari + osascript 方案（后者依赖 macOS）。浏览器资料目录固定在
+// ~/.kunpeng/browser-profile：用 touliu_open_safari 打开登录页可见窗口
+// 登录一次，后续无头/有头调用共享同一登录态，macOS 与 Windows 行为一致。
+async function browserEval(js: string): Promise<string> {
+  const result = await invoke<unknown>('browser_evaluate', { code: js });
+  if (result == null) return '';
+  if (typeof result === 'string') return result;
+  return JSON.stringify(result);
+}
+
+interface BrowserSnapshotLite {
+  url: string;
+  title: string;
+  challenge: boolean;
+}
+
 function requireAccount(): { ok: true; aadvid: string } | { ok: false; error: string } {
   const acct = useTouliuStore.getState().getActiveAccount();
   if (!acct) return { ok: false, error: '没有活跃的巨量引擎账户，请先添加一个账户（提供名称和 aadvid）' };
   return { ok: true, aadvid: acct.aadvid };
 }
 
-async function runOsascript(js: string): Promise<string> {
-  const escaped = js.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const result = await invoke('execute_command', {
-    command: `osascript -e 'tell application "Safari" to do JavaScript "${escaped}" in current tab of window 1'`,
-    requestId: `osa-${Date.now()}`,
-  });
-  return String((result as { stdout?: string })?.stdout ?? result ?? '');
-}
-
 const touliuGetStatusTool: Tool = {
   definition: {
     name: 'touliu_get_status',
-    description: '获取投流模块当前状态：活跃账户、项目列表、运行中任务、Safari 登录状态。任何投流操作前必须先调用。',
+    description: '获取投流模块当前状态：活跃账户、项目列表、运行中任务、内置浏览器登录状态。任何投流操作前必须先调用。',
     parameters: { type: 'object', properties: {}, required: [] },
   },
   risk: 'safe',
@@ -30,18 +38,18 @@ const touliuGetStatusTool: Tool = {
     const acct = s.getActiveAccount();
     const runningTasks = s.tasks.filter((t) => t.status === 'running');
 
-    let safariStatus = 'unknown';
+    let browserStatus = 'unknown';
     let pageTitle = '';
     if (acct) {
       try {
-        pageTitle = await runOsascript('document.title');
-        pageTitle = pageTitle.trim();
-        if (pageTitle.includes('投放管理')) safariStatus = 'logged_in';
-        else if (pageTitle.includes('404') || pageTitle.includes('Not Found')) safariStatus = 'url_error';
-        else if (pageTitle.includes('登录') || pageTitle.includes('login')) safariStatus = 'not_logged_in';
-        else safariStatus = 'unknown_page';
+        const snap = await invoke<BrowserSnapshotLite>('browser_snapshot', { maxChars: 2000 });
+        pageTitle = (snap.title || '').trim();
+        if (pageTitle.includes('投放管理')) browserStatus = 'logged_in';
+        else if (pageTitle.includes('404') || pageTitle.includes('Not Found')) browserStatus = 'url_error';
+        else if (pageTitle.includes('登录') || pageTitle.includes('login') || snap.challenge) browserStatus = 'not_logged_in';
+        else browserStatus = 'unknown_page';
       } catch {
-        safariStatus = 'safari_not_open';
+        browserStatus = 'browser_not_open';
       }
     }
 
@@ -52,7 +60,7 @@ const touliuGetStatusTool: Tool = {
         accounts: s.accounts.map((a) => ({ id: a.id, name: a.name, aadvid: a.aadvid, isActive: a.isActive })),
         projects: s.projects.slice(0, 20),
         runningTasks: runningTasks.length,
-        safariStatus,
+        browserStatus,
         pageTitle,
       }),
     };
@@ -62,7 +70,7 @@ const touliuGetStatusTool: Tool = {
 const touliuOpenSafariTool: Tool = {
   definition: {
     name: 'touliu_open_safari',
-    description: '在 Safari 中打开巨量引擎指定页面。用于导航到创建项目、投放管理等页面。',
+    description: '在应用内置浏览器（Chromium，可见窗口）中打开巨量引擎指定页面。用于登录、创建项目、投放管理等页面；登录态保存在内置浏览器资料中，登录一次后续复用。',
     parameters: {
       type: 'object',
       properties: {
@@ -102,11 +110,8 @@ const touliuOpenSafariTool: Tool = {
     }
 
     try {
-      await invoke('execute_command', {
-        command: `open -a Safari "${url}"`,
-        requestId: `safari-${Date.now()}`,
-      });
-      return { success: true, output: `已在 Safari 中打开: ${url}` };
+      await invoke('browser_open', { url, visible: true, maxChars: 2000 });
+      return { success: true, output: `已在内置浏览器中打开: ${url}` };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, output: '', error: msg };
@@ -165,13 +170,13 @@ return JSON.stringify(r);
 const touliuGetMetricsTool: Tool = {
   definition: {
     name: 'touliu_get_metrics',
-    description: '从 Safari 当前打开的巨量引擎投放管理页面提取并解析数据指标，自动更新到投流数据面板。需要先用 touliu_open_safari page=data 打开投放管理页面并等待 4 秒加载完成。',
+    description: '从内置浏览器当前打开的巨量引擎投放管理页面提取并解析数据指标，自动更新到投流数据面板。需要先用 touliu_open_safari page=data 打开投放管理页面并等待 4 秒加载完成。',
     parameters: { type: 'object', properties: {}, required: [] },
   },
   risk: 'safe',
   async execute() {
     try {
-      const title = (await runOsascript('document.title')).trim();
+      const title = (await browserEval('document.title')).trim();
       if (!title.includes('投放管理')) {
         return {
           success: false,
@@ -180,12 +185,12 @@ const touliuGetMetricsTool: Tool = {
         };
       }
 
-      const jsonStr = await runOsascript(EXTRACT_METRICS_JS);
+      const jsonStr = await browserEval(EXTRACT_METRICS_JS);
       let parsed: Record<string, unknown>;
       try {
         parsed = JSON.parse(jsonStr.trim());
       } catch {
-        return { success: false, output: '', error: `Safari 返回的数据无法解析为 JSON。原始输出前500字符: ${jsonStr.slice(0, 500)}` };
+        return { success: false, output: '', error: `页面返回的数据无法解析为 JSON。原始输出前500字符: ${jsonStr.slice(0, 500)}` };
       }
 
       if (parsed.error) {
@@ -280,7 +285,7 @@ const touliuGetMetricsTool: Tool = {
 const touliuNavigateTool: Tool = {
   definition: {
     name: 'touliu_navigate',
-    description: '在 Safari 当前标签页导航到指定 URL（不新开标签页）。适合在已打开的 Safari 中跳转页面。',
+    description: '在内置浏览器当前标签页导航到指定 URL（不新开标签页）。适合在已打开的浏览器中跳转页面。',
     parameters: {
       type: 'object',
       properties: {
@@ -293,11 +298,7 @@ const touliuNavigateTool: Tool = {
   async execute(params) {
     const url = params.url as string;
     try {
-      const escaped = url.replace(/"/g, '\\"');
-      await invoke('execute_command', {
-        command: `osascript -e 'tell application "Safari" to set URL of current tab of window 1 to "${escaped}"'`,
-        requestId: `nav-${Date.now()}`,
-      });
+      await invoke('browser_open', { url, visible: true, maxChars: 2000 });
       return { success: true, output: `已导航到: ${url}` };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -309,7 +310,7 @@ const touliuNavigateTool: Tool = {
 const touliuExecuteJsTool: Tool = {
   definition: {
     name: 'touliu_execute_js',
-    description: '在 Safari 当前页面执行 JavaScript 并返回结果。用于读取页面数据或操作页面元素。代码会被包裹在 IIFE 中，用 return 返回结果。',
+    description: '在内置浏览器当前页面执行 JavaScript 并返回结果。用于读取页面数据或操作页面元素。代码会被包裹在 IIFE 中，用 return 返回结果。',
     parameters: {
       type: 'object',
       properties: {
@@ -323,7 +324,7 @@ const touliuExecuteJsTool: Tool = {
     const code = params.code as string;
     try {
       const wrapped = `(function(){${code}})()`;
-      const result = await runOsascript(wrapped);
+      const result = await browserEval(wrapped);
       return { success: true, output: result };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -335,7 +336,7 @@ const touliuExecuteJsTool: Tool = {
 const touliuSuggestKeywordsTool: Tool = {
   definition: {
     name: 'touliu_suggest_keywords',
-    description: '根据投放内容描述，由 AI 生成行为关键词和兴趣关键词建议列表。返回提示词让 AI 生成关键词，用户确认后可通过 Safari 自动化添加。',
+    description: '根据投放内容描述，由 AI 生成行为关键词和兴趣关键词建议列表。返回提示词让 AI 生成关键词，用户确认后可通过浏览器自动化添加。',
     parameters: {
       type: 'object',
       properties: {

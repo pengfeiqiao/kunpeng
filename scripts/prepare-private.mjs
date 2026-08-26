@@ -6,8 +6,9 @@
 // have the file, and any stale copy is removed so official builds stay clean.
 import { copyFileSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = new URL('..', import.meta.url).pathname;
+const root = fileURLToPath(new URL('..', import.meta.url));
 const source = join(root, 'private.defaults.json');
 const target = join(root, 'public', 'private.defaults.json');
 

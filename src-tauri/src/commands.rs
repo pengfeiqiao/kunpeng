@@ -89,18 +89,44 @@ pub fn get_file_metadata(path: String) -> Result<LocalFileMetadata, String> {
     })
 }
 
-/// 用系统 open 命令打开文件或在 Finder 中显示
-/// reveal=true 时传 -R 参数（在 Finder 中选中文件）
+/// 用系统命令打开文件或在文件管理器中显示
+/// reveal=true 时在文件管理器中选中该文件（macOS: open -R，Windows: explorer /select）
 #[tauri::command]
 pub fn open_path(path: String, reveal: Option<bool>) -> Result<(), String> {
-    let mut cmd = StdCommand::new("open");
-    if reveal.unwrap_or(false) {
-        cmd.arg("-R");
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = StdCommand::new("open");
+        if reveal.unwrap_or(false) {
+            cmd.arg("-R");
+        }
+        cmd.arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open path: {}", e))?;
+        Ok(())
     }
-    cmd.arg(&path)
-        .spawn()
-        .map_err(|e| format!("Failed to open path: {}", e))?;
-    Ok(())
+    #[cfg(target_os = "windows")]
+    {
+        // explorer.exe /select,<path> opens the parent folder with the file
+        // highlighted; a bare path opens it with the default association.
+        // explorer routinely exits with code 1 even on success — never wait.
+        let mut cmd = StdCommand::new("explorer");
+        if reveal.unwrap_or(false) {
+            cmd.arg(format!("/select,{}", path));
+        } else {
+            cmd.arg(&path);
+        }
+        cmd.spawn()
+            .map_err(|e| format!("Failed to open path: {}", e))?;
+        Ok(())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let mut cmd = StdCommand::new("xdg-open");
+        cmd.arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open path: {}", e))?;
+        Ok(())
+    }
 }
 
 /// Scan ~/.kunpeng/skills/ directory and return subdirectory names

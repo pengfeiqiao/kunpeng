@@ -4,6 +4,8 @@ import { resolveApiKey } from '@/lib/credentials';
 import { loadImageInput } from './mediaInput';
 import { withRetry } from './withRetry';
 import { toKimiWireModel } from './kimiModel';
+import { CURL_TRANSPORT_THRESHOLD, DEBUG_BODY_THRESHOLD, dumpDebugBody, postJsonViaCurl } from './curlTransport';
+import { agentLog } from './logger';
 
 export interface KimiK3Result {
   text: string;
@@ -106,6 +108,34 @@ async function anthropicChat(config: KimiConfig, messages: unknown[], extra: Rec
   delete requestExtra.timeout;
   delete requestExtra.response_format;
   const converted = toAnthropicMessages(messages);
+  const payload = {
+    model: config.model,
+    system: converted.system,
+    messages: converted.messages,
+    thinking: { type: 'enabled', effort: 'max' },
+    max_tokens: 16_000,
+    temperature: 0.3,
+    ...requestExtra,
+    stream: false,
+  };
+  // 大请求体（识图 base64）走 curl 传输：Windows 上 tauriFetch 大 body 会
+  // 被网关判为 invalid JSON request body（HTTP 400），curl 同 body 正常。
+  if (JSON.stringify(payload).length > DEBUG_BODY_THRESHOLD) void dumpDebugBody('k3-anthropic-body', payload);
+  if (JSON.stringify(payload).length > CURL_TRANSPORT_THRESHOLD) {
+    agentLog.warn('Kimi K3', `请求体超过 ${CURL_TRANSPORT_THRESHOLD / 1024}KB，改走 curl 传输`);
+    const r = await postJsonViaCurl(`${config.anthropicBaseUrl}/v1/messages`, [
+      'Content-Type: application/json',
+      `x-api-key: ${config.apiKey}`,
+      'anthropic-version: 2023-06-01',
+      'User-Agent: Kunpeng/2.6.24',
+      'x-app: kunpeng',
+    ], payload);
+    if (r.status < 200 || r.status >= 300) throw statusError('Kimi K3 Anthropic', r.status, r.data);
+    const data = JSON.parse(r.data) as { content?: Array<{ type?: string; text?: string }> };
+    const text = (data.content ?? []).filter((part) => part.type === 'text').map((part) => part.text ?? '').join('').trim();
+    if (!text) throw new Error('Kimi K3 Anthropic 返回为空');
+    return text;
+  }
   const response = await tauriFetch(`${config.anthropicBaseUrl}/v1/messages`, {
     method: 'POST',
     headers: {
@@ -115,16 +145,7 @@ async function anthropicChat(config: KimiConfig, messages: unknown[], extra: Rec
       'User-Agent': 'Kunpeng/2.6.24',
       'x-app': 'kunpeng',
     },
-    body: Body.json({
-      model: config.model,
-      system: converted.system,
-      messages: converted.messages,
-      thinking: { type: 'enabled', effort: 'max' },
-      max_tokens: 16_000,
-      temperature: 0.3,
-      ...requestExtra,
-      stream: false,
-    }),
+    body: Body.json(payload),
     responseType: ResponseType.Text,
     timeout,
   });
@@ -139,6 +160,29 @@ async function openAIChat(config: KimiConfig, messages: unknown[], extra: Record
   const timeout = Math.max(30, Number(extra.timeout ?? 600));
   const requestExtra = { ...extra };
   delete requestExtra.timeout;
+  const payload = {
+    model: config.model,
+    messages,
+    reasoning_effort: 'max',
+    temperature: 0.3,
+    max_tokens: 16_000,
+    stream: false,
+    ...requestExtra,
+  };
+  if (JSON.stringify(payload).length > DEBUG_BODY_THRESHOLD) void dumpDebugBody('k3-openai-body', payload);
+  if (JSON.stringify(payload).length > CURL_TRANSPORT_THRESHOLD) {
+    agentLog.warn('Kimi K3', `请求体超过 ${CURL_TRANSPORT_THRESHOLD / 1024}KB，改走 curl 传输（OpenAI 备用）`);
+    const r = await postJsonViaCurl(`${config.openAIBaseUrl}/chat/completions`, [
+      'Content-Type: application/json',
+      `Authorization: Bearer ${config.apiKey}`,
+      'User-Agent: Kunpeng/2.6.24',
+    ], payload);
+    if (r.status < 200 || r.status >= 300) throw statusError('Kimi K3 OpenAI 备用', r.status, r.data);
+    const data = JSON.parse(r.data) as { choices?: Array<{ message?: { content?: string } }> };
+    const text = data.choices?.[0]?.message?.content?.trim() ?? '';
+    if (!text) throw new Error('Kimi K3 OpenAI 备用返回为空');
+    return text;
+  }
   const response = await tauriFetch(`${config.openAIBaseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -146,15 +190,7 @@ async function openAIChat(config: KimiConfig, messages: unknown[], extra: Record
       Authorization: `Bearer ${config.apiKey}`,
       'User-Agent': 'Kunpeng/2.6.24',
     },
-    body: Body.json({
-      model: config.model,
-      messages,
-      reasoning_effort: 'max',
-      temperature: 0.3,
-      max_tokens: 16_000,
-      stream: false,
-      ...requestExtra,
-    }),
+    body: Body.json(payload),
     responseType: ResponseType.Text,
     timeout,
   });

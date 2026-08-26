@@ -5,6 +5,7 @@ import { readDir } from '@tauri-apps/api/fs';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { useBackgroundTaskStore, isTerminalTaskStatus } from '@/stores/backgroundTaskStore';
 import { useCanvasStore } from '@/stores/canvasStore';
+import { isWindowsSync } from '@/lib/platform';
 
 interface CommandResult {
   stdout: string;
@@ -14,7 +15,18 @@ interface CommandResult {
 
 const POLL_INTERVAL = 30_000; // 30 seconds
 const POLL_CONCURRENCY = 3;
-const getDreaminaPath = async () => `${await homeDir()}.local/bin/dreamina`;
+// pip 用户级安装位置：unix 为 ~/.local/bin/dreamina，Windows 为
+// %USERPROFILE%\.local\bin\dreamina.exe。返回值会被直接内插进 shell 命令串，
+// Windows 下必须转成正斜杠并预置单引号——裸反斜杠会被 bash 当转义符吃掉
+//（`C:\Users\foo\...` 变成 `C:Usersfoo/...`），空格也会拆词。
+const shq = (p: string) => `'${p.replace(/'/g, `'\\''`)}'`;
+const getDreaminaPath = async () =>
+  isWindowsSync()
+    ? shq(`${await homeDir()}/.local/bin/dreamina.exe`.replace(/\\/g, '/'))
+    : `${await homeDir()}.local/bin/dreamina`;
+// source ~/.zshrc 只在 macOS 有意义（加载 pip 装的 CLI 的 PATH 环境等）；
+// 其他平台直接执行。
+const dreaminaShellPrefix = isWindowsSync() ? '' : 'source ~/.zshrc && ';
 
 /**
  * Background poller for long-running tasks (e.g. Dreamina video generation).
@@ -72,7 +84,7 @@ async function pollDreaminaTask(taskId: string, submitId: string) {
   try {
     const dreaminaPath = await getDreaminaPath();
     const result = await invoke<CommandResult>('execute_command', {
-      command: `source ~/.zshrc && ${dreaminaPath} query_result --submit_id=${submitId}`,
+      command: `${dreaminaShellPrefix}${dreaminaPath} query_result --submit_id=${submitId}`,
       timeoutMs: 30000,
     });
 
@@ -108,7 +120,7 @@ async function pollDreaminaTask(taskId: string, submitId: string) {
         } catch { /* dir may not exist yet */ }
 
         await invoke<CommandResult>('execute_command', {
-          command: `source ~/.zshrc && ${dreaminaPath} query_result --submit_id=${submitId} --download_dir="${downloadDir}"`,
+          command: `${dreaminaShellPrefix}${dreaminaPath} query_result --submit_id=${submitId} --download_dir="${downloadDir}"`,
           timeoutMs: 60000,
         });
 

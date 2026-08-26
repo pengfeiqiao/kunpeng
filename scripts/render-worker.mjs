@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -37,37 +38,57 @@ async function exists(p) {
 }
 
 async function findChrome() {
+  const isWindows = process.platform === 'win32';
   const bundledRoot = path.resolve(__dirname, '..', '.local-browsers', 'chromium');
   const bundled = [];
   try {
     const platforms = await fs.readdir(bundledRoot);
     for (const platform of platforms) {
-      const candidate = path.join(bundledRoot, platform, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
-      bundled.push(candidate);
+      bundled.push(
+        // Playwright mac archives unpack to chrome-mac/Chromium.app; win64 to
+        // chrome-win/chrome.exe. Probe both regardless of host platform.
+        path.join(bundledRoot, platform, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
+        path.join(bundledRoot, platform, 'chrome-win', 'chrome.exe'),
+      );
     }
   } catch {}
+  const runtimeDownloaded = [];
+  // 按需下载的内核（browser_install），公开构建不再打包 Chromium
+  const home = os.homedir();
+  const runtimeRoot = path.join(home, '.kunpeng', 'browsers', 'chromium');
+  try {
+    for (const platform of await fs.readdir(runtimeRoot)) {
+      runtimeDownloaded.push(
+        path.join(runtimeRoot, platform, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'),
+        path.join(runtimeRoot, platform, 'chrome-win', 'chrome.exe'),
+      );
+    }
+  } catch {}
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
   const candidates = [
     process.env.CHROME_PATH,
     process.env.PUPPETEER_EXECUTABLE_PATH,
     ...bundled,
-    // 按需下载的内核（browser_install），公开构建不再打包 Chromium
-    ...(await (async () => {
-      const home = process.env.HOME;
-      if (!home) return [];
-      const root = path.join(home, '.kunpeng', 'browsers', 'chromium');
-      const found = [];
-      try {
-        for (const platform of await fs.readdir(root)) {
-          found.push(path.join(root, platform, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'));
-        }
-      } catch {}
-      return found;
-    })()),
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-    '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
-    '/Applications/Arc.app/Contents/MacOS/Arc',
+    ...runtimeDownloaded,
+    ...(isWindows
+      ? [
+          path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+          path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+          path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+          path.join(programFiles, 'Chromium', 'Application', 'chrome.exe'),
+          // Edge 随 Windows 分发，同源 Chromium，作为兜底保证开箱可用
+          path.join(programFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+          path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        ]
+      : [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/Applications/Chromium.app/Contents/MacOS/Chromium',
+          '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+          '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+          '/Applications/Arc.app/Contents/MacOS/Arc',
+        ]),
   ].filter(Boolean);
   for (const p of candidates) {
     if (await exists(p)) return p;

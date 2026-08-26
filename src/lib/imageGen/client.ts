@@ -177,7 +177,10 @@ async function getOutputPath(): Promise<string> {
     const workspace = await invoke<string>('ensure_workspace');
     return `${workspace}/images/${unique}.png`;
   } catch {
-    return `/tmp/kunpeng-${unique}.png`;
+    // Windows 上 /tmp 对 Tauri fs 是 当前盘:\tmp，与 shell 的 %TEMP% 映射错位；
+    // 统一走系统临时目录的正斜杠形式。
+    const tmp = (await invoke<string>('get_temp_dir')).replace(/\\/g, '/');
+    return `${tmp}/kunpeng-${unique}.png`;
   }
 }
 

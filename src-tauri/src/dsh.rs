@@ -13,7 +13,7 @@ use tokio::sync::{oneshot, Mutex, RwLock};
 use tokio::time::{timeout, Duration};
 
 const DSH_VERSION: &str = "0.1.0-rc.6";
-const DSH_RUNTIME_REVISION: &str = "0.1.0-rc.6-kunpeng.9";
+const DSH_RUNTIME_REVISION: &str = "0.1.0-rc.6-kunpeng.9-win.1";
 const DSH_EVENT_PREFIX: &str = "__KUNPENG_DSH_EVENT__";
 
 #[derive(Clone)]
@@ -188,12 +188,36 @@ fn bundled_runtime_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
     candidates
 }
 
+/// Node dist layout differs by platform: unix tarballs ship bin/node, the
+/// Windows zip puts node.exe at the archive root (top dir stripped on
+/// extraction by fetch-dsh-node.mjs).
+fn node_binary(root: &Path) -> PathBuf {
+    if cfg!(target_os = "windows") {
+        root.join("node").join("node.exe")
+    } else {
+        root.join("node").join("bin").join("node")
+    }
+}
+
+/// Node's ESM loader only accepts file:/data:/node: URLs in import(). The
+/// Cordis loader passes config entry `name`s straight to import(), where a
+/// POSIX absolute path happens to resolve but a Windows `C:\...` path is read
+/// as the unsupported URL scheme "c:". Emit file:// URLs for entry paths.
+fn module_specifier(path: &std::path::Path) -> String {
+    let s = path.to_string_lossy().replace('\\', "/");
+    if s.starts_with('/') {
+        format!("file://{}", s)
+    } else {
+        format!("file:///{}", s)
+    }
+}
+
 fn ensure_runtime(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "无法定位用户目录".to_string())?;
     let root = home.join(".kunpeng").join("dsh").join(DSH_VERSION);
     let marker = root.join(".ready");
     let required = [
-        root.join("node").join("bin").join("node"),
+        node_binary(&root),
         root.join("node_modules")
             .join("@deepseek-ai")
             .join("dsh")
@@ -227,8 +251,7 @@ fn ensure_runtime(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let source = bundled_runtime_candidates(app)
         .into_iter()
         .find(|candidate| {
-            candidate.join("node_modules").exists()
-                && candidate.join("node").join("bin").join("node").exists()
+            candidate.join("node_modules").exists() && node_binary(candidate).exists()
         })
         .ok_or_else(|| "DeepSeek Harness 运行时未随应用部署，请重新安装完整版本".to_string())?;
 
@@ -513,7 +536,7 @@ pub async fn dsh_start(
             .map_err(|error| format!("部署 Harness 运行时任务失败: {}", error))??
     };
     let bridge = ensure_bridge(&app, state.inner.clone()).await?;
-    let node = runtime.join("node").join("bin").join("node");
+    let node = node_binary(&runtime);
     let acp_bin = runtime
         .join("node_modules")
         .join("@deepseek-ai")
@@ -529,6 +552,8 @@ pub async fn dsh_start(
     // boot fails and disposes the half-mounted tree (ACP already mounted),
     // which surfaces as "the ACP bridge has been disposed" on session/new.
     // Reference the adapter by absolute entry path, exactly like the ACP host.
+    // module_specifier turns both into file:// URLs: a bare absolute path only
+    // survives import() on POSIX; on Windows "C:\..." dies as URL scheme "c:".
     let llm_deepseek = runtime
         .join("node_modules")
         .join("@deepseek-ai")
@@ -569,7 +594,7 @@ pub async fn dsh_start(
         // openai-completions 协议 + 官方 /v1 base（pi-ai 自行拼接路径）。
         json!({
             "id": "llm-pi-ai",
-            "name": llm_pi_ai.to_string_lossy(),
+            "name": module_specifier(&llm_pi_ai),
             "config": {
                 "providers": {
                     "deepseek": {
@@ -590,7 +615,7 @@ pub async fn dsh_start(
     } else {
         json!({
             "id": "llm-deepseek",
-            "name": llm_deepseek.to_string_lossy(),
+            "name": module_specifier(&llm_deepseek),
             "config": {
                 "apiKeyEnv": "DEEPSEEK_API_KEY",
                 "baseURL": normalized_base_url(&request.base_url),
@@ -612,7 +637,7 @@ pub async fn dsh_start(
         llm_entry,
         {
             "id": "acp",
-            "name": acp_host.to_string_lossy(),
+            "name": module_specifier(&acp_host),
             "config": {
                 "provider": acp_provider,
                 "model": request.model,
@@ -681,6 +706,49 @@ pub async fn dsh_start(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    #[cfg(target_os = "windows")]
+    {
+        // node.exe needs SystemRoot for crypto/winsock and USERPROFILE for
+        // os.homedir(); a minimal Windows PATH keeps child lookups working
+        // without dragging the whole inherited environment back in. GUI apps
+        // must pass CREATE_NO_WINDOW or every console child flashes a window
+        // (tokio Command has an inherent creation_flags method on Windows).
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        for key in [
+            "SystemRoot",
+            "SystemDrive",
+            "windir",
+            "ComSpec",
+            "USERNAME",
+            "COMPUTERNAME",
+            "PATHEXT",
+            "ProgramFiles",
+            "ProgramFiles(x86)",
+            "ProgramData",
+            "LOCALAPPDATA",
+            "APPDATA",
+            "ALLUSERSPROFILE",
+        ] {
+            if let Ok(value) = std::env::var(key) {
+                command.env(key, value);
+            }
+        }
+        let temp = std::env::temp_dir();
+        let system_root =
+            std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_string());
+        command
+            .env("USERPROFILE", &home)
+            .env("TEMP", &temp)
+            .env("TMP", &temp)
+            .env(
+                "PATH",
+                format!(
+                    "{}\\System32;{};{}\\System32\\Wbem;{}\\System32\\WindowsPowerShell\\v1.0",
+                    system_root, system_root, system_root, system_root
+                ),
+            )
+            .creation_flags(CREATE_NO_WINDOW);
+    }
     let inherited_http_proxy = std::env::var("HTTP_PROXY")
         .or_else(|_| std::env::var("http_proxy"))
         .ok();
@@ -746,9 +814,20 @@ pub async fn dsh_start(
     let stderr_run = request.run_id.clone();
     let stderr_instance = request.instance_id.clone();
     let stderr_secret = secret.clone();
+    // 每次启动截断重写 stderr 日志：ACP 侧只回 "Internal error"，真实原因
+    // 都在子进程 stderr 里，落盘后故障可离线诊断（密钥已 REDACTED）。
+    let stderr_log = home.join(".kunpeng").join("dsh").join("harness-stderr.log");
+    let _ = std::fs::write(&stderr_log, "");
     tauri::async_runtime::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            {
+                use std::io::Write as _;
+                let redacted_for_log = line.replace(&stderr_secret, "[REDACTED]");
+                if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(&stderr_log) {
+                    let _ = writeln!(f, "{}", redacted_for_log.chars().take(2000).collect::<String>());
+                }
+            }
             if let Some(raw_event) = line.strip_prefix(DSH_EVENT_PREFIX) {
                 if let Ok(event) = serde_json::from_str::<Value>(raw_event) {
                     let _ = stderr_app.emit_all(

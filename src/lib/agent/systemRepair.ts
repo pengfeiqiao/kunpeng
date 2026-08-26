@@ -17,9 +17,9 @@ export function dispatchSystemRepairPrompt(prompt: string): void {
 }
 
 export const FFMPEG_REPAIR_PROMPT = `导演台导出前检测不到 FFmpeg。请作为系统维护 Agent 自动完成以下工作：
-1. 先读取当前 macOS、CPU 架构、PATH、可用包管理器和已有 FFmpeg 状态，不要假定使用 brew，也不要写死安装方式。
+1. 先读取当前操作系统（macOS/Windows/Linux）、CPU 架构、PATH、可用包管理器（macOS 常见 brew；Windows 常见 winget/choco/scoop）和已有 FFmpeg 状态，不要假定使用某个包管理器，也不要写死安装方式。
 2. 选择当前电脑最稳妥且影响最小的安装或修复方案；需要执行命令时使用 bash 工具并遵循正常确认流程。
-3. 安装后验证 ffmpeg 和 ffprobe 均可调用，并确认支持 H.264 编码（优先 h264_videotoolbox，至少支持 libx264）。
+3. 安装后验证 ffmpeg 和 ffprobe 均可调用，并确认支持 H.264 编码（macOS 优先 h264_videotoolbox，Windows 可用 h264_mf/libx264，至少支持 libx264）。
 4. 不修改用户项目文件，不卸载现有软件。完成后明确告诉用户可以回到导演台重新导出。`;
 
 export function dreaminaLoginRepairPrompt(reason: string, taskContext?: string): string {

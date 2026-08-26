@@ -31,6 +31,15 @@ interface WhisperVerbose { text: string; segments?: WhisperSegment[] }
 
 const q = (p: string) => `'${p.replace(/'/g, `'\\''`)}'`;
 
+/**
+ * 临时文件目录（正斜杠形式）。不能硬编码 /tmp：Git Bash 会把 /tmp 映射到
+ * %TEMP%，而 Tauri fs 在 Windows 上把 /tmp 解析成 当前盘:\tmp，两边错位。
+ * C:/... 正斜杠路径对 shell 命令与 Tauri fs 同时有效。
+ */
+let tempDirPromise: Promise<string> | null = null;
+const tempDir = () =>
+  (tempDirPromise ??= invoke<string>('get_temp_dir').then((d) => d.replace(/\\/g, '/')));
+
 /** 16kHz 单声道 16bit PCM WAV 的字节速率（不含 44 字节头） */
 const BYTES_PER_SEC = 16000 * 1 * 2;
 /** Whisper 单次请求上限 25MiB；留 1MiB 余量，按 24MiB 判定分块 */
@@ -88,7 +97,7 @@ export async function renderTimelineAudioForTranscription(
   onProgress?: (status: string) => void,
 ): Promise<string | null> {
   const ffmpeg = await detectFfmpeg();
-  if (!ffmpeg) throw new Error('未检测到 ffmpeg（brew install ffmpeg）');
+  if (!ffmpeg) throw new Error('未检测到 ffmpeg（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
   const s = useEditorStore.getState();
   const clips = s.clips.filter((clip) => clip.path && s.clipLength(clip) > 0.05);
   const mutedTracks = new Set(s.audioTracks.filter((track) => track.muted).map((track) => track.id));
@@ -179,8 +188,8 @@ export async function transcribeEditorTimelineAudio(
 /** 抽取媒体文件的完整音轨为 16k 单声道 wav，返回临时文件路径。无音轨返回 null。 */
 async function extractWav(mediaPath: string): Promise<string | null> {
   const ffmpeg = await detectFfmpeg();
-  if (!ffmpeg) throw new Error('未检测到 ffmpeg（brew install ffmpeg）');
-  const out = `/tmp/kunpeng-asr-${Date.now()}-${nanoid(4)}.wav`;
+  if (!ffmpeg) throw new Error('未检测到 ffmpeg（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
+  const out = `${await tempDir()}/kunpeng-asr-${Date.now()}-${nanoid(4)}.wav`;
   const r = await invoke<CommandResult>('execute_command', {
     command: `${ffmpeg} -i ${q(mediaPath)} -vn -ar 16000 -ac 1 ${q(out)} -y`,
     timeoutMs: 900000,
@@ -195,8 +204,8 @@ async function extractWav(mediaPath: string): Promise<string | null> {
 /** 抽取媒体文件 [startSec, startSec+durSec) 区间的音轨为 16k 单声道 wav。无音轨返回 null。 */
 async function extractWavRange(mediaPath: string, startSec: number, durSec: number): Promise<string | null> {
   const ffmpeg = await detectFfmpeg();
-  if (!ffmpeg) throw new Error('未检测到 ffmpeg（brew install ffmpeg）');
-  const out = `/tmp/kunpeng-asr-${Date.now()}-${nanoid(4)}.wav`;
+  if (!ffmpeg) throw new Error('未检测到 ffmpeg（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
+  const out = `${await tempDir()}/kunpeng-asr-${Date.now()}-${nanoid(4)}.wav`;
   // -ss 在 -i 前 = 快速输入 seek；音频 seek 近乎采样精确
   const r = await invoke<CommandResult>('execute_command', {
     command: `${ffmpeg} -ss ${startSec.toFixed(3)} -i ${q(mediaPath)} -t ${durSec.toFixed(3)} -vn -ar 16000 -ac 1 ${q(out)} -y`,

@@ -17,6 +17,7 @@
  */
 import { invoke } from '@tauri-apps/api/tauri';
 import { createDir, exists, removeDir } from '@tauri-apps/api/fs';
+import { stopBackgroundProcessCommand } from '@/lib/platform';
 import {
   useEditorStore, EXPORT_RESOLUTIONS,
   type EditorClip, type OverlayClip, type AudioClip, type ExportSettings, type MaskSettings,
@@ -441,10 +442,9 @@ export async function runFfmpegWithProgress(args: {
   });
 
   const stopProcess = async (force = false) => {
-    const sig = force ? 'KILL' : 'TERM';
     await invoke<CommandResult>('execute_command', {
-      command: `pkill -${sig} -P ${pid} 2>/dev/null || true; kill -${sig} ${pid} 2>/dev/null || true`,
-      timeoutMs: 3000,
+      command: stopBackgroundProcessCommand(pid, force),
+      timeoutMs: 5000,
     }).catch(() => null);
   };
 
@@ -552,7 +552,7 @@ export async function exportSelectedMainClips(
   const selected = s.clips.filter((clip) => clip.path && clipIds.includes(clip.id));
   if (selected.length === 0) throw new Error('请先选择主视频轨上的片段');
   const ffmpeg = await detectFfmpeg();
-  if (!ffmpeg) throw new Error('未检测到 ffmpeg。请先安装：brew install ffmpeg');
+  if (!ffmpeg) throw new Error('未检测到 ffmpeg。请先安装（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
 
   const settings = s.exportSettings;
   const res = EXPORT_RESOLUTIONS[settings.resolution];
@@ -812,7 +812,7 @@ export async function composeEditorTimeline(
   const analysis = analyzeEditorExport();
   if (analysis.durationSec <= 0.05) throw new Error('时间轴没有可导出的内容');
   const ffmpeg = await detectFfmpeg();
-  if (!ffmpeg) throw new Error('未检测到 ffmpeg。请先安装：brew install ffmpeg');
+  if (!ffmpeg) throw new Error('未检测到 ffmpeg。请先安装（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
 
   const settings: ExportSettings = s.exportSettings;
   const exportFormat = settings.format ?? 'mp4';

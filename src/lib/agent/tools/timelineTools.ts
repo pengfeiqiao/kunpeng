@@ -723,12 +723,17 @@ const proxyPrepareTool: Tool = {
     const proxyDir = `${home}/.kunpeng/proxy`;
     const q = (p: string) => `'${p.replace(/'/g, "'\\''")}'`;
     const made: string[] = [];
+    // videotoolbox 仅 macOS 存在；其他平台回退 libx264（与 composeEngine 一致）。
+    const { hasVideoToolbox } = await import('@/lib/editor/composeEngine');
+    const proxyEncoder = (await hasVideoToolbox(ffmpeg))
+      ? '-c:v h264_videotoolbox -allow_sw 1 -b:v 2500k'
+      : '-c:v libx264 -preset veryfast -b:v 2500k -pix_fmt yuv420p';
     for (const p of paths) {
       if (signal?.aborted) return { success: false, output: '', error: '已停止代理生成' };
       const key = btoa(unescape(encodeURIComponent(p))).replace(/[/+=]/g, '_').slice(0, 80);
       const out = `${proxyDir}/${key}.mp4`;
       const r = await invoke<{ stdout: string; stderr: string; exit_code: number }>('execute_command', {
-        command: `mkdir -p ${q(proxyDir)} && test -f ${q(out)} || ${ffmpeg} -y -i ${q(p)} -vf "scale='min(1280,iw)':-2" -r 30 -c:v h264_videotoolbox -allow_sw 1 -b:v 2500k -c:a aac -b:a 96k ${q(out)}`,
+        command: `mkdir -p ${q(proxyDir)} && test -f ${q(out)} || ${ffmpeg} -y -i ${q(p)} -vf "scale='min(1280,iw)':-2" -r 30 ${proxyEncoder} -c:a aac -b:a 96k ${q(out)}`,
         timeoutMs: 900000,
       });
       if (r.exit_code !== 0) return { success: false, output: made.join('\n'), error: `代理生成失败：${p}\n${r.stderr || r.stdout}` };
@@ -3387,7 +3392,7 @@ const analyzeMediaTool: Tool = {
     const { detectFfmpeg, probeDuration } = await import('@/lib/canvas/videoCompose');
     const { dmxVisionDescribe } = await import('./dmxClient');
     const ffmpeg = await detectFfmpeg();
-    if (!ffmpeg) return { success: false, output: '', error: '未检测到 ffmpeg（brew install ffmpeg）' };
+    if (!ffmpeg) return { success: false, output: '', error: '未检测到 ffmpeg（macOS: brew install ffmpeg；Windows: winget install ffmpeg）' };
     const workspace = await invoke<string>('ensure_workspace');
     const outDir = `${workspace}/images`;
     const qq = (p: string) => `'${p.replace(/'/g, `'\\''`)}'`;
@@ -3557,8 +3562,13 @@ const inspectVideoSegmentTool: Tool = {
     const tempPath = `${tempDir}/segment-${Date.now()}-${Math.round(start * 1000)}.mp4`;
     const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
     const duration = end - start;
+    // videotoolbox 仅 macOS 存在；其他平台回退 libx264（与 composeEngine 一致）。
+    const { hasVideoToolbox } = await import('@/lib/editor/composeEngine');
+    const clipEncoder = (await hasVideoToolbox(ffmpeg))
+      ? '-c:v h264_videotoolbox -allow_sw 1 -b:v 2200k'
+      : '-c:v libx264 -preset veryfast -b:v 2200k -pix_fmt yuv420p';
     const clipResult = await invoke<{ stdout: string; stderr: string; exit_code: number }>('execute_command', {
-      command: `mkdir -p ${quote(tempDir)} && ${ffmpeg} -y -ss ${start.toFixed(3)} -i ${quote(path)} -t ${duration.toFixed(3)} -vf "scale='min(1280,iw)':-2" -r 24 -c:v h264_videotoolbox -allow_sw 1 -b:v 2200k -c:a aac -b:a 96k -movflags +faststart ${quote(tempPath)}`,
+      command: `mkdir -p ${quote(tempDir)} && ${ffmpeg} -y -ss ${start.toFixed(3)} -i ${quote(path)} -t ${duration.toFixed(3)} -vf "scale='min(1280,iw)':-2" -r 24 ${clipEncoder} -c:a aac -b:a 96k -movflags +faststart ${quote(tempPath)}`,
       timeoutMs: 300000,
     });
     if (clipResult.exit_code !== 0) {

@@ -1016,7 +1016,7 @@ ${videoItems.join('\n')}
     }
     const ffmpeg = await detectFfmpeg();
     if (!ffmpeg) {
-      await tauriMessage('未检测到 ffmpeg。请先安装：brew install ffmpeg', { title: '分离音频失败', type: 'error' }).catch(() => {});
+      await tauriMessage('未检测到 ffmpeg。请先安装（macOS: brew install ffmpeg；Windows: winget install ffmpeg）', { title: '分离音频失败', type: 'error' }).catch(() => {});
       return;
     }
     try {
@@ -1076,7 +1076,7 @@ ${videoItems.join('\n')}
     }
     const ffmpeg = await detectFfmpeg();
     if (!ffmpeg) {
-      await tauriMessage('未检测到 ffmpeg。请先安装：brew install ffmpeg', { title: '智能镜头分割失败', type: 'error' }).catch(() => {});
+      await tauriMessage('未检测到 ffmpeg。请先安装（macOS: brew install ffmpeg；Windows: winget install ffmpeg）', { title: '智能镜头分割失败', type: 'error' }).catch(() => {});
       return;
     }
     try {

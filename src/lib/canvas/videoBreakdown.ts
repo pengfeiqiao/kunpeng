@@ -60,7 +60,7 @@ export async function breakdownVideo(nodeId: string, onProgress?: (msg: string) 
 
   const ffmpeg = await detectFfmpeg();
   if (!ffmpeg) {
-    alert('未检测到 ffmpeg。请先安装：brew install ffmpeg');
+    alert('未检测到 ffmpeg。请先安装（macOS: brew install ffmpeg；Windows: winget install ffmpeg）');
     return;
   }
 

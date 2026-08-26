@@ -75,6 +75,23 @@ fn find_chromium(app: &AppHandle) -> Result<PathBuf, String> {
         }
     }
 
+    #[cfg(target_os = "windows")]
+    for root in roots {
+        // Playwright's win64 archives unpack to chrome-win/chrome.exe; the
+        // recursive glob keeps us agnostic about the exact layout. glob
+        // patterns treat '\' as an escape, so Windows path separators must
+        // be normalized to '/' or the pattern never matches anything.
+        let pattern = root
+            .join("**/chrome.exe")
+            .to_string_lossy()
+            .replace('\\', "/");
+        if let Ok(paths) = glob::glob(&pattern) {
+            if let Some(path) = paths.flatten().next() {
+                return Ok(path);
+            }
+        }
+    }
+
     #[cfg(target_os = "macos")]
     for path in [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -85,6 +102,49 @@ fn find_chromium(app: &AppHandle) -> Result<PathBuf, String> {
         }
     }
 
+    #[cfg(target_os = "windows")]
+    {
+        let mut system_candidates = Vec::new();
+        let push_env = |candidates: &mut Vec<PathBuf>, key: &str| {
+            if let Some(value) = std::env::var_os(key) {
+                candidates.push(PathBuf::from(value));
+            }
+        };
+        let mut program_roots = Vec::new();
+        push_env(&mut program_roots, "ProgramFiles");
+        push_env(&mut program_roots, "ProgramFiles(x86)");
+        push_env(&mut program_roots, "LOCALAPPDATA");
+        for root in program_roots {
+            system_candidates.push(root.join("Google").join("Chrome").join("Application").join("chrome.exe"));
+            system_candidates.push(root.join("Chromium").join("Application").join("chrome.exe"));
+        }
+        // Edge ships with Windows and speaks the same CDP dialect — last
+        // resort so the browser tools work on a stock machine.
+        if let Some(program_files_x86) = std::env::var_os("ProgramFiles(x86)") {
+            system_candidates.push(
+                PathBuf::from(program_files_x86)
+                    .join("Microsoft")
+                    .join("Edge")
+                    .join("Application")
+                    .join("msedge.exe"),
+            );
+        }
+        if let Some(program_files) = std::env::var_os("ProgramFiles") {
+            system_candidates.push(
+                PathBuf::from(program_files)
+                    .join("Microsoft")
+                    .join("Edge")
+                    .join("Application")
+                    .join("msedge.exe"),
+            );
+        }
+        for path in system_candidates {
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+    }
+
     Err("找不到可用的 Chromium。可调用 browser_install 自动下载浏览器内核（约 170MB），或安装 Google Chrome 后重试。".to_string())
 }
 
@@ -92,10 +152,25 @@ fn find_chromium(app: &AppHandle) -> Result<PathBuf, String> {
 
 /// Pinned to the same Playwright build the bundled copy used.
 const CHROMIUM_BUILD: &str = "1651413";
-const CHROMIUM_URLS: &[&str] = &[
-    "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/1651413/chromium-mac-arm64.zip",
-    "https://playwright.azureedge.net/builds/chromium/1651413/chromium-mac-arm64.zip",
-];
+
+/// Per-platform archive URLs for the pinned build. macOS stays arm64-only
+/// (unchanged from before); Windows uses the win64 archive (x64, also the
+/// build Windows-on-ARM runs under emulation).
+fn chromium_urls() -> &'static [&'static str] {
+    if cfg!(target_os = "macos") {
+        &[
+            "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/1651413/chromium-mac-arm64.zip",
+            "https://playwright.azureedge.net/builds/chromium/1651413/chromium-mac-arm64.zip",
+        ]
+    } else if cfg!(target_os = "windows") {
+        &[
+            "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/1651413/chromium-win64.zip",
+            "https://playwright.azureedge.net/builds/chromium/1651413/chromium-win64.zip",
+        ]
+    } else {
+        &[]
+    }
+}
 
 #[derive(Clone, Serialize)]
 struct BrowserInstallProgress {
@@ -114,8 +189,11 @@ fn browser_install_dir() -> Result<PathBuf, String> {
 /// binary already exists).
 #[tauri::command]
 pub async fn browser_install(app: AppHandle) -> Result<String, String> {
-    if !cfg!(target_os = "macos") || !cfg!(target_arch = "aarch64") {
+    if cfg!(target_os = "macos") && !cfg!(target_arch = "aarch64") {
         return Err("当前仅支持 macOS Apple Silicon 自动下载；其他平台请安装 Google Chrome。".to_string());
+    }
+    if !cfg!(target_os = "macos") && !cfg!(target_os = "windows") {
+        return Err("当前平台不支持自动下载浏览器内核，请安装 Google Chrome 后重试。".to_string());
     }
     if let Ok(path) = find_chromium(&app) {
         return Ok(path.to_string_lossy().to_string());
@@ -142,7 +220,7 @@ pub async fn browser_install(app: AppHandle) -> Result<String, String> {
 
     let mut last_err = String::new();
     let mut downloaded = false;
-    for url in CHROMIUM_URLS {
+    for url in chromium_urls() {
         emit("downloading", 0, 0);
         let response = match client.get(*url).send().await {
             Ok(r) if r.status().is_success() => r,
@@ -199,13 +277,30 @@ pub async fn browser_install(app: AppHandle) -> Result<String, String> {
     let extract_dir = base.join("chromium");
     let _ = std::fs::remove_dir_all(&extract_dir);
     std::fs::create_dir_all(&extract_dir).map_err(|e| format!("创建安装目录失败: {}", e))?;
-    let status = Command::new("ditto")
+    // macOS: ditto preserves the .app bundle's symlinks/permissions that a
+    // plain zip extraction would flatten. Windows: the win64 archive has no
+    // symlinks, so the zip crate is enough (and ditto doesn't exist there).
+    #[cfg(target_os = "macos")]
+    let extract_result: Result<(), String> = Command::new("ditto")
         .args(["-x", "-k", zip_path.to_string_lossy().as_ref(), extract_dir.to_string_lossy().as_ref()])
         .status()
-        .map_err(|e| format!("解压失败: {}", e))?;
-    if !status.success() {
+        .map_err(|e| format!("解压失败: {}", e))
+        .and_then(|status| {
+            if status.success() {
+                Ok(())
+            } else {
+                Err("解压浏览器内核失败（ditto 非零退出）".to_string())
+            }
+        });
+    #[cfg(target_os = "windows")]
+    let extract_result: Result<(), String> = (|| {
+        let file = std::fs::File::open(&zip_path).map_err(|e| format!("打开压缩包失败: {}", e))?;
+        let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("读取压缩包失败: {}", e))?;
+        archive.extract(&extract_dir).map_err(|e| format!("解压失败: {}", e))
+    })();
+    if let Err(error) = extract_result {
         cleanup(&staging);
-        return Err("解压浏览器内核失败（ditto 非零退出）".to_string());
+        return Err(error);
     }
     cleanup(&staging);
 
@@ -472,6 +567,23 @@ pub async fn browser_snapshot(
     }
     let port = session.port.ok_or_else(|| "浏览器未启动".to_string())?;
     snapshot_for_port(port, max_chars.unwrap_or(30_000)).await
+}
+
+/// Evaluate arbitrary JavaScript in the current page and return the value.
+/// Backs the touliu automation tools (replacing the old Safari/osascript
+/// path so the same flow works on every platform).
+#[tauri::command]
+pub async fn browser_evaluate(
+    state: State<'_, BrowserState>,
+    code: String,
+) -> Result<Value, String> {
+    let mut session = state.inner.lock().await;
+    if !session.is_running() {
+        return Err("浏览器尚未打开".to_string());
+    }
+    let port = session.port.ok_or_else(|| "浏览器未启动".to_string())?;
+    let (ws, _) = page_target(port).await?;
+    evaluate(&ws, code).await
 }
 
 #[tauri::command]
