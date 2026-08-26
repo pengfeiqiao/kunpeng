@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -197,22 +196,11 @@ Schema.union([normalPolicySchema, alwaysPolicySchema]);
 *
 * App-attribution vocabulary for provider requests.
 * @module @deepseek-ai/dsh-llm/attribution
+*
+* KUNPENG: fork 部署在 runtime 根目录，`../package.json` 不存在（上游文件在
+* dsh-acp/lib/ 下才有）。该值仅用于 User-Agent 归因，固定为 fork 版本号。
 */
-// KUNPENG PATCH（部署布局容错）：上游 bundle 的 `../package.json` 假设文件
-// 位于 node_modules/<pkg>/lib/ 内；本 fork 被 vendored 到运行时根后，开发
-// 布局下 ../ 解析到仓库根 package.json，而部署布局（~/.kunpeng/dsh/<ver>/）
-// 下 ../ 指向不存在的 ~/.kunpeng/dsh/package.json 直接 MODULE_NOT_FOUND。
-// 依次回退：../package.json（保留上游行为）→ ./package.json（运行时根，
-// 即 dsh-runtime 自身的 0.1.0-rc.6，语义上正是原 dsh-acp 包版本）→ 硬编码。
-const { version } = (() => {
-	const req = createRequire(import.meta.url);
-	for (const candidate of ["../package.json", "./package.json"]) {
-		try {
-			return req(candidate);
-		} catch { /* 布局回退 */ }
-	}
-	return { version: "0.1.0-rc.6" };
-})();
+const version = "0.1.0-rc.6-kunpeng";
 //#endregion
 //#region lib/types/codec.js
 /**

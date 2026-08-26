@@ -13,9 +13,7 @@ use tokio::sync::{oneshot, Mutex, RwLock};
 use tokio::time::{timeout, Duration};
 
 const DSH_VERSION: &str = "0.1.0-rc.6";
-// 尾部 -win.N 是 Windows 分支的运行时修订号（上游 kunpeng.N 之后递增）：
-// kunpeng-acp.mjs 的 ../package.json 布局容错修复要求已部署运行时重新落地。
-const DSH_RUNTIME_REVISION: &str = "0.1.0-rc.6-kunpeng.8-win.1";
+const DSH_RUNTIME_REVISION: &str = "0.1.0-rc.6-kunpeng.9-win.1";
 const DSH_EVENT_PREFIX: &str = "__KUNPENG_DSH_EVENT__";
 
 #[derive(Clone)]
