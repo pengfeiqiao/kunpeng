@@ -51,7 +51,11 @@ writeFileSync(overlayPath, JSON.stringify(overlay));
 const args = ['tauri', 'build', '--config', overlayPath];
 const isWindows = process.platform === 'win32';
 // npx is a .cmd shim on Windows — Node refuses to spawn those without a shell.
-const result = spawnSync(isWindows ? 'npx.cmd' : 'npx', args, {
+// With shell:true Node joins args with spaces into a single cmd line, so an
+// overlay path containing spaces (e.g. "C:\Users\John Doe\...") would word-
+// split; quote args up front (cmd.exe honors double quotes).
+const quotedArgs = isWindows ? args.map((a) => (/\s/.test(a) ? `"${a}"` : a)) : args;
+const result = spawnSync(isWindows ? 'npx.cmd' : 'npx', quotedArgs, {
   stdio: 'inherit',
   cwd: root,
   shell: isWindows,

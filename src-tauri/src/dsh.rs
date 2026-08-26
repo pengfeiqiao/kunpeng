@@ -199,6 +199,19 @@ fn node_binary(root: &Path) -> PathBuf {
     }
 }
 
+/// Node's ESM loader only accepts file:/data:/node: URLs in import(). The
+/// Cordis loader passes config entry `name`s straight to import(), where a
+/// POSIX absolute path happens to resolve but a Windows `C:\...` path is read
+/// as the unsupported URL scheme "c:". Emit file:// URLs for entry paths.
+fn module_specifier(path: &std::path::Path) -> String {
+    let s = path.to_string_lossy().replace('\\', "/");
+    if s.starts_with('/') {
+        format!("file://{}", s)
+    } else {
+        format!("file:///{}", s)
+    }
+}
+
 fn ensure_runtime(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "无法定位用户目录".to_string())?;
     let root = home.join(".kunpeng").join("dsh").join(DSH_VERSION);
@@ -528,6 +541,8 @@ pub async fn dsh_start(
     // boot fails and disposes the half-mounted tree (ACP already mounted),
     // which surfaces as "the ACP bridge has been disposed" on session/new.
     // Reference the adapter by absolute entry path, exactly like the ACP host.
+    // module_specifier turns both into file:// URLs: a bare absolute path only
+    // survives import() on POSIX; on Windows "C:\..." dies as URL scheme "c:".
     let llm_deepseek = runtime
         .join("node_modules")
         .join("@deepseek-ai")
@@ -555,7 +570,7 @@ pub async fn dsh_start(
     let config = json!([
         {
             "id": "llm-deepseek",
-            "name": llm_deepseek.to_string_lossy(),
+            "name": module_specifier(&llm_deepseek),
             "config": {
                 "apiKeyEnv": "DEEPSEEK_API_KEY",
                 "baseURL": normalized_base_url(&request.base_url),
@@ -573,7 +588,7 @@ pub async fn dsh_start(
         },
         {
             "id": "acp",
-            "name": acp_host.to_string_lossy(),
+            "name": module_specifier(&acp_host),
             "config": {
                 "provider": "deepseek-official",
                 "model": request.model,
@@ -652,7 +667,9 @@ pub async fn dsh_start(
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         for key in [
             "SystemRoot",
+            "SystemDrive",
             "windir",
+            "ComSpec",
             "USERNAME",
             "COMPUTERNAME",
             "PATHEXT",

@@ -57,14 +57,16 @@ export async function isPosixShell(): Promise<boolean> {
  * pid 必须是启动命令（nohup … & echo $!）回读的那个 pid。
  *
  * - Unix：pkill 杀子进程 + kill 杀父进程。
- * - Windows（Git Bash）：同样先 kill MSYS pid，再经 /proc/<pid>/winpid 换算
- *   Windows PID 用 taskkill /T 连根终止；MSYS2_ARG_CONV_EXCL 阻止 MSYS 把
- *   /PID 参数误转换成路径。Windows 无进程组信号，force 与否同为强杀。
+ * - Windows（Git Bash）：先经 /proc/<pid>/winpid 换算出 Windows PID（必须
+ *   在 kill 之前读，进程死后 /proc 条目消失、`&&` 短路会让 taskkill 永远
+ *   轮不到），再 kill MSYS pid，最后 taskkill /T 连根终止原生进程树；
+ *   MSYS2_ARG_CONV_EXCL 阻止 MSYS 把 /PID 参数误转换成路径。Windows 无
+ *   进程组信号，force 与否同为强杀。
  */
 export function stopBackgroundProcessCommand(pid: string, force: boolean): string {
   const sig = force ? 'KILL' : 'TERM';
   if (isWindowsSync()) {
-    return `kill -${sig} ${pid} 2>/dev/null || true; W=$(cat /proc/${pid}/winpid 2>/dev/null) && MSYS2_ARG_CONV_EXCL='*' taskkill /PID $W /T /F >/dev/null 2>&1 || true`;
+    return `W=$(cat /proc/${pid}/winpid 2>/dev/null); kill -${sig} ${pid} 2>/dev/null || true; [ -n "$W" ] && MSYS2_ARG_CONV_EXCL='*' taskkill /PID "$W" /T /F >/dev/null 2>&1 || true`;
   }
   return `pkill -${sig} -P ${pid} 2>/dev/null || true; kill -${sig} ${pid} 2>/dev/null || true`;
 }

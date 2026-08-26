@@ -16,10 +16,13 @@ interface CommandResult {
 const POLL_INTERVAL = 30_000; // 30 seconds
 const POLL_CONCURRENCY = 3;
 // pip 用户级安装位置：unix 为 ~/.local/bin/dreamina，Windows 为
-// %USERPROFILE%\.local\bin\dreamina.exe。
+// %USERPROFILE%\.local\bin\dreamina.exe。返回值会被直接内插进 shell 命令串，
+// Windows 下必须转成正斜杠并预置单引号——裸反斜杠会被 bash 当转义符吃掉
+//（`C:\Users\foo\...` 变成 `C:Usersfoo/...`），空格也会拆词。
+const shq = (p: string) => `'${p.replace(/'/g, `'\\''`)}'`;
 const getDreaminaPath = async () =>
   isWindowsSync()
-    ? `${await homeDir()}/.local/bin/dreamina.exe`
+    ? shq(`${await homeDir()}/.local/bin/dreamina.exe`.replace(/\\/g, '/'))
     : `${await homeDir()}.local/bin/dreamina`;
 // source ~/.zshrc 只在 macOS 有意义（加载 pip 装的 CLI 的 PATH 环境等）；
 // 其他平台直接执行。

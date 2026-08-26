@@ -78,8 +78,13 @@ fn find_chromium(app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(target_os = "windows")]
     for root in roots {
         // Playwright's win64 archives unpack to chrome-win/chrome.exe; the
-        // recursive glob keeps us agnostic about the exact layout.
-        let pattern = root.join("**/chrome.exe").to_string_lossy().to_string();
+        // recursive glob keeps us agnostic about the exact layout. glob
+        // patterns treat '\' as an escape, so Windows path separators must
+        // be normalized to '/' or the pattern never matches anything.
+        let pattern = root
+            .join("**/chrome.exe")
+            .to_string_lossy()
+            .replace('\\', "/");
         if let Ok(paths) = glob::glob(&pattern) {
             if let Some(path) = paths.flatten().next() {
                 return Ok(path);

@@ -572,6 +572,10 @@ pub async fn grep_search(
         }
 
         cmd.arg("--").arg(&search_path);
+        // rg is a console program: GUI apps must pass CREATE_NO_WINDOW on
+        // Windows or every search flashes a terminal window.
+        #[cfg(target_os = "windows")]
+        std::os::windows::process::CommandExt::creation_flags(&mut cmd, 0x0800_0000);
         cmd.output()
             .map_err(|e| format!("Failed to run rg: {}", e))?
     } else {
@@ -583,6 +587,8 @@ pub async fn grep_search(
         }
 
         cmd.arg(&pattern).arg(&search_path);
+        #[cfg(target_os = "windows")]
+        std::os::windows::process::CommandExt::creation_flags(&mut cmd, 0x0800_0000);
         cmd.output()
             .map_err(|e| format!("Failed to run grep: {}", e))?
     };

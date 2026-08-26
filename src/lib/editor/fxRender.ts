@@ -625,9 +625,11 @@ async function commandOk(command: string, timeoutMs = 5000): Promise<boolean> {
 }
 
 // Windows 常见安装位置 + PATH 兜底；Git Bash 下 PATH 查找即可命中。
+// WebView 里没有 process（Vite 产物中 process.env 被替换为 {}），
+// 不要读 process.env.ProgramFiles——它恒为 undefined，直接写默认路径。
 const NODE_CANDIDATES = isWindowsSync()
   ? [
-      `${process.env.ProgramFiles || 'C:\\Program Files'}\\nodejs\\node.exe`,
+      'C:\\Program Files\\nodejs\\node.exe',
       'node',
       'node.exe',
     ]

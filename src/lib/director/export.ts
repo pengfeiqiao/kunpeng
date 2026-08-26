@@ -150,7 +150,10 @@ export async function exportDirectorVideo(
   // Tauri's webview FS scope can reject newly-created nested workspace paths
   // before they exist. Render disposable PNG frames in the explicitly allowed
   // system temp scope, then atomically move only the verified MP4 to workspace.
-  const renderDir = `/tmp/kunpeng-director-render-${stamp}`;
+  // 用真实系统临时目录（正斜杠）：/tmp 在 Windows 上会被 Tauri fs 解析成
+  // 当前盘:\tmp，与 Git Bash 的 %TEMP% 映射错位。
+  const tempRoot = (await invoke<string>('get_temp_dir')).replace(/\\/g, '/');
+  const renderDir = `${tempRoot}/kunpeng-director-render-${stamp}`;
   const frameDir = `${renderDir}/frames`;
   const outPath = options.outputPath || `${workspace}/videos/director-previs-${stamp}.mp4`;
   const partialPath = `${renderDir}/director-previs.partial.mp4`;

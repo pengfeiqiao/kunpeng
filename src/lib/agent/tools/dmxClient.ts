@@ -15,6 +15,8 @@ import { resolveApiKey, resolveSlotApiKey } from '@/lib/credentials';
 import { getWebFetchTimeoutMs } from '@/lib/timeouts';
 import { isKimiK3Configured, kimiK3Vision } from '@/lib/agent/kimiClient';
 import { loadImageInput } from '@/lib/agent/mediaInput';
+import { agentLog } from '@/lib/agent/logger';
+import { CURL_TRANSPORT_THRESHOLD, DEBUG_BODY_THRESHOLD, dumpDebugBody, postJsonViaCurl } from '@/lib/agent/curlTransport';
 
 export { loadImageInput } from '@/lib/agent/mediaInput';
 
@@ -91,22 +93,31 @@ export async function dmxResponsesStream(
   const key = getDmxApiKey();
   if (!key) throw new MissingKeyError();
 
-  const res = await tauriFetch(`${BASE}/v1/responses`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: key },
-    body: Body.json({
-      model,
-      input,
-      stream: true,
-      stream_options: { include_usage: true },
-      ...extra,
-    }),
-    responseType: ResponseType.Text,
-    timeout: timeoutSec(),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${String(res.data).slice(0, 300)}`);
-
-  const raw = typeof res.data === 'string' ? res.data : '';
+  const payload = {
+    model,
+    input,
+    stream: true,
+    stream_options: { include_usage: true },
+    ...extra,
+  };
+  if (JSON.stringify(payload).length > DEBUG_BODY_THRESHOLD) void dumpDebugBody('dmx-responses-body', payload);
+  let raw: string;
+  if (JSON.stringify(payload).length > CURL_TRANSPORT_THRESHOLD) {
+    agentLog.warn('DMX', `请求体超过 ${CURL_TRANSPORT_THRESHOLD / 1024}KB，改走 curl 传输（${model}）`);
+    const r = await postJsonViaCurl(`${BASE}/v1/responses`, ['Content-Type: application/json', `Authorization: ${key}`], payload);
+    if (r.status < 200 || r.status >= 300) throw new Error(`HTTP ${r.status}: ${r.data.slice(0, 300)}`);
+    raw = r.data;
+  } else {
+    const res = await tauriFetch(`${BASE}/v1/responses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: key },
+      body: Body.json(payload),
+      responseType: ResponseType.Text,
+      timeout: timeoutSec(),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${String(res.data).slice(0, 300)}`);
+    raw = typeof res.data === 'string' ? res.data : '';
+  }
   let event: string | null = null;
   let text = '';
   for (const line of raw.split('\n')) {
@@ -134,19 +145,32 @@ export async function dmxChat(model: string, messages: unknown): Promise<string>
   const key = getDmxApiKey();
   if (!key) throw new MissingKeyError();
 
-  const res = await tauriFetch(`${BASE}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: Body.json({ model, messages }),
-    responseType: ResponseType.Text,
-    timeout: timeoutSec(),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${String(res.data).slice(0, 300)}`);
+  const payload = { model, messages };
+  if (JSON.stringify(payload).length > DEBUG_BODY_THRESHOLD) void dumpDebugBody('dmx-chat-body', payload);
+  let status: number;
+  let raw: string;
+  if (JSON.stringify(payload).length > CURL_TRANSPORT_THRESHOLD) {
+    agentLog.warn('DMX', `请求体超过 ${CURL_TRANSPORT_THRESHOLD / 1024}KB，改走 curl 传输（${model}）`);
+    const r = await postJsonViaCurl(`${BASE}/v1/chat/completions`, ['Content-Type: application/json', `Authorization: Bearer ${key}`], payload);
+    status = r.status;
+    raw = r.data;
+  } else {
+    const res = await tauriFetch(`${BASE}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: Body.json(payload),
+      responseType: ResponseType.Text,
+      timeout: timeoutSec(),
+    });
+    status = res.status;
+    raw = String(res.data);
+  }
+  if (status < 200 || status >= 300) throw new Error(`HTTP ${status}: ${raw.slice(0, 300)}`);
   let j: Record<string, unknown>;
   try {
-    j = JSON.parse(res.data as string) as Record<string, unknown>;
+    j = JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    throw new Error(`返回非 JSON: ${String(res.data).slice(0, 300)}`);
+    throw new Error(`返回非 JSON: ${raw.slice(0, 300)}`);
   }
   const choices = j.choices as Array<{ message?: { content?: string } }> | undefined;
   return choices?.[0]?.message?.content || '';
@@ -199,6 +223,7 @@ export async function dmxVisionWithFallback(
   instruction: string,
 ): Promise<{ text: string; model: string; label: string }> {
   const url = await loadImageInput(image);
+  agentLog.info('DMX', `识图请求就绪: 内联 ${(url.length / 1024).toFixed(0)}KB（data URL）`);
   const messages = [
     {
       role: 'user',
