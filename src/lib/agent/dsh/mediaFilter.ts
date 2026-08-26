@@ -7,11 +7,11 @@ import type { AcpContent } from './types.ts';
  * The upstream dsh-acp bridge accepts only `text` and `resource_link` prompt
  * content — an `image` block is rejected with invalidParams
  * ("only text and resource_link prompt content is supported") BEFORE any
- * model call, which used to kill the whole Harness turn. DeepSeek's official
- * endpoints do not accept native image input either (they substitute an
- * "[Unsupported Image]" placeholder), so base64 media is dropped here and
- * callers must route vision through tools (image_recognition) instead —
- * mirroring the built-in DeepSeek path in glmClient.convertMessages.
+ * model call, which used to kill the whole Harness turn. Base64 media is
+ * therefore dropped here and vision routes through tools (image_recognition)
+ * for Harness turns. 带图轮次现在在上游（useAgent）直接改道内置通道的
+ * DeepSeek 原生视觉（deepseek-v4-flash-vision-exp 起官方端点支持原生图片
+ * 输入），本文件只服务留在 Harness 的非图片轮次。
  */
 export function mediaToAcpContent(block: AgentUserContentBlock): AcpContent | null {
   if (block.type === 'text') return { type: 'text', text: block.text };

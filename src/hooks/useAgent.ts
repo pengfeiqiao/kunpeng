@@ -1678,12 +1678,29 @@ export function useAgent(options?: { primary?: boolean }) {
             // ACP session/prompt rejects image content blocks outright
             // ("only text and resource_link prompt content is supported"),
             // which used to kill the whole turn and surface as "Harness 暂时
-            // 不可用". DeepSeek's official endpoints do not accept native
-            // image input either (verified: they substitute an
-            // "[Unsupported Image]" placeholder), so vision goes through the
-            // image_recognition tool exactly like the built-in DeepSeek path
-            // (see glmClient convertMessages). Keep mediaBlocks for history,
-            // but send text-only input plus an explicit tool directive to ACP.
+            // 不可用"。DeepSeek 官方已上线原生视觉模型
+            // （deepseek-v4-flash-vision-exp，2026-08-21）：带图轮次不再绕
+            // image_recognition，直接换内置通道跑同一个 DeepSeek 模型
+            // （同模型同 key，仅换执行引擎，不跨供应商），图片以原生多模态
+            // 块直达模型。含视频附件的轮次仍留在 Harness（视频本来就要走
+            // 分析/转写工具）。
+            const hasImageMedia = mediaBlocks.some((block) => block.type === 'image');
+            const hasVideoMedia = mediaBlocks.some((block) => block.type === 'video');
+            if (hasImageMedia && !hasVideoMedia) {
+              executingHarness = false;
+              useDeepseekHarnessStore.getState().markFallback(runId);
+              useRunStepStore.getState().addProgressUpdate(
+                '检测到图片输入：本轮由 DeepSeek 原生视觉直接看图（内置通道，同一模型）。',
+                runId,
+              );
+              void emit('provider-fallback', {
+                from: 'deepseek-harness',
+                to: 'deepseek-builtin',
+                reason: '带图轮次走 DeepSeek 原生视觉',
+              });
+              coordinator.setRouteStrategy(deepseekBuiltinRoute(primaryRoute.modelId));
+              await coordinator.run(finalContent, callbacks, mediaBlocks);
+            } else {
             const acpMediaBlocks: AgentUserContentBlock[] = [];
             if (mediaBlocks.length > 0) {
               input += '\n\n[媒体附件说明] 当前执行引擎不能直接接收图片/视频内容块。'
@@ -1718,6 +1735,7 @@ export function useAgent(options?: { primary?: boolean }) {
             coordinator.recordHarnessTurn(finalContent, result.text, result.thinking, mediaBlocks);
             persistAgentMsgs();
             callbacks.onComplete(result.text);
+            }
           } catch (error) {
             if (!isCurrentRun()) return;
             const normalized = error instanceof Error ? error : new Error(String(error));
