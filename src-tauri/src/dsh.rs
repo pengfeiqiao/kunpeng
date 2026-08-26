@@ -816,9 +816,20 @@ pub async fn dsh_start(
     let stderr_run = request.run_id.clone();
     let stderr_instance = request.instance_id.clone();
     let stderr_secret = secret.clone();
+    // 每次启动截断重写 stderr 日志：ACP 侧只回 "Internal error"，真实原因
+    // 都在子进程 stderr 里，落盘后故障可离线诊断（密钥已 REDACTED）。
+    let stderr_log = home.join(".kunpeng").join("dsh").join("harness-stderr.log");
+    let _ = std::fs::write(&stderr_log, "");
     tauri::async_runtime::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            {
+                use std::io::Write as _;
+                let redacted_for_log = line.replace(&stderr_secret, "[REDACTED]");
+                if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(&stderr_log) {
+                    let _ = writeln!(f, "{}", redacted_for_log.chars().take(2000).collect::<String>());
+                }
+            }
             if let Some(raw_event) = line.strip_prefix(DSH_EVENT_PREFIX) {
                 if let Ok(event) = serde_json::from_str::<Value>(raw_event) {
                     let _ = stderr_app.emit_all(
