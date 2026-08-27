@@ -1195,21 +1195,29 @@ export function useAgent(options?: { primary?: boolean }) {
       const persistUiMessages: typeof persistMessages = isPrimary ? persistMessages : () => {};
       const displayContent = stripHarnessPrefix(content);
       const activeDsh = dshBridgesRef.current.get(currentAgentId);
-      if (activeDsh?.getIsRunning()) {
+      if (activeDsh) {
         const pathPrefix = filePaths?.length
           ? `[用户补充了以下文件]\n${filePaths.map((path) => `- ${path}`).join('\n')}\n\n`
           : '';
-        if (!activeDsh.queueGuidance(`${pathPrefix}${displayContent}`)) return;
-        const sessionId = useChatStore.getState().currentSessionId;
-        addMessage({
-          id: randomUUID(),
-          role: 'user',
-          content: displayContent,
-          filePaths: filePaths?.length ? filePaths : undefined,
-          timestamp: Date.now(),
-        });
-        persistUiMessages(sessionId ?? undefined);
-        return;
+        // queueGuidance 返回 false 只有一种情况：bridge 已 abort（运行刚结束）。
+        // 此时不能把消息静默丢掉，也不能让它落进已失效的桥——清掉失效桥，
+        // 按新任务走正常启动路径。bridge 在 ref 里存在即视为任务存活，
+        // 绝不在它活着时并行起第二个 Harness 进程（并行抢同一工具桥）。
+        if (activeDsh.queueGuidance(`${pathPrefix}${displayContent}`)) {
+          const sessionId = useChatStore.getState().currentSessionId;
+          addMessage({
+            id: randomUUID(),
+            role: 'user',
+            content: displayContent,
+            filePaths: filePaths?.length ? filePaths : undefined,
+            timestamp: Date.now(),
+          });
+          persistUiMessages(sessionId ?? undefined);
+          return;
+        }
+        if (dshBridgesRef.current.get(currentAgentId) === activeDsh) {
+          dshBridgesRef.current.delete(currentAgentId);
+        }
       }
       if (coordinator.getIsRunning()) {
         const pathPrefix = filePaths?.length

@@ -12,6 +12,7 @@ export class DshBridge {
   private tools: DshToolBridge | null = null;
   private visibleOutput = false;
   private aborted = false;
+  private callbacksRef: DshRunOptions['callbacks'] | null = null;
 
   getIsRunning(): boolean {
     return this.running;
@@ -22,8 +23,19 @@ export class DshBridge {
   }
 
   queueGuidance(text: string, media: AgentUserContentBlock[] = []): boolean {
-    if (!this.running || (!text.trim() && media.length === 0)) return false;
+    // 只以 aborted 为界：bridge 注册后、run() 尚未把 running 置真之前有一个
+    // 窗口期，此时若用 running 判断会静默丢消息并可能误起并行 Harness 进程
+    // （并行 ACP 抢同一工具桥 socket，表现为 MCP "Connection closed"）。
+    if (this.aborted || (!text.trim() && media.length === 0)) return false;
     this.queuedGuidance.push({ text: text.trim(), media });
+    // 即时确认：补充要等当前轮安全结束才发出，没有这条提示时用户看到的
+    // 是"发出去毫无反应"（与 coordinator.queueGuidance 的反馈对齐）。
+    const cleaned = text.trim();
+    const preview = cleaned.replace(/\s+/g, ' ').slice(0, 72);
+    this.callbacksRef?.onProgressText?.(
+      '',
+      `收到你的补充${preview ? `：“${preview}${cleaned.length > 72 ? '…' : ''}”` : ''}。我会先让当前操作安全结束，再把它并入下一步判断；现有进度不会重启。`,
+    );
     return true;
   }
 
@@ -32,6 +44,7 @@ export class DshBridge {
     this.running = true;
     this.aborted = false;
     this.visibleOutput = false;
+    this.callbacksRef = options.callbacks;
     let text = '';
     let thinking = '';
     let currentMessage = '';
@@ -137,6 +150,7 @@ export class DshBridge {
     // request to the run being cancelled.
     this.running = false;
     this.aborted = true;
+    this.callbacksRef = null;
     this.queuedGuidance = [];
     const tools = this.tools;
     const acp = this.acp;
@@ -158,5 +172,6 @@ export class DshBridge {
     this.acp = null;
     await acp?.dispose();
     this.running = false;
+    this.callbacksRef = null;
   }
 }

@@ -404,25 +404,60 @@ async fn handle_bridge_connection(
                     inner.pending_tools.lock().await.remove(&pending_key);
                     return Err(error.to_string());
                 }
-                let reply = tokio::select! {
-                    reply = timeout(Duration::from_secs(30 * 60), receiver) => Some(reply),
-                    incoming = lines.next_line() => {
-                        inner.pending_tools.lock().await.remove(&pending_key);
-                        let _ = app.emit_all(
-                            "dsh-tool-cancel",
-                            ToolCallEvent {
-                                run_id: run_id.clone(),
-                                instance_id: instance_id.clone(),
-                                request_id: request_id.clone(),
-                                name: "bridge_disconnected".to_string(),
-                                arguments: json!({}),
-                            },
-                        );
-                        return match incoming {
-                            Ok(None) => Err("Harness 工具桥在工具执行期间断开：该工具可能已执行并产生副作用（例如已生成素材），请核对任务记录后再决定是否重试".to_string()),
-                            Ok(Some(_)) => Err("Harness 工具桥在等待工具结果时收到意外消息".to_string()),
-                            Err(error) => Err(error.to_string()),
-                        };
+                // 等待当前工具结果期间，连接上可能到达并发调用（模型会在一条
+                // 消息里并行发多个工具）。旧实现遇到第二条消息就直接关连接：
+                // 当前调用 Connection closed、并发调用 Not connected、
+                // mcp-server 退出后整段会话工具链全挂。现在并发调用立刻按
+                // "桥忙"回错并不断连，当前调用继续等待。
+                let mut receiver = receiver;
+                let reply = loop {
+                    tokio::select! {
+                        reply = timeout(Duration::from_secs(30 * 60), &mut receiver) => break Some(reply),
+                        incoming = lines.next_line() => {
+                            match incoming {
+                                Ok(None) => {
+                                    inner.pending_tools.lock().await.remove(&pending_key);
+                                    let _ = app.emit_all(
+                                        "dsh-tool-cancel",
+                                        ToolCallEvent {
+                                            run_id: run_id.clone(),
+                                            instance_id: instance_id.clone(),
+                                            request_id: request_id.clone(),
+                                            name: "bridge_disconnected".to_string(),
+                                            arguments: json!({}),
+                                        },
+                                    );
+                                    return Err("Harness 工具桥在工具执行期间断开：该工具可能已执行并产生副作用（例如已生成素材），请核对任务记录后再决定是否重试".to_string());
+                                }
+                                Ok(Some(line)) => {
+                                    let Ok(message) = serde_json::from_str::<BridgeMessage>(&line) else { continue };
+                                    match (message.kind.as_str(), message.request_id) {
+                                        ("call_tool", Some(other_id)) => {
+                                            let _ = write_bridge_line(&mut writer, json!({
+                                                "requestId": other_id,
+                                                "ok": false,
+                                                "error": "工具桥正在执行另一个工具调用，请等当前调用完成后串行重试",
+                                            })).await;
+                                        }
+                                        ("list_tools", Some(other_id)) => {
+                                            let tools = inner
+                                                .tools
+                                                .read()
+                                                .await
+                                                .get(&run_key)
+                                                .cloned()
+                                                .unwrap_or_default();
+                                            let _ = write_bridge_line(&mut writer, json!({ "requestId": other_id, "ok": true, "result": tools })).await;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                Err(error) => {
+                                    inner.pending_tools.lock().await.remove(&pending_key);
+                                    return Err(error.to_string());
+                                }
+                            }
+                        }
                     }
                 };
                 inner.pending_tools.lock().await.remove(&pending_key);
