@@ -1,4 +1,5 @@
 import net from 'node:net';
+import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -31,6 +32,16 @@ const socket = net.createConnection({ host, port });
 socket.setEncoding('utf8');
 socket.setNoDelay(true);
 socket.setKeepAlive(true, 10_000);
+
+// 生命周期日志：生产环境"结果回传时连接断开"的取证——socket 错误/关闭/
+// stdin EOF/进程退出原因全部落盘（~/.kunpeng/dsh/mcp-server.log）。
+const logFile = `${process.env.HOME}/.kunpeng/dsh/mcp-server.log`;
+function mlog(event, extra = {}) {
+  try {
+    fs.appendFileSync(logFile, `${JSON.stringify({ ts: new Date().toISOString(), runId, instanceId, event, ...extra })}\n`);
+  } catch { /* 日志绝不能影响工具链路 */ }
+}
+mlog('start', { address });
 
 let buffer = '';
 const pending = new Map();
@@ -100,12 +111,14 @@ socket.on('data', (chunk) => {
 });
 
 socket.on('error', (error) => {
+  mlog('socket_error', { message: error.message, code: error.code });
   readyReject(error);
   for (const waiter of pending.values()) waiter.reject(error);
   pending.clear();
 });
 
-socket.on('close', () => {
+socket.on('close', (hadError) => {
+  mlog('socket_close', { hadError, pendingCount: pending.size });
   const error = new Error('Kunpeng tool bridge closed');
   for (const waiter of pending.values()) waiter.reject(error);
   pending.clear();
@@ -117,8 +130,9 @@ socket.on('close', () => {
 
 // If the DSH parent dies without unwinding its MCP client, our stdin hits EOF.
 // Never linger as an orphan in that case.
-process.stdin.on('end', () => process.exit(0));
-process.on('disconnect', () => process.exit(0));
+process.stdin.on('end', () => { mlog('stdin_end'); process.exit(0); });
+process.on('disconnect', () => { mlog('ipc_disconnect'); process.exit(0); });
+process.on('uncaughtException', (error) => { mlog('uncaught', { message: error.message, stack: String(error.stack).slice(0, 500) }); throw error; });
 
 // The bridge handshake must complete promptly. Without a bound, a bridge
 // that accepts TCP but never answers `hello` would hang the whole DSH plugin
@@ -148,10 +162,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (requestMessage) => {
+  const toolName = requestMessage.params.name;
+  mlog('call_start', { tool: toolName });
   const result = await request('call_tool', {
-    name: requestMessage.params.name,
+    name: toolName,
     arguments: requestMessage.params.arguments ?? {},
   });
+  mlog('call_result', { tool: toolName, resultBytes: JSON.stringify(result ?? null).length });
   if (result && typeof result === 'object' && Array.isArray(result.content)) {
     return result;
   }

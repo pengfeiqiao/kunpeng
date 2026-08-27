@@ -13,7 +13,7 @@ use tokio::sync::{oneshot, Mutex, RwLock};
 use tokio::time::{timeout, Duration};
 
 const DSH_VERSION: &str = "0.1.0-rc.6";
-const DSH_RUNTIME_REVISION: &str = "0.1.0-rc.6-kunpeng.9-win.1";
+const DSH_RUNTIME_REVISION: &str = "0.1.0-rc.6-kunpeng.10";
 const DSH_EVENT_PREFIX: &str = "__KUNPENG_DSH_EVENT__";
 
 #[derive(Clone)]

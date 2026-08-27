@@ -1075,6 +1075,31 @@ async function runApimartMidjourneyGeneration(
 ): Promise<CoreGenResult> {
   const refs = req.referenceUrls ?? [];
   const styleRefs = req.styleReferenceUrls ?? [];
+  // 幂等护栏：MCP 结果回传偶发断连时，agent 会把成功误判为失败并重试，
+  // 造成重复生成、重复扣费。3 分钟内同引擎同 prompt 同参数已有成功任务时
+  // 直接复用其结果（文件仍存在才认）。
+  {
+    const paramsKey = JSON.stringify({ ...(req.params ?? {}), version });
+    const twin = useCanvasTaskStore.getState().tasks.find((task) => (
+      task.kind === 'image'
+      && task.engineId === `midjourney-${version}`
+      && task.prompt === req.prompt
+      && task.status === 'succeeded'
+      && task.resultPaths.length > 0
+      && JSON.stringify(task.params ?? {}) === paramsKey
+      && Date.now() - (task.finishedAt ?? 0) <= 180_000
+    ));
+    if (twin) {
+      return {
+        success: true,
+        taskId: twin.id,
+        resultPaths: twin.resultPaths,
+        resultUrls: twin.resultUrls,
+        engineKind: 'image',
+        providerTaskId: twin.rhTaskId,
+      };
+    }
+  }
   if (!hasApimartMidjourneyKey()) {
     return {
       success: false,

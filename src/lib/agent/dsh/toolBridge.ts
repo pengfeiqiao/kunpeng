@@ -6,13 +6,32 @@ import type { ToolRegistry } from '../toolRegistry';
 import type { DshToolCallEvent, DshToolCancelEvent } from './types';
 import { executeDshToolCall, serializeDshTools } from './toolRpc.ts';
 
+// MCP stdio 传输的 ReadBuffer 上限是 10MiB（@modelcontextprotocol/sdk
+// STDIO_DEFAULT_MAX_BUFFER_SIZE）：image_generate 一次返回 4 张 base64
+// 成品图 ≈10.6MB，单条结果消息超限 → 客户端判传输死亡、supervisor 杀掉
+// mcp-server 重启 → 调用方收到 "Connection closed"，而远端其实已生成成功
+// （这正是生产上"图做完了却报连接断开、反复重试重复扣费"的根因）。
+// 工具结果里的内联媒体统一封顶：超限时改为文件路径引用，模型可按需用
+// image_recognition 或原生视觉查看。
+const DSH_MEDIA_INLINE_BUDGET = 6 * 1024 * 1024;
+
 function mediaContent(blocks: AgentUserContentBlock[] | undefined): Array<Record<string, unknown>> {
   if (!blocks?.length) return [];
+  const inlineBytes = blocks.reduce((sum, block) => (
+    block.type !== 'text' && block.source.type === 'base64' ? sum + block.source.data.length : sum
+  ), 0);
   const content: Array<Record<string, unknown>> = [];
+  if (inlineBytes > DSH_MEDIA_INLINE_BUDGET) {
+    content.push({
+      type: 'text',
+      text: `[内联媒体已省略：共 ${Math.round(inlineBytes / 1024 / 1024)}MB，超过 MCP 传输安全上限。结果文件已保存到本地，需要查看图片时请用 image_recognition 传入上方输出路径，或在下轮对话中直接引用该文件。]`,
+    });
+  }
+  const inlineAllowed = inlineBytes <= DSH_MEDIA_INLINE_BUDGET;
   for (const block of blocks) {
     if (block.type === 'text') content.push({ type: 'text', text: block.text });
     else if (block.type === 'image' && block.source.type === 'base64') {
-      content.push({ type: 'image', data: block.source.data, mimeType: block.source.media_type });
+      if (inlineAllowed) content.push({ type: 'image', data: block.source.data, mimeType: block.source.media_type });
     } else if (block.source.type === 'url') {
       content.push({ type: 'text', text: `[${block.type}结果] ${block.source.url}` });
     }

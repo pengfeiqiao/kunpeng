@@ -46,7 +46,11 @@ export async function dumpDebugBody(fileName: string, payload: unknown): Promise
 
 /** POST JSON via curl。headers 为完整头行（含密钥），curl 全平台自带。 */
 export async function postJsonViaCurl(url: string, headers: string[], payload: unknown): Promise<RawPostResult> {
-  const tmp = (await invoke<string>('get_temp_dir')).replace(/\\/g, '/');
+  // 临时文件必须落在主目录内：write_text_file_private 只允许 home 内路径，
+  // 系统临时目录（macOS /var/folders、Windows %TEMP%）会被拒——曾导致
+  // curl 传输在 mac 上全模型报"私密文件写入仅允许用户主目录内的路径"。
+  const home = (await homeDir()).replace(/\\/g, '/');
+  const tmp = `${home}.kunpeng/tmp`;
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const bodyPath = `${tmp}/kunpeng-post-${id}.json`;
   const cfgPath = `${tmp}/kunpeng-post-${id}.curlrc`;
