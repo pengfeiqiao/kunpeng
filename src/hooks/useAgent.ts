@@ -1879,6 +1879,29 @@ export function useAgent(options?: { primary?: boolean }) {
     setIsStreaming(false);
     setStreamingPhase('idle');
     const sid = useChatStore.getState().streamingSessionId;
+    // 截断保留：把已流出的部分正文作为截断消息落进会话，而不是整段消失
+    // （abort 使回调失效后，pending flush 被 ghost-guard 拦截，随后
+    // clearStreamingContent 会把这部分内容清掉）。
+    {
+      const snapshot = useChatStore.getState();
+      const partialText = snapshot.streamingContent.trim();
+      const partialThinking = snapshot.streamingThinkingContent.trim();
+      if (partialText || partialThinking) {
+        snapshot.addMessage({
+          id: randomUUID(),
+          role: 'assistant',
+          content: partialText
+            ? `${partialText}\n\n_（已停止，以上为截断部分）_`
+            : '_（已停止，未产出正文）_',
+          ...(partialThinking ? { thinkingContent: partialThinking } : {}),
+          timestamp: Date.now(),
+        });
+        const persistSid = useChatStore.getState().currentSessionId;
+        if (persistSid) {
+          try { safeLocalStorage.setItem('kunpeng-messages-' + persistSid, JSON.stringify(useChatStore.getState().messages)); } catch { /* quota */ }
+        }
+      }
+    }
     if (sid) {
       useChatStore.getState().setStreamingSessionId(null);
       useChatStore.getState().setSessionStreaming(sid, false);

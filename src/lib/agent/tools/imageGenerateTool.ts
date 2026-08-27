@@ -80,7 +80,13 @@ export const imageGenerateTool: Tool = {
   },
   async execute(params) {
     const settings = useSettingsStore.getState();
-    const requestedModel = String(params.model || settings.chatImageModel || 'gpt-image-2');
+    let requestedModel = String(params.model || settings.chatImageModel || 'gpt-image-2');
+    // Midjourney 别名归一：agent 常会写 'midjourney' / 'mj' / 'midjourney-v8.2'
+    // 这类自然叫法，之前不在 IMAGE_MODELS 里会被静默换成 gpt-image-2，
+    // 用户看到的就是"Midjourney 调用失败"。
+    if (/^(?:midjourney|mj)(?:[-_ ]?v?\d+(?:\.\d+)?)?$/i.test(requestedModel) && !requestedModel.startsWith('custom-media:')) {
+      requestedModel = /8[._-]?1|v81/i.test(requestedModel) ? 'midjourney-v81' : 'midjourney-v82';
+    }
 
     // 自定义图片插件（issue #7）：custom-media:{id} 直接走插件执行器
     if (requestedModel.startsWith('custom-media:')) {
