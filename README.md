@@ -191,6 +191,12 @@ npm run tauri:build
 
 工具普惠时代，成熟的画布和工作流模板随处可见，Agent 与 Skill 的溢价也在被大模型原生能力快速吸收。真正拉开作品差距的从来不是工具，而是创作者的审美、判断力和品味。与其让这套工具闲置自用，不如彻底开放——让更多人免费使用、自主改造，也希望结识更多同赛道的创作者、开发者，一起共建 AIGC 生态。
 
+## 社区交流
+
+项目的宣传和交流都在**小红书**：关注小红书账号 **@白日aigc（白日旅行家）**，可以加入小红书交流群，和其他使用者一起讨论玩法、反馈问题。没有 QQ 群，GitHub Issue 也永远敞开。
+
+![小红书交流群](docs/images/xiaohongshu-group.jpg)
+
 ## 参与贡献
 
 欢迎 Issue 和 PR！请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。行为准则见 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)，安全问题报告见 [SECURITY.md](SECURITY.md)。
