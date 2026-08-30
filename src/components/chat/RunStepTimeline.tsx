@@ -1,152 +1,110 @@
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import {
-  BookOpen,
-  Check,
-  ChevronDown,
-  Circle,
-  FilePenLine,
-  Loader2,
-  Search,
-  Sparkles,
-  Terminal,
-  X,
-} from 'lucide-react';
+import { BookOpen, Check, ChevronDown, Circle, FilePenLine, Globe2, Loader2, Search, Sparkles, Terminal, Video, Wrench, X } from 'lucide-react';
 import { useChatStore } from '@/stores/chatStore';
+import { useRunStepStore, type RunProgressUpdate, type RunStep, type RunSubAgent, type RunToolCall } from '@/stores/runStepStore';
 import {
-  useRunStepStore,
-  type RunProgressUpdate,
-  type RunStep,
-  type RunSubAgent,
-  type RunToolCall,
-} from '@/stores/runStepStore';
-import { isTechnicalProgressText } from '@/lib/agent/toolSummary';
+  buildTimelinePresentationItems,
+  compactToolError,
+  createLegacyToolPresentation,
+  labelToolPresentation,
+  type ToolIconKind,
+} from '@/lib/agent/runStepPresentation';
 
-function friendlyToolName(name: string): string {
-  const labels: Record<string, string> = {
-    bash: '运行命令',
-    read_file: '读取文件',
-    write_file: '写入文件',
-    edit_file: '编辑文件',
-    grep_search: '搜索内容',
-    glob_search: '查找文件',
-    web_search: '联网搜索',
-    web_fetch: '读取网页',
-    browser_control: '查看网页',
-    sleep: '等待页面加载',
-    image_generate: '生成图片',
-    video_generate: '生成视频',
-    canvas_generate: '生成画布资产',
-    workshop_generate: '生成工坊产物',
-    timeline_export_video: '导出视频',
-    image_recognition: '分析图片',
-    ask_user_question: '询问用户',
-    skill_invoke: '调用技能',
-    project_get_paths: '读取项目位置',
-  };
-  if (labels[name]) return labels[name];
-  if (name.startsWith('workshop_')) return '操作工坊';
-  if (name.startsWith('canvas_')) return '操作画布';
-  if (name.startsWith('timeline_')) return '操作剪辑';
-  if (name.startsWith('director_')) return '操作导演台';
-  if (name.startsWith('copywriting_')) return '修改文案';
-  if (name.startsWith('touliu_')) return '操作投流';
-  return '处理当前任务';
+function statusIcon(status: 'running' | 'done' | 'failed' | 'pending', size = 14) {
+  if (status === 'running') return <Loader2 size={size} className="animate-spin" />;
+  if (status === 'failed') return <X size={size} />;
+  if (status === 'pending') return <Circle size={Math.max(8, size - 5)} />;
+  return <Check size={size} />;
 }
 
-function taskText(tool: RunToolCall): string {
-  const summary = tool.summary
-    .replace(/^搜索:\s*/, '')
-    .replace(/^获取:\s*/, '')
-    .replace(/^执行:\s*/, '')
-    .trim();
-  const verb = tool.status === 'running' ? '正在' : tool.status === 'failed' ? '未能完成' : '已完成';
-
-  if (tool.name === 'web_search') return `${verb === '已完成' ? '已搜索' : verb === '正在' ? '正在搜索' : '未能搜索'}${summary ? ` ${summary}` : ''}`;
-  if (tool.name === 'web_fetch') return `${verb === '已完成' ? '已读取' : verb === '正在' ? '正在读取' : '未能读取'}${summary ? ` ${summary}` : '网页'}`;
-  if (tool.name === 'browser_control') return tool.status === 'running'
-    ? `正在${summary || '检查页面'}`
-    : tool.status === 'failed'
-      ? `${summary || '页面检查'}未完成`
-      : `已${summary || '检查页面'}`;
-  if (tool.name === 'sleep') return tool.status === 'running' ? '正在等待页面加载' : tool.status === 'failed' ? '页面等待未完成' : '页面已加载';
-  if (tool.name === 'read_file') return `${verb === '已完成' ? '已读取' : verb === '正在' ? '正在读取' : '未能读取'}${summary.replace(/^读取\s*/, ' ')}`;
-  if (tool.name === 'write_file') return `${verb === '已完成' ? '已写入' : verb === '正在' ? '正在写入' : '未能写入'}${summary.replace(/^写入\s*/, ' ')}`;
-  if (tool.name === 'edit_file') return `${verb === '已完成' ? '已编辑' : verb === '正在' ? '正在编辑' : '未能编辑'}${summary.replace(/^编辑\s*/, ' ')}`;
-  if (tool.name === 'bash') {
-    const action = summary || '运行系统命令';
-    return tool.status === 'running' ? `正在${action}` : tool.status === 'failed' ? `${action}未完成` : `${action}完成`;
-  }
-
-  const label = friendlyToolName(tool.name);
-  return `${verb}${label}`;
-}
-
-function ToolIcon({ tool }: { tool: RunToolCall }) {
-  if (tool.status === 'running') return <Loader2 size={14} className="animate-spin" />;
-  if (tool.status === 'failed') return <X size={14} />;
-  const Icon = /read|fetch/.test(tool.name)
-    ? BookOpen
-    : /grep|glob|search/.test(tool.name)
-      ? Search
-      : /write|edit|update|set/.test(tool.name)
-        ? FilePenLine
-        : /generate|render|export/.test(tool.name)
-          ? Sparkles
-          : Terminal;
-  return <Icon size={14} />;
+function actionIcon(kind: ToolIconKind, size = 14) {
+  const icons = {
+    terminal: Terminal,
+    read: BookOpen,
+    write: FilePenLine,
+    search: Search,
+    browser: Globe2,
+    generate: Sparkles,
+    timeline: Video,
+    default: Wrench,
+  } satisfies Record<ToolIconKind, typeof Wrench>;
+  const Icon = icons[kind];
+  return <Icon size={size} />;
 }
 
 function ToolEvent({ tool, compact = false }: { tool: RunToolCall; compact?: boolean }) {
+  const display = tool.display ?? createLegacyToolPresentation(tool.name, tool.summary);
+  const label = labelToolPresentation(display, tool.status);
+  const error = tool.status === 'failed' ? compactToolError(tool.resultSummary) : '';
+  const icon = tool.status === 'running'
+    ? statusIcon('running')
+    : tool.status === 'failed'
+      ? statusIcon('failed')
+      : actionIcon(display.icon);
+
   return (
-    <div className={`flex min-w-0 items-start text-[var(--run-text-muted)] ${compact ? 'gap-2 py-1 text-[12px] leading-[18px]' : 'gap-2.5 py-1.5 text-[13px] leading-5'}`}>
-      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center"><ToolIcon tool={tool} /></span>
-      <span className={`${tool.status === 'running' ? 'text-[var(--run-text)]' : ''} min-w-0 break-words [overflow-wrap:anywhere]`}>{taskText(tool)}</span>
+    <div className={`${compact ? 'py-1 text-[12px] leading-[18px]' : 'py-1.5 text-[13px] leading-5'} min-w-0`}>
+      <div className="flex min-w-0 items-start gap-2.5">
+        <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center ${tool.status === 'failed' ? 'text-red-500' : 'text-[var(--run-text-muted)]'}`}>{icon}</span>
+        <div className="min-w-0 flex-1">
+          <div className={`${tool.status === 'running' ? 'text-[var(--run-text)]' : 'text-[var(--run-text-secondary)]'} font-medium`}>{label}</div>
+          {display.detail && (display.detailStyle === 'code' ? (
+            <code className={`${compact ? 'mt-0.5 text-[11px] leading-4' : 'mt-1 text-[12px] leading-[18px]'} block max-w-full whitespace-pre-wrap break-words rounded-[5px] bg-[var(--run-code-bg)] px-2 py-1 font-mono text-[var(--run-text-muted)] [overflow-wrap:anywhere]`}>
+              {display.detail}
+            </code>
+          ) : (
+            <div className={`${compact ? 'mt-0.5 text-[11px]' : 'mt-0.5 text-[12px]'} break-words text-[var(--run-text-muted)] [overflow-wrap:anywhere]`}>{display.detail}</div>
+          ))}
+          {error && <div className={`${compact ? 'mt-0.5 text-[11px]' : 'mt-1 text-[12px]'} break-words text-red-500 [overflow-wrap:anywhere]`}>{error}</div>}
+        </div>
+      </div>
     </div>
   );
 }
 
-function StepEvent({ step, compact = false }: { step: RunStep; compact?: boolean }) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (step.status === 'done') setOpen(false);
-  }, [step.status]);
-  const icon = step.status === 'active'
-    ? <Loader2 size={14} className="animate-spin" />
-    : step.status === 'failed'
-      ? <X size={14} />
-      : step.status === 'pending'
-        ? <Circle size={9} />
-        : <Check size={14} />;
-  const childCount = step.toolCalls.length + step.subAgents.length;
-  const detailLines = step.detail?.split('\n').filter(Boolean) ?? [];
-  const latestDetail = detailLines[detailLines.length - 1];
-  const visibleTitle = step.source === 'tool'
-    ? step.status === 'active'
-      ? '正在执行相关操作'
-      : step.status === 'failed'
-        ? '部分操作未完成'
-        : '已完成相关操作'
-    : step.title;
+function SubAgentEvent({ sub, compact = false }: { sub: RunSubAgent; compact?: boolean }) {
+  const kindLabel = sub.kind === 'context' ? '整理上下文' : sub.kind === 'review' ? '检查修正' : '生成草案';
+  const label = sub.status === 'running' ? `正在${kindLabel}` : sub.status === 'failed' ? `${kindLabel}失败` : `已${kindLabel}`;
+  return (
+    <div className={`${compact ? 'gap-2 py-1 text-[12px] leading-[18px]' : 'gap-2.5 py-1.5 text-[13px] leading-5'} flex min-w-0 items-start`}>
+      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center ${sub.status === 'failed' ? 'text-red-500' : 'text-[var(--run-text-muted)]'}`}>
+        {statusIcon(sub.status === 'completed' ? 'done' : sub.status)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="font-medium text-[var(--run-text-secondary)]">{label}</span>
+        <span className="ml-2 break-words text-[var(--run-text-muted)] [overflow-wrap:anywhere]">{sub.title}</span>
+        {sub.status === 'failed' && sub.error && <span className="mt-0.5 block break-words text-red-500 [overflow-wrap:anywhere]">{compactToolError(sub.error)}</span>}
+      </span>
+    </div>
+  );
+}
+
+function groupTitle(step: RunStep, count: number): string {
+  if (step.source !== 'tool') return step.title;
+  if (step.status === 'active') return `正在执行 ${count} 项操作`;
+  if (step.status === 'failed') return `${count} 项操作未完成`;
+  return `已完成 ${count} 项操作`;
+}
+
+function StepEvent({ step, compact = false, defaultExpanded }: { step: RunStep; compact?: boolean; defaultExpanded: boolean }) {
+  const [open, setOpen] = useState(defaultExpanded);
+  useEffect(() => setOpen(step.status === 'active' || step.status === 'failed'), [step.status]);
+
+  const children = step.toolCalls.length + step.subAgents.length;
+  if (step.source === 'tool' && children === 1 && step.toolCalls.length === 1) return <ToolEvent tool={step.toolCalls[0]} compact={compact} />;
+  if (step.source === 'subagent' && children === 1 && step.subAgents.length === 1) return <SubAgentEvent sub={step.subAgents[0]} compact={compact} />;
+
+  const normalizedStatus = step.status === 'active' ? 'running' : step.status === 'failed' ? 'failed' : step.status === 'pending' ? 'pending' : 'done';
+  const canExpand = children > 0;
   return (
     <div className={compact ? 'py-1' : 'py-1.5'}>
-      <button
-        type="button"
-        onClick={() => childCount > 0 && setOpen((value) => !value)}
-        className={`flex w-full min-w-0 items-start text-left ${compact ? 'gap-2 text-[12px] leading-[18px]' : 'gap-2.5 text-[13px] leading-5'} ${childCount > 0 ? 'cursor-pointer' : 'cursor-default'}`}
-      >
-        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-[var(--run-text-muted)]">{icon}</span>
-        <span className="min-w-0 flex-1">
-          <span className={`${step.status === 'active' ? 'text-[var(--run-text)]' : 'text-[var(--run-text-secondary)]'} break-words font-medium [overflow-wrap:anywhere]`}>{visibleTitle}</span>
-          {latestDetail && <span className={`${compact ? 'ml-1.5 text-[11px]' : 'ml-2 text-[12px]'} break-words text-[var(--run-text-muted)] [overflow-wrap:anywhere]`}>{latestDetail.trim()}</span>}
-        </span>
-        {childCount > 0 && (
-          <span className="flex shrink-0 items-center text-[var(--run-text-muted)]">
-            <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
-          </span>
-        )}
+      <button type="button" onClick={() => canExpand && setOpen((value) => !value)} className={`${compact ? 'gap-2 text-[12px] leading-[18px]' : 'gap-2.5 text-[13px] leading-5'} flex w-full min-w-0 items-start text-left ${canExpand ? 'cursor-pointer' : 'cursor-default'}`}>
+        <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center ${step.status === 'failed' ? 'text-red-500' : 'text-[var(--run-text-muted)]'}`}>{statusIcon(normalizedStatus)}</span>
+        <span className={`${step.status === 'active' ? 'text-[var(--run-text)]' : 'text-[var(--run-text-secondary)]'} min-w-0 flex-1 break-words font-medium [overflow-wrap:anywhere]`}>{groupTitle(step, Math.max(1, children))}</span>
+        {canExpand && <ChevronDown size={13} className={`mt-0.5 shrink-0 text-[var(--run-text-muted)] transition-transform ${open ? 'rotate-180' : ''}`} />}
       </button>
-      {open && childCount > 0 && (
-        <div className={`${compact ? 'ml-6 mt-0.5' : 'ml-[26px] mt-1 pl-1'} min-w-0`}>
+      {open && canExpand && (
+        <div className={`${compact ? 'ml-6 mt-0.5' : 'ml-[26px] mt-1'} min-w-0`}>
           {step.toolCalls.map((tool) => <ToolEvent key={tool.id} tool={tool} compact={compact} />)}
           {step.subAgents.map((sub) => <SubAgentEvent key={sub.id} sub={sub} compact={compact} />)}
         </div>
@@ -155,36 +113,15 @@ function StepEvent({ step, compact = false }: { step: RunStep; compact?: boolean
   );
 }
 
-function normalizeProgressText(text: string): string {
-  return text
-    .replace(/\r\n?/g, '\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n')
-    .trim();
-}
-
 function ProgressEvent({ update, compact = false }: { update: RunProgressUpdate; compact?: boolean }) {
-  const text = normalizeProgressText(update.text);
-  if (!text) return null;
+  const status = update.status ?? 'info';
+  const icon = update.kind === 'context'
+    ? status === 'running' ? <Loader2 size={14} className="animate-spin" /> : status === 'failed' ? <X size={14} /> : <BookOpen size={14} />
+    : update.kind === 'guidance' ? <Sparkles size={14} /> : <X size={14} />;
   return (
-    <div className={`max-w-full whitespace-pre-wrap break-words text-[var(--run-text)] [overflow-wrap:anywhere] ${compact ? 'py-1.5 text-[12px] leading-5' : 'py-2.5 text-[14px] leading-7'}`}>
-      {text}
-    </div>
-  );
-}
-
-function SubAgentEvent({ sub, compact = false }: { sub: RunSubAgent; compact?: boolean }) {
-  const icon = sub.status === 'running'
-    ? <Loader2 size={14} className="animate-spin" />
-    : sub.status === 'failed'
-      ? <X size={14} />
-      : <Check size={14} />;
-  const kindLabel = sub.kind === 'context' ? '整理上下文' : sub.kind === 'review' ? '检查修正' : '生成草案';
-  return (
-    <div className={`flex min-w-0 items-start text-[var(--run-text-muted)] ${compact ? 'gap-2 py-1 text-[12px] leading-[18px]' : 'gap-2.5 py-1.5 text-[13px] leading-5'}`}>
-      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
-      <span className="shrink-0">{sub.status === 'running' ? `正在${kindLabel}` : `已${kindLabel}`}</span>
-      <span className="min-w-0 break-words opacity-80 [overflow-wrap:anywhere]">{sub.title}</span>
+    <div className={`${compact ? 'gap-2 py-1 text-[12px] leading-[18px]' : 'gap-2.5 py-1.5 text-[13px] leading-5'} flex min-w-0 items-start text-[var(--run-text-muted)]`}>
+      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center ${update.kind === 'error' || status === 'failed' ? 'text-red-500' : ''}`}>{icon}</span>
+      <span className="min-w-0 break-words [overflow-wrap:anywhere]">{update.text}</span>
     </div>
   );
 }
@@ -197,79 +134,40 @@ interface RunStepTimelineProps {
   tone?: 'default' | 'dark' | 'light';
 }
 
-type TimelineEvent =
-  | { id: string; at: number; kind: 'progress'; value: RunProgressUpdate }
-  | { id: string; at: number; kind: 'step'; value: RunStep };
-
 export default function RunStepTimeline({ compact = false, showHeader = true, className = '', runId, tone = 'default' }: RunStepTimelineProps) {
-  const sessionId = useChatStore((s) => s.currentSessionId);
+  const sessionId = useChatStore((state) => state.currentSessionId);
   const run = useRunStepStore((state) => {
     if (runId) return state.runsById[runId] ?? null;
     if (!sessionId) return null;
     const ids = state.runIdsBySession[sessionId] ?? [];
-    const preferred = state.currentRunId && state.runsById[state.currentRunId]?.sessionId === sessionId
-      ? state.currentRunId
-      : ids[0];
+    const preferred = state.currentRunId && state.runsById[state.currentRunId]?.sessionId === sessionId ? state.currentRunId : ids[0];
     return preferred ? state.runsById[preferred] : null;
   });
-
-  const events = useMemo<TimelineEvent[]>(() => {
-    if (!run) return [];
-    const next: TimelineEvent[] = [];
-    for (const update of run.progressUpdates ?? []) {
-      if (isTechnicalProgressText(update.text)) continue;
-      next.push({ id: update.id, at: update.createdAt, kind: 'progress', value: update });
-    }
-    const completedToolSteps = run.steps.filter((step) => step.source === 'tool' && step.status === 'done');
-    const completedTools = completedToolSteps.flatMap((step) => step.toolCalls);
-    if (completedToolSteps.length > 0) {
-      const latestAt = Math.max(...completedToolSteps.map((step) => step.endedAt ?? step.startedAt ?? 0));
-      next.push({
-        id: 'completed-tools-summary',
-        at: latestAt,
-        kind: 'step',
-        value: {
-          id: 'completed-tools-summary',
-          title: `已完成 ${completedTools.length || completedToolSteps.length} 项操作`,
-          status: 'done',
-          source: 'system',
-          startedAt: latestAt,
-          endedAt: latestAt,
-          toolCalls: completedTools,
-          subAgents: [],
-        },
-      });
-    }
-    for (const step of run.steps) {
-      if (step.source === 'tool' && step.status === 'done') continue;
-      next.push({ id: step.id, at: step.startedAt ?? 0, kind: 'step', value: step });
-    }
-    return next.sort((a, b) => a.at - b.at);
-  }, [run]);
-
+  const events = useMemo(() => run ? buildTimelinePresentationItems(run) : [], [run]);
   if (!run || events.length === 0) return null;
+
   const done = run.steps.filter((step) => step.status === 'done').length;
   const toneStyle = {
-    '--run-text': tone === 'dark' ? '#b8b8b8' : tone === 'light' ? '#1A1A1A' : 'rgb(var(--c-text))',
-    '--run-text-secondary': tone === 'dark' ? '#969696' : tone === 'light' ? '#4B5563' : 'rgb(var(--c-text-secondary))',
-    '--run-text-muted': tone === 'dark' ? '#737373' : tone === 'light' ? '#7A8290' : 'rgb(var(--c-text-muted))',
+    '--run-text': tone === 'dark' ? '#d2d2d2' : tone === 'light' ? '#1A1A1A' : 'rgb(var(--c-text))',
+    '--run-text-secondary': tone === 'dark' ? '#b5b5b5' : tone === 'light' ? '#4B5563' : 'rgb(var(--c-text) / 0.76)',
+    '--run-text-muted': tone === 'dark' ? '#888888' : tone === 'light' ? '#7A8290' : 'rgb(var(--c-text-muted))',
+    '--run-code-bg': tone === 'dark' ? 'rgba(255,255,255,0.055)' : tone === 'light' ? 'rgba(15,23,42,0.045)' : 'rgb(var(--c-card) / 0.6)',
   } as CSSProperties;
 
   return (
-    <div className={`${compact ? '' : 'mx-auto max-w-3xl'} ${className}`} style={toneStyle}>
+    <div className={`${compact ? 'min-w-0' : 'mx-auto max-w-3xl'} ${className}`} style={toneStyle}>
       {showHeader && (
         <div className="flex items-center gap-2 pb-2 text-[12px] text-[var(--run-text-muted)]">
           {run.status === 'running' ? <Loader2 size={13} className="animate-spin" /> : run.status === 'failed' ? <X size={13} /> : <Check size={13} />}
-          <span className="font-medium">执行步骤</span>
+          <span className="font-medium text-[var(--run-text-secondary)]">{run.status === 'running' ? '执行中' : run.status === 'failed' ? '执行未完成' : '执行完成'}</span>
           <span>{done}/{run.steps.length}</span>
-          {run.modelProvider && <span className="ml-auto text-[11px]">{run.modelProvider}</span>}
+          {run.modelProvider && <span className="ml-auto max-w-[45%] truncate text-[11px]">{run.modelProvider}</span>}
         </div>
       )}
-      <div className={compact ? 'min-w-0 space-y-0' : 'space-y-0.5'}>
+      <div className="min-w-0 space-y-0">
         {events.map((event) => (
           <Fragment key={`${event.kind}-${event.id}`}>
-            {event.kind === 'progress' && <ProgressEvent update={event.value} compact={compact} />}
-            {event.kind === 'step' && <StepEvent step={event.value} compact={compact} />}
+            {event.kind === 'progress' ? <ProgressEvent update={event.value} compact={compact} /> : <StepEvent step={event.value} compact={compact} defaultExpanded={event.defaultExpanded} />}
           </Fragment>
         ))}
       </div>

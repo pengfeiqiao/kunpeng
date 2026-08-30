@@ -16,7 +16,7 @@ import { rhtvDownloadAll } from '@/lib/rhtv/download';
 import { appendArtifact } from '@/lib/artifacts';
 import { appendGenerationLog } from '@/lib/aigc/genLogger';
 import { isAmbiguousPaidSubmitStatus, PaidSubmissionUnknownError, PaidTaskCreatedError } from '@/lib/billingSafety';
-import { normalizeKuaiziDuration } from './duration';
+import { applyKuaiziEditingConstraints, normalizeKuaiziDuration } from './duration';
 
 export const KUAIZI_SEEDANCE_ENGINE_ID = 'kuaizi-seedance-2.0';
 const BASE_URL = 'https://aiopenapi.kuaizi.cn';
@@ -253,7 +253,16 @@ export function buildKuaiziSeedancePayload(args: {
     ? { images: 30, videos: 10, audios: 10 }
     : { images: 9, videos: 3, audios: 3 };
   const { resolution, superResolution } = normalizeResolution(params.resolution, mode);
-  const duration = normalizeKuaiziDuration(params.duration, 5, mode);
+  // 视频编辑模式（params.videoEdit=true）且带参考视频时：ratio 必须 adaptive、
+  // duration 必须 -1（输出跟随输入视频），否则任务被拒。参考视频作多参时不应用。
+  const hasRefVideos = (args.videoUrls?.length ?? 0) > 0;
+  const videoEdit = params.videoEdit === true || params.videoEdit === 'true';
+  const { ratio, duration } = applyKuaiziEditingConstraints(
+    videoEdit,
+    hasRefVideos,
+    normalizeRatio(params.ratio ?? params.aspectRatio),
+    normalizeKuaiziDuration(params.duration, 5, mode),
+  );
   const superFromParams = params.super_resolution_config as KuaiziSuperResolutionConfig | undefined;
   const images: KuaiziImageInput[] = (args.imageUrls ?? []).slice(0, limits.images).map((url, i) => ({
     url,
@@ -266,7 +275,7 @@ export function buildKuaiziSeedancePayload(args: {
     videos: (args.videoUrls ?? []).slice(0, limits.videos).map((url) => ({ url, role: 'reference_video' })),
     audios: (args.audioUrls ?? []).slice(0, limits.audios).map((url) => ({ url, role: 'reference_audio' })),
     resolution,
-    ratio: normalizeRatio(params.ratio ?? params.aspectRatio),
+    ratio,
     duration,
     generate_audio: toBool(params.no_generate_audio, false)
       ? false
@@ -419,7 +428,16 @@ export async function runKuaiziSeedance2Generation(req: KuaiziSeedanceRunRequest
   const imageUrls: string[] = [];
   for (const ref of req.referenceUrls ?? []) imageUrls.push(await resolveKuaiziMediaRef(ref));
   const videoUrls: string[] = [];
-  for (const ref of req.videoUrls ?? []) videoUrls.push(await resolveKuaiziMediaRef(ref));
+  // 参考视频输入侧约束：Seedance 视频编辑任务要求输入视频 4-30 秒。
+  // 超 30s 会在远端被拒，先在本地面向用户拦截（读不出时长的远端 URL 交给远端裁决）。
+  for (const ref of req.videoUrls ?? []) {
+    videoUrls.push(await resolveKuaiziMediaRef(ref));
+    const localPath = assetUrlToLocalPath(ref);
+    const dur = await probeDuration(localPath).catch(() => 0);
+    if (dur > 30) {
+      throw new Error(`参考视频时长 ${dur.toFixed(1)}s 超过 Seedance 视频编辑任务的 30s 上限，请先裁剪到 30 秒以内再提交。`);
+    }
+  }
   // 参考音频总时长上限：Seedance 2.0 档 15s、2.5 档 30s，超长会导致传参错误。上传 COS 前先 probe 时长拦截。
   const audioRefs = req.audioUrls ?? [];
   const audioLimitSec = mode === 'seedance2.5' ? 30 : 15;

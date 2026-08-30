@@ -65,6 +65,7 @@ export const videoGenerateTool: Tool = {
       + '万相 3.0 是阿里全能参考视频模型：文生/图/视频/音频参考之外，还支持 file_url（文档）与 link_url（公开网页）输入；用户给了文档或网页链接并指定万相时直接用这两个参数。'
       + 'APIMart 通道自动并行检测 api.apimart.ai、apib.ai、aiuxu.com、aishuch.com 并选择当前最快健康线路；遇到 TCP 超时时先调用 apimart_route_status({refresh:true})，不要用 bash/curl 猜线路。'
       + '用户指定 MiniMax/H3/海螺 H3 时直接使用 minimax-h3；指定万相/wan/wan3.0 时使用 wan-3.0；没有指定模型时使用普通对话工具栏当前选择。'
+      + '带参考视频（video_urls）时区分两种模式：视频编辑（改动/续写源视频，video_edit:true，输出比例/时长跟随源视频）与多模态参考（源视频只作参考，video_edit:false 或省略）。提示词含编辑/修改/续写/延长意图但未指定 video_edit 时必须先向用户确认，禁止自行默选。'
       + '只有用户明确要求把结果放入画布时，才改用 canvas_generate。多个普通对话视频可以在同一轮发出多个 video_generate 调用。',
     parameters: {
       type: 'object',
@@ -87,6 +88,10 @@ export const videoGenerateTool: Tool = {
         },
         resolution: { type: 'string', description: '输出分辨率；MiniMax H3 固定 2K' },
         generate_audio: { type: 'boolean', description: 'Seedance 是否生成音频，默认 true' },
+        video_edit: {
+          type: 'boolean',
+          description: '仅带参考视频（video_urls 非空）时有意义：true=视频编辑模式（改动/续写源视频，输出比例和时长跟随源视频）；false 或省略=源视频只作多模态参考（多参）。用户意图是修改/续写/延长源视频时才开 true，且必须先向用户确认；拿不准就先问用户再提交',
+        },
       },
       required: ['prompt'],
     },
@@ -105,6 +110,15 @@ export const videoGenerateTool: Tool = {
       ?? useSettingsStore.getState().chatVideoModel
       ?? 'seedance-2.0',
     ) as ChatVideoEngine;
+
+    // 带参考视频的两种模式裁决：编辑意图（修改/续写/延长源视频）必须先向用户确认
+    if (videoUrls.length > 0 && params.video_edit === undefined && /编辑|修改|改成|改为|变成|续写|续拍|延长|拉长|接着拍|倒放|替换|抹除|去掉|消除/.test(prompt)) {
+      return {
+        success: false,
+        output: '',
+        error: '检测到提示词包含编辑视频的意图，但未指定 video_edit。请先向用户确认：按「视频编辑」模式（输出比例/时长跟随源视频，video_edit:true），还是源视频只作多模态参考（video_edit:false 或省略并调整提示词）？确认后再提交。',
+      };
+    }
 
     // 自定义视频插件（issue #7）：custom-media:{id} 直接走插件执行器
     if (selected.startsWith('custom-media:')) {
@@ -190,6 +204,7 @@ export const videoGenerateTool: Tool = {
           duration: String(duration),
           ratio,
           generateAudio: params.generate_audio !== false,
+          ...(params.video_edit === true && videoUrls.length > 0 ? { videoEdit: true } : {}),
         };
 
     const result = await runGeneration({

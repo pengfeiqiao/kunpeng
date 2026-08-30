@@ -7,7 +7,6 @@
  *   - large files → POST /media/upload/binary (multipart) → download_url
  */
 import { fetch as tauriFetch, ResponseType, Body } from '@tauri-apps/api/http';
-import { readBinaryFile } from '@tauri-apps/api/fs';
 import { invoke } from '@tauri-apps/api/tauri';
 import { appUploadUrl, requireRhtvApiKey } from './client';
 import { RhtvBusinessError } from './types';
@@ -181,7 +180,8 @@ export async function rhtvResolveMedia(ref: string): Promise<string> {
     if (!ref.startsWith('https://asset.localhost/')) return ref;
   }
   const localPath = assetUrlToLocalPath(ref);
-  const bytes = await readBinaryFile(localPath);
+  const { readBinaryFileUnicode } = await import('@/lib/agent/mediaInput');
+  const bytes = await readBinaryFileUnicode(localPath);
   if (bytes.length <= DATA_URI_MAX_BYTES) {
     return `data:${mimeOf(localPath)};base64,${bytesToBase64(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes))}`;
   }

@@ -2,6 +2,13 @@ import { create } from 'zustand';
 import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware';
 import { safeLocalStorage } from '@/lib/safeStorage';
 import { formatToolBatchLabel, formatToolSummary } from '@/lib/agent/toolSummary';
+import {
+  createToolPresentation,
+  normalizeRunProgress,
+  type RunProgressKind,
+  type RunProgressStatus,
+  type ToolActionPresentation,
+} from '@/lib/agent/runStepPresentation';
 import { resolveStepNoteTargetRunId } from './runTargeting';
 
 export type RunStepStatus = 'pending' | 'active' | 'done' | 'failed' | 'skipped';
@@ -18,6 +25,7 @@ export interface RunToolCall {
   startedAt: number;
   endedAt?: number;
   resultSummary?: string;
+  display?: ToolActionPresentation;
 }
 
 export interface RunSubAgent {
@@ -50,6 +58,8 @@ export interface RunProgressUpdate {
   id: string;
   text: string;
   createdAt: number;
+  kind?: RunProgressKind;
+  status?: RunProgressStatus;
 }
 
 export interface RunSession {
@@ -107,58 +117,6 @@ function summarizeResult(result?: { output?: string; error?: string }, max = 220
   const text = result?.error || result?.output;
   if (!text) return undefined;
   return text.length > max ? `${text.slice(0, max)}...` : text;
-}
-
-function cleanProgressText(text: string): string {
-  const cleaned = text
-    .replace(/^\s*(?:[-*]|\d+[.)])\s+/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-  const lines = cleaned
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !/^(?:```|我先执行[:：]|我先(?:运行|读取|搜索|修改|写入).{0,32}确认结果后继续)/.test(line))
-    .filter((line) => !/^(?:ls|cat|rg|grep|python\d*|source|npm|pnpm|yarn|git|cargo|ffmpeg)\s/i.test(line))
-  const unique: string[] = [];
-  for (const line of lines) {
-    if (!unique.some((existing) => progressSimilarity(existing, line) >= 0.9)) {
-      unique.push(line);
-    }
-  }
-  return unique.slice(-6).join('\n');
-}
-
-function progressFingerprint(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[\s\p{P}\p{S}]+/gu, '')
-    .replace(/(?:我正在|接下来|目前|这里主要|这样可以|确认后|继续)/g, '');
-}
-
-function progressSimilarity(a: string, b: string): number {
-  const left = progressFingerprint(a);
-  const right = progressFingerprint(b);
-  if (!left || !right) return 0;
-  if (left === right) return 1;
-  if (Math.min(left.length, right.length) >= 36 && (left.includes(right) || right.includes(left))) {
-    return Math.min(left.length, right.length) / Math.max(left.length, right.length);
-  }
-  const grams = (value: string) => {
-    const out = new Set<string>();
-    for (let i = 0; i < value.length - 1; i += 1) out.add(value.slice(i, i + 2));
-    return out;
-  };
-  const leftGrams = grams(left);
-  const rightGrams = grams(right);
-  if (!leftGrams.size || !rightGrams.size) return 0;
-  let overlap = 0;
-  for (const gram of leftGrams) if (rightGrams.has(gram)) overlap += 1;
-  return (2 * overlap) / (leftGrams.size + rightGrams.size);
-}
-
-function isBoilerplateProgress(text: string): boolean {
-  return /^(?:这一阶段已经完成|这一步有操作没有成功|我先执行[:：]|我先(?:运行|读取|搜索|修改|写入).{0,24}，?确认结果后继续|修改已经写入，我接着检查|相关内容已经检查完|正在整理较早的历史消息|代码层的处理已经完成一部分|我正在沿着用户可见现象定位)/.test(text);
 }
 
 function inferSubTaskKind(task: string): SubTaskKind {
@@ -416,38 +374,37 @@ export const useRunStepStore = create<RunStepState>()(persist((set, get) => ({
     }), runId)),
 
   addProgressUpdate: (text, runId) => {
-    const cleaned = cleanProgressText(text);
-    if (!cleaned || isBoilerplateProgress(cleaned)) return;
+    const normalized = normalizeRunProgress(text);
+    if (!normalized) return;
     set((state) => updateCurrentRun(state, (run) => {
       const updates = run.progressUpdates ?? [];
-      if (updates.slice(-8).some((update) => progressSimilarity(update.text, cleaned) >= 0.82)) return run;
+      if (updates.slice(-8).some((update) => update.kind === normalized.kind && update.text === normalized.text)) return run;
       return {
         ...run,
         progressUpdates: [
           ...updates,
-          { id: makeId('progress'), text: cleaned.slice(0, 1600), createdAt: Date.now() },
+          { id: makeId('progress'), ...normalized, createdAt: Date.now() },
         ],
       };
     }, runId));
   },
 
   upsertProgressUpdate: (key, text, runId) => {
-    const cleaned = cleanProgressText(text).slice(0, 1600);
-    if (!cleaned || !key.trim()) return;
+    const normalized = normalizeRunProgress(text);
+    if (!normalized || !key.trim()) return;
     const id = `progress-live-${key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
     set((state) => updateCurrentRun(state, (run) => {
       const updates = run.progressUpdates ?? [];
       const index = updates.findIndex((update) => update.id === id);
       if (index < 0) {
-        if (updates.slice(-8).some((update) => progressSimilarity(update.text, cleaned) >= 0.9)) return run;
         return {
           ...run,
-          progressUpdates: [...updates, { id, text: cleaned, createdAt: Date.now() }],
+          progressUpdates: [...updates, { id, ...normalized, createdAt: Date.now() }],
         };
       }
-      if (updates[index].text === cleaned) return run;
+      if (updates[index].text === normalized.text && updates[index].status === normalized.status) return run;
       const next = [...updates];
-      next[index] = { ...next[index], text: cleaned, createdAt: Date.now() };
+      next[index] = { ...next[index], ...normalized, createdAt: Date.now() };
       return { ...run, progressUpdates: next };
     }, runId));
   },
@@ -575,6 +532,7 @@ export const useRunStepStore = create<RunStepState>()(persist((set, get) => ({
         id: toolId,
         name,
         summary: formatToolSummary(name, params),
+        display: createToolPresentation(name, params),
         status: 'running',
         startedAt: Date.now(),
       };

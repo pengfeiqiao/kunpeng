@@ -70,7 +70,7 @@ import {
   normalizeLocalMediaPath,
 } from '@/lib/agent/mediaInput';
 import { uploadVideoToKimi, type KimiVideoUploadProgress } from '@/lib/agent/kimiFiles';
-import { isTechnicalProgressText } from '@/lib/agent/toolSummary';
+import { normalizeRunProgress } from '@/lib/agent/runStepPresentation';
 import { buildChatRouteStrategy, getPrimaryRouteSelection } from '@/lib/agent/routeStrategy';
 import { CoalescedIdleWork } from '@/lib/performance/coalescedIdleWork';
 import {
@@ -1462,10 +1462,11 @@ export function useAgent(options?: { primary?: boolean }) {
         onProgressText: (text, displayText) => {
           if (!isCurrentRun()) return;
           const progress = displayText || text;
-          if (text.trim() && !isTechnicalProgressText(text)) {
+          const normalized = normalizeRunProgress(progress);
+          if (normalized?.kind === 'context') {
+            useRunStepStore.getState().upsertProgressUpdate('context', progress, runId);
+          } else if (normalized) {
             useRunStepStore.getState().addProgressUpdate(progress, runId);
-          } else {
-            useRunStepStore.getState().upsertProgressUpdate('current-stage', progress, runId);
           }
 
           // The same text arrived through onTextDelta while the model was

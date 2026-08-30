@@ -1,6 +1,27 @@
 import { readBinaryFile } from '@tauri-apps/api/fs';
 import { agentLog } from './logger';
 
+/**
+ * 中文路径的 Unicode 规范化差异（macOS 磁盘多为 NFD，调用方/模型给的多为
+ * NFC）会让"同一个字"的文件名匹配不上：list_directory 能列出、按路径读却
+ * 报文件不存在。读文件时在 NFC/NFD 两种形式间回退（agent 实测踩坑：
+ * 供应商连续读不了中文路径参考图）。
+ */
+export async function readBinaryFileUnicode(path: string): Promise<Uint8Array> {
+  try {
+    return await readBinaryFile(path);
+  } catch (firstError) {
+    for (const form of ['NFC', 'NFD'] as const) {
+      const alt = path.normalize(form);
+      if (alt === path) continue;
+      try {
+        return await readBinaryFile(alt);
+      } catch { /* 尝试下一种形式 */ }
+    }
+    throw firstError;
+  }
+}
+
 const MIME_BY_EXT: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',
@@ -71,7 +92,7 @@ export async function loadImageInput(image: string): Promise<string> {
 
   const path = normalizeLocalMediaPath(input);
   const mime = mediaTypeForPath(path) || 'image/png';
-  const bytes = await readBinaryFile(path);
+  const bytes = await readBinaryFileUnicode(path);
   if (bytes.length > MAX_INLINE_IMAGE_BYTES) {
     const jpeg = await downscaleToJpeg(bytes);
     if (jpeg && jpeg.length < bytes.length) {
@@ -95,6 +116,6 @@ export async function loadMediaInput(media: string): Promise<{ dataUrl: string; 
 
   const path = normalizeLocalMediaPath(input);
   const mediaType = mediaTypeForPath(path);
-  const bytes = await readBinaryFile(path);
+  const bytes = await readBinaryFileUnicode(path);
   return { dataUrl: `data:${mediaType};base64,${bytesToBase64(bytes)}`, mediaType };
 }

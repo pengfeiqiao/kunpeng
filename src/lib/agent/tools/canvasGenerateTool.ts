@@ -64,7 +64,7 @@ export const canvasGenerateTool: Tool = {
         },
         prompt: {
           type: 'string',
-          description: `生成提示词。prompt_template=universal 时按通用导演结构组织素材身份、空间站位、时间戳动作、单段机位和物理反馈，禁止补写剧本中不存在的人物、关系、事件或对白；legacy 时保留原有写法。@图片按 reference_urls 顺序用中文数字引用。Omni MG 仍使用其专属 MG 提示词规则，只做适度兼容。${PERFORMANCE_BRIEF}`,
+          description: `生成提示词。prompt_template=universal 时按通用导演结构组织素材身份、空间站位、时间戳动作、单段机位和物理反馈，禁止补写剧本中不存在的人物、关系、事件或对白；legacy 时保留原有写法。@图片按 reference_urls 顺序用中文数字引用。Omni MG 仍使用其专属 MG 提示词规则，只做适度兼容。带参考视频时区分视频编辑（改动/续写源视频，params 传 videoEdit:true，输出比例/时长跟随源视频）与多模态参考（源视频只作参考）两种模式；提示词含编辑意图时先向用户确认模式再提交。${PERFORMANCE_BRIEF}`,
         },
         prompt_template: {
           type: 'string',

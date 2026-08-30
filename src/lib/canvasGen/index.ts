@@ -2485,6 +2485,16 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
       submitResp = await rhtvSubmitApp(effectiveRhtvWebappId(engine.appConfig!.webappId), nodeInfoList, ac.signal);
     } else {
       // Standard model API path (domestic engines)
+      // 视频编辑模式（params.videoEdit=true）且带参考视频时：输出比例和时长必须
+      // 跟随输入视频（ratio=adaptive、duration=-1），否则上游拒单。
+      // 参考视频作多模态参考（多参）时不应用这组约束。videoEdit 是内部开关，
+      // 不能透传给上游。
+      const videoEditRequested = req.params?.videoEdit === true || req.params?.videoEdit === 'true';
+      delete payload.videoEdit;
+      if (isSeedanceVideoEngine(engine.id) && videoEditRequested && resolvedVideos.length > 0) {
+        payload.ratio = 'adaptive';
+        payload.duration = '-1';
+      }
       if (engine.mode === 'start-end-video') {
         payload.firstFrameUrl = resolvedRefs[0];
         if (resolvedRefs[1]) payload.lastFrameUrl = resolvedRefs[1];

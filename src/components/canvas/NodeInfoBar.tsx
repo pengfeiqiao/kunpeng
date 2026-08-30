@@ -247,6 +247,9 @@ function SelectPill({
 const NUM_TO_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 function numToCn(n: number): string { return n <= 10 ? NUM_TO_CN[n - 1] : String(n); }
 
+/** 提示词里的视频编辑意图关键词（修改/续写/延长等）——命中且未勾选「视频编辑」时先让用户裁决 */
+const VIDEO_EDIT_INTENT_RE = /编辑|修改|改成|改为|变成|续写|续拍|延长|拉长|接着拍|倒放|替换|抹除|去掉|消除/;
+
 const MENTION_SPLIT_RE = /(@(?:图片|视频|音频)[一二三四五六七八九十\d]+)/g;
 const MENTION_TEST_RE = /^@(?:图片|视频|音频)[一二三四五六七八九十\d]+$/;
 
@@ -403,6 +406,7 @@ export default function NodeInfoBar() {
   // 视频模式：multimodal=全能参考（默认）、t2v=纯文生、startend=首尾帧、dreamina=即梦备用
   const [vMode, setVMode] = useState<'multimodal' | 't2v' | 'startend' | 'dreamina' | 'omni'>('multimodal');
   const [vGenAudio, setVGenAudio] = useState(true);
+  const [vVideoEdit, setVVideoEdit] = useState(false);
   const [vSeed, setVSeed] = useState('');
   // Image params
   const [imgSource, setImgSource] = useState('gpt-image-2');
@@ -549,6 +553,7 @@ export default function NodeInfoBar() {
       if (data.aspectRatio) setVRatio(data.aspectRatio as string);
       if (data.duration) setVDuration(data.duration as number);
       setWanRefLink(typeof data.wanRefLink === 'string' ? data.wanRefLink : '');
+      if (typeof data.videoEdit === 'boolean') setVVideoEdit(data.videoEdit);
       // modelVersion 存的是引擎 id（minimax-hailuo-h3），SelectPill 值是短名
       if (data.modelVersion) setVModel(
         data.modelVersion === 'minimax-hailuo-h3'
@@ -1550,6 +1555,18 @@ export default function NodeInfoBar() {
       const videoLimit = vModel === 'seedance-2.5' ? 10 : vModel === 'minimax-h3' ? 3 : vModel === 'wan-3.0' ? 5 : 1;
       const refVideoUrls = selfVideoFallback(node.id, collected).slice(0, videoLimit);
 
+      // 参考视频两种用途：视频编辑（输出跟随源视频）vs 多模态参考（多参）。
+      // Seedance 系引擎在编辑模式下要求 ratio=adaptive、duration=-1，否则拒单。
+      // 提示词有编辑意图但未勾选「视频编辑」时，先让用户裁决，不做静默选择。
+      const hasRefVideos = refVideoUrls.length > 0;
+      const isSeedanceFamily = vModel !== 'minimax-h3' && vModel !== 'wan-3.0' && !vModel.startsWith('custom-media:');
+      let videoEdit = vVideoEdit;
+      if (hasRefVideos && isSeedanceFamily && !videoEdit && VIDEO_EDIT_INTENT_RE.test(prompt)) {
+        videoEdit = window.confirm(
+          '检测到提示词包含编辑视频的意图（修改/续写/延长等）。\n\n按「视频编辑」模式提交吗？\n确定 = 视频编辑模式（输出比例/时长跟随源视频）\n取消 = 按多模态参考（多参）提交；也可以勾选参数里的「视频编辑」选项或修改提示词',
+        );
+      }
+
       updateNode(node.id, {
         description: prompt,
         ...promptSlotPatch(prompt),
@@ -1557,6 +1574,7 @@ export default function NodeInfoBar() {
         aspectRatio: vRatio,
         duration: vDuration,
         ...(vModel === 'wan-3.0' ? { wanRefLink: wanRefLink.trim() } : {}),
+        ...(isSeedanceFamily && hasRefVideos ? { videoEdit } : {}),
         // H3 写回引擎 id（非下拉短名），保证徽章/重试链路一致
         modelVersion: vModel === 'minimax-h3'
           ? 'minimax-hailuo-h3'
@@ -1682,14 +1700,14 @@ export default function NodeInfoBar() {
         overwrite: true,
         // H3 只收 resolution(2K)/duration(5-15)/ratio，不传 Seedance 专有参数
         params: isSeedance25Model
-          ? { resolution: effectiveVRes, ratio: vRatio, duration: String(Math.min(30, Math.max(4, Math.round(vDuration)))) }
+          ? { resolution: effectiveVRes, ratio: vRatio, duration: String(Math.min(30, Math.max(4, Math.round(vDuration)))), ...(videoEdit && hasRefVideos ? { videoEdit: true } : {}) }
           : isH3Model
           ? { resolution: '2K', ratio: vRatio, duration: String(Math.min(15, Math.max(5, Math.round(vDuration)))) }
           : isWan3Model
           ? { resolution: effectiveVRes, ratio: vRatio, duration: String(Math.min(30, Math.max(2, Math.round(vDuration)))), generateAudio: vGenAudio }
           : isCustomMediaModel
           ? { resolution: effectiveVRes, ratio: vRatio, duration: String(Math.min(30, Math.max(2, Math.round(vDuration)))) }
-          : { resolution: effectiveVRes, ratio: vRatio, duration: String(vDuration), generateAudio: vGenAudio, realPersonMode: true, ...(isMiniModel ? { mode: 'mini' } : isFastModel ? { mode: 'fast' } : {}), ...(vSeed ? { seed: Number(vSeed) } : {}) },
+          : { resolution: effectiveVRes, ratio: vRatio, duration: String(vDuration), generateAudio: vGenAudio, realPersonMode: true, ...(isMiniModel ? { mode: 'mini' } : isFastModel ? { mode: 'fast' } : {}), ...(vSeed ? { seed: Number(vSeed) } : {}), ...(videoEdit && hasRefVideos ? { videoEdit: true } : {}) },
       });
       if (!result.success) {
         alert('生成视频失败: ' + (result.error || '未知错误'));
@@ -2280,6 +2298,15 @@ export default function NodeInfoBar() {
                   </PopRow>
                   <PopRow label="随机种子" hint="留空=随机">
                     <PopInput value={vSeed} onChange={(v) => setVSeed(v.replace(/[^0-9]/g, ''))} placeholder="随机" />
+                  </PopRow>
+                </>
+              )}
+              {vRefItems.some((item) => item.kind === 'video')
+                && vModel !== 'minimax-h3' && vModel !== 'wan-3.0' && !vModel.startsWith('custom-media:') && (
+                <>
+                  <PopDivider />
+                  <PopRow label="视频编辑" hint="开启后输出比例/时长跟随源视频（Seedance 视频编辑模式）；关闭=参考视频仅作多模态参考（多参）">
+                    <PopToggle checked={vVideoEdit} onChange={setVVideoEdit} />
                   </PopRow>
                 </>
               )}
