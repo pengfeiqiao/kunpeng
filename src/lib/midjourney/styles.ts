@@ -36,46 +36,9 @@ export const MIDJOURNEY_STYLE_CATEGORIES: StyleCategory[] = [
   { id: 'experimental', name: '实验创意', dir: 'experimental' },
 ];
 
-// Director presets are calibrated from visual mechanisms rather than a single
-// API sample. Reuse the closest tested cover until a dedicated one is approved,
-// so the library never renders a broken card or implies false testing.
-const DIRECTOR_PREVIEW_FALLBACKS: Record<string, string> = {
-  'raw-flash-intimacy': 'raw-portrait',
-  'kinetic-fashion-frame': 'fashion-editorial',
-  'ceremonial-jewelry': 'gilded-oriental',
-  'nocturnal-crimson-armor': 'dark-knight',
-  'ruined-mecha-archaeology': 'mecha-ruin',
-  'epic-negative-space': 'desert-epic',
-  'ritual-procession': 'war-epic',
-  'urban-myth-thriller': 'noir',
-  'living-terrace-city': 'architecture-light',
-  'celestial-garden-collage': 'dream-pastoral',
-  'impossible-museum': 'architecture-light',
-  'silent-brutalist-future': 'architecture-light',
-  'mythic-winged-regalia': 'dark-fantasy-art',
-  'cosmic-dynasty': 'oriental-fantasy',
-  'folk-ritual-night': 'shadow-puppet',
-  'ancient-machine-reliquary': 'steampunk',
-  'sculptural-product-stage': 'minimal-product',
-  'translucent-biomaterial': 'minimal-product',
-  'editorial-archive-grid': 'knolling',
-  'luminous-tech-minimal': 'minimal-product',
-  'scale-rupture': 'double-exposure',
-  'analog-dream-transfer': 'glitch',
-  'material-mutation-study': 'knolling',
-  'poetic-surveillance': 'film-street',
-};
-
-const DIRECT_API_PREVIEWS = new Set([
-  'raw-flash-intimacy',
-  'ceremonial-jewelry',
-  'ritual-procession',
-  'celestial-garden-collage',
-]);
-
-const preview = (id: string) => DIRECT_API_PREVIEWS.has(id)
-  ? `/midjourney-styles/director/${id}.jpg`
-  : `/midjourney-styles/tested/${DIRECTOR_PREVIEW_FALLBACKS[id] ?? 'minimal-product'}.jpg`;
+// Every director preset owns a dedicated, visually reviewed cover. Do not fall
+// back to another preset: duplicate covers make distinct styles look identical.
+const preview = (id: string) => `/midjourney-styles/director/${id}.jpg`;
 
 const style = (
   id: string,

@@ -15,7 +15,7 @@
     "test:video-prompt": "node --test src/lib/videoPrompt/prompt.test.ts src/lib/videoPrompt/performance.test.ts",
     "test:wan3": "node --test src/lib/kuaizi/wan3Channels.test.ts src/lib/kuaizi/errors.test.ts src/lib/videoRouter/wan3.test.ts src/lib/apimart/wan3Contracts.test.ts",
     "test:image-size": "node --test src/lib/imageGen/size.test.ts",
-    "test:midjourney": "node --test src/lib/midjourney/prompt.test.ts",
+    "test:midjourney": "node --test src/lib/midjourney/prompt.test.ts src/lib/midjourney/styles.test.ts",
     "test:context": "node --test src/lib/agent/contextCompaction.test.ts src/lib/agent/contextRetention.test.ts src/lib/agent/autoCompact.test.ts src/lib/agent/contextManager.test.ts",
     "preview": "vite preview",
     "tauri": "tauri",
