@@ -38,6 +38,29 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR.parent / "data"
 CAPABILITIES_PATH = DATA_DIR / "capabilities.json"
 
+# Product routing excludes these historical catalog endpoints. Keep this
+# low-level guard so stale saved commands cannot submit an unsupported task.
+DISABLED_ENDPOINT_PREFIXES = ("rhart-image-g-2",)
+
+
+def is_disabled_endpoint(endpoint: str | None) -> bool:
+    normalized = (endpoint or "").strip().lower()
+    return any(normalized.startswith(prefix) for prefix in DISABLED_ENDPOINT_PREFIXES)
+
+
+def is_disabled_catalog_entry(entry: dict) -> bool:
+    endpoint = str(entry.get("endpoint") or "")
+    return is_disabled_endpoint(endpoint)
+
+
+def reject_disabled_endpoint(endpoint: str) -> None:
+    print(json.dumps({
+        "error": "RHTV_ENDPOINT_UNAVAILABLE",
+        "message": "该端点不在当前 RunningHub 可用渠道中，请返回当前模型选择后重试。",
+        "endpoint": endpoint,
+    }, ensure_ascii=False), file=sys.stderr)
+    sys.exit(2)
+
 
 # ---------------------------------------------------------------------------
 # Capabilities catalog
@@ -55,6 +78,11 @@ def load_capabilities() -> dict:
         sys.exit(1)
     with open(CAPABILITIES_PATH, encoding="utf-8") as f:
         _capabilities_cache = json.load(f)
+    endpoints = _capabilities_cache.get("endpoints", [])
+    _capabilities_cache["endpoints"] = [
+        ep for ep in endpoints
+        if not is_disabled_catalog_entry(ep)
+    ]
     return _capabilities_cache
 
 
@@ -660,6 +688,11 @@ def build_payload(endpoint_def: dict, args) -> dict:
 
 def cmd_execute(args):
     """Execute a generation task."""
+    # Reject stale/explicit GPT endpoints before resolving credentials or making
+    # any request, so old conversations cannot accidentally submit a paid task.
+    if args.endpoint and is_disabled_endpoint(args.endpoint):
+        reject_disabled_endpoint(args.endpoint)
+
     api_key = require_api_key(args.api_key)
 
     # Resolve endpoint

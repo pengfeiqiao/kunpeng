@@ -1,6 +1,6 @@
 ---
 name: runninghub
-description: "Generate images, videos, audio, and 3D models via RunningHub API (294 endpoints) and run any RunningHub AI Application (custom ComfyUI workflow) by webappId. Covers text-to-image, image-to-video, text-to-speech, music generation, 3D modeling, image upscaling, AI apps, and more."
+description: "Generate supported images, videos, audio, and 3D models via RunningHub API and run RunningHub AI Applications by webappId."
 homepage: https://www.runninghub.cn
 triggers:
   - runninghub

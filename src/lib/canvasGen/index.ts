@@ -300,12 +300,11 @@ export function resolveGenEngine(
   if (!baseEngine && !req.engineId.startsWith('gpt-image') && !isSeedreamProImageEngine(req.engineId)) {
     return { error: `未知引擎: ${req.engineId}` };
   }
-  // GPT Image 2 的 RunningHub 通道（海外节点）已下线；到达这里说明没有可用
-  // 的生图 API 槽位（有槽位时 chooseGptImageChannel 会返回 api: 路由）。
-  // 绝不能静默换成 Seedream 扣费——明确告诉用户怎么恢复。
+  // 到达这里说明没有可用的 GPT 图片 API 槽位（有槽位时
+  // chooseGptImageChannel 会返回 api: 路由）。绝不能静默换成其他模型扣费。
   if (!baseEngine && req.engineId.startsWith('gpt-image')) {
     return {
-      error: 'GPT Image 2 的 RunningHub 渠道（海外节点）已于 2026-08 下线。请在「设置 → 图片模型」配置生图 API 槽位（DMXAPI / AiHubMix / ZexAPI），或改用 Seedream 5.0 Pro / 即梦通道。',
+      error: '未配置可用的 GPT Image 2 图片 API 槽位。请在「设置 → 图片模型」配置 DMXAPI / AiHubMix / ZexAPI / APIMart，或改用 Seedream 5.0 Pro。',
     };
   }
   const engine: RhtvCanvasEngine | undefined =

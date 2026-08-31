@@ -118,7 +118,30 @@ export interface WsColorPalette {
   createdAt: number;
 }
 
+/** 拆解阶段从剧本逐场提取的可追溯剧情事实，供分镜和提示词做覆盖校验。 */
+export interface WorkshopStoryFact {
+  id: string;
+  sceneId?: string;
+  /** 剧本逐字原文，不得润色。 */
+  sourceExcerpt: string;
+  /** 参与事件的角色 ID，包含司机/乘客/店员等功能角色。 */
+  participantIds: string[];
+  /** 原文中实际发生的可见事件。 */
+  event: string;
+  /** 事件结束时已成立的状态；无明确结果时写“未交代”。 */
+  result: string;
+}
+
 export type ShotGenStatus = 'idle' | 'queued' | 'generating' | 'done' | 'failed';
+
+/** 镜头在剧情推进中的职责；用于防止分镜退化为连续空镜或重复景别。 */
+export type ShotNarrativeFunction =
+  | 'establish'
+  | 'event'
+  | 'reaction'
+  | 'detail'
+  | 'consequence'
+  | 'transition';
 
 export interface GeneratedAudio {
   characterId: string;
@@ -183,6 +206,8 @@ export interface WsShot {
   description: string;
   /** 该镜对应的剧本原文证据。用于事实锁，禁止提示词凭空补剧情。 */
   sourceExcerpt?: string;
+  /** 本镜覆盖的剧情事实 ID；允许多镜共同覆盖一个事实。 */
+  sourceFactIds?: string[];
   /** 对白 */
   dialogue?: string;
   /** 景别 */
@@ -191,6 +216,10 @@ export interface WsShot {
   camera?: string;
   /** 情绪 */
   mood?: string;
+  /** 本镜承担的叙事职责，而不是视觉风格标签。 */
+  narrativeFunction?: ShotNarrativeFunction;
+  /** 无人物镜头必须说明其不可替代的叙事用途；旧项目可为空。 */
+  emptyShotPurpose?: string;
   durationSec?: number;
   characterIds: string[];
   propIds?: string[];
@@ -308,6 +337,8 @@ export interface WorkshopData {
   synopsis: string;
   /** 首次拆解时从源剧本逐字摘录的事实证据，用于阻止模型凭概括另写剧情。 */
   breakdownSourceEvidence?: string[];
+  /** 逐场剧情事实账本，防止后续分镜遗漏事件人物或把剧情改成空镜。 */
+  storyFacts?: WorkshopStoryFact[];
   /** 分集分场 */
   episodes: { no: string; title: string; sceneList: string }[];
   characters: WsCharacter[];

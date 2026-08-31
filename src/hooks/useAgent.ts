@@ -397,6 +397,8 @@ function buildImageApiContext(settings: ReturnType<typeof useSettingsStore.getSt
 
   return `普通对话生图必须优先调用 image_generate 工具，禁止自己拼 API 请求或临时编写生图脚本。该工具会读取底部当前选择的 GPT Image 2 / 豆包 5 Pro，并自动完成多 API 降级、参考图压缩、比例到像素尺寸的转换和图片回传。
 
+  GPT Image 2 由「设置 → 图片模型」中的 API 槽位自动路由。
+
   比例纪律：调用 image_generate 时必须传 aspect_ratio。用户明确说横版/竖版/方图或 16:9、9:16、1:1 等比例时严格照传；用户未指定才默认 16:9。禁止只把比例写进 prompt 而遗漏工具参数。
 
   当前配置的生图 API（按速度排序）：

@@ -1,11 +1,8 @@
 /**
  * canvasEngines — curated engine → RunningHub endpoint mapping for the canvas.
  *
- * 2026-08: RunningHub 海外节点 API（appConfig/AI 应用通道，含 GPT-Image-2、
- * Midjourney 悠船、Suno、video-upscaler）已下线不可用，本表只保留国内节点
- * 引擎（标准模型端点）。例外：Topaz 图像放大实测仍可用，予以保留。
- * GPT-Image-2 与 Midjourney 逻辑模型仍可通过生图 API 槽位
- * （DMX/AiHubMix/ZexAPI）与 APIMart 使用。
+ * This table contains only the currently supported RunningHub standard-model
+ * endpoints. Other image engines are maintained by their own provider routers.
  *
  * Default workflow: images = Seedream 5.0 Pro + API 槽位;
  * videos = Seedance 2.0 (multimodal preferred — reference images are

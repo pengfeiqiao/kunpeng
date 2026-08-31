@@ -108,6 +108,10 @@ function cloneWorkshopData(data: WorkshopData): WorkshopData {
     breakdownSourceEvidence: data.breakdownSourceEvidence
       ? [...data.breakdownSourceEvidence]
       : data.breakdownSourceEvidence,
+    storyFacts: data.storyFacts?.map((fact) => ({
+      ...fact,
+      participantIds: [...fact.participantIds],
+    })),
     episodes: (data.episodes ?? []).map((item) => ({ ...item })),
     steps: { ...data.steps },
     changelog: (data.changelog ?? []).map((item) => ({ ...item })),

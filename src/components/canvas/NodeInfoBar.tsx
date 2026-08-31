@@ -447,7 +447,7 @@ export default function NodeInfoBar() {
       ? (mjVersion === 'v8.1' ? 'youchuan/text-to-image-v81' : null)
       : imgSource === 'dreamina'
           ? null // 即梦走 Agent，无 rhtv 估价
-          : null) // GPT-Image-2 走智能通道，单个 RunningHub 端点估价会误导
+          : null) // GPT-Image-2 走智能通道，单个供应商端点估价会误导
     : isVideoNode
       ? (vModel === 'seedance-2.5'
         ? null

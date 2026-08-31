@@ -1,13 +1,13 @@
 {
   "name": "kunpeng-desktop",
-  "version": "2.9.18",
+  "version": "2.9.19",
   "description": "鲲鹏 — 本地 AI 编程助手",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "node scripts/prepare-private.mjs && node scripts/build-motion-runtime.mjs && vite",
     "build": "node scripts/build-motion-runtime.mjs && tsc && vite build",
-    "test:harness": "node --test src/lib/credentials.test.ts src/lib/billingSafety.test.ts src/lib/channels/arkModels.test.ts src/lib/openaiCompat.test.ts src/lib/customMedia/payload.test.ts src/lib/agent/anthropicSse.test.ts src/lib/agent/completionGuard.test.ts src/lib/agent/evolutionCursor.test.ts src/lib/agent/harnessPolicy.test.ts src/lib/agent/runStepPresentation.test.ts src/lib/agent/providers/router.test.ts src/lib/agent/providers/pairing.test.ts src/lib/agent/dsh/routing.test.ts src/lib/agent/dsh/bridge.test.ts src/lib/agent/dsh/toolBridge.test.ts src/lib/agent/dsh/mediaFilter.test.ts src/lib/rhtv/rhtvErrors.test.ts src/lib/rhtv/webappId.test.ts src/lib/suno/sunoPayload.test.ts src/lib/agent/modelCatalog.test.ts src/stores/runTargeting.test.ts src/lib/workshop/narrativeGuard.test.ts",
+    "test:harness": "node --test src/lib/credentials.test.ts src/lib/billingSafety.test.ts src/lib/channels/arkModels.test.ts src/lib/openaiCompat.test.ts src/lib/customMedia/payload.test.ts src/lib/agent/anthropicSse.test.ts src/lib/agent/completionGuard.test.ts src/lib/agent/evolutionCursor.test.ts src/lib/agent/harnessPolicy.test.ts src/lib/agent/runStepPresentation.test.ts src/lib/agent/providers/router.test.ts src/lib/agent/providers/pairing.test.ts src/lib/agent/dsh/routing.test.ts src/lib/agent/dsh/bridge.test.ts src/lib/agent/dsh/toolBridge.test.ts src/lib/agent/dsh/mediaFilter.test.ts src/lib/rhtv/rhtvErrors.test.ts src/lib/rhtv/webappId.test.ts src/lib/suno/sunoPayload.test.ts src/lib/agent/modelCatalog.test.ts src/stores/runTargeting.test.ts src/lib/workshop/narrativeGuard.test.ts src/lib/workshop/shotNarrativeAudit.test.ts",
     "test:dsh-runtime": "node --test dsh-runtime/tests/mcp-server-lifecycle.test.mjs",
     "test:omni": "node --test src/lib/omni/styles.test.ts",
     "test:omni-refs": "node --test src/lib/omni/referenceContract.test.ts",

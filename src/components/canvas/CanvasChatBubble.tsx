@@ -150,7 +150,7 @@ export default function CanvasChatBubble({ onSendMessage, onAbort }: CanvasChatB
 除非用户明确切换或移除对象，后续“${isGroupFocus ? '这些/这一组/所选节点' : '这个/它/当前节点'}”都指向上述目标。${isGroupFocus ? '先逐个读取必要节点的 neighborhood，理解组内关系；用户要求整体修改时应作用于整组，要求其中某个节点时根据 ID 和类型精确操作。' : `先用 canvas_get_state(detail:"neighborhood", node_id:"${nodes[0].id}")读取最新状态。`}内容和参数用 canvas_update_node，图片/视频生成用 canvas_generate，音频生成用 doubao_speech_generate(target_node_id)，位置用 canvas_set_node_position，尺寸用 canvas_set_node_size，连线用 canvas_connect/canvas_disconnect，也可复制或删除。修改后用 canvas_get_state 或 canvas_capture_node 核验，不要另建无关替代节点。`;
       }
     }
-    const prefix = `[用户正在画布视图中操作。生成图片/视频优先使用 canvas_generate 工具（自动走 RunningHub + 降级 + 节点更新）；如果用户看过 MG/视频结果后说“不满意/文字还是错/有错字/乱码/字幕不对/字不对/文案不对/还是不行”，优先调用 mg_text_fallback_generate 做二次兜底：GPT-Image-2 生成文字定版图，再用筷子 Seedance 2.0 Mini 图生视频；不要继续反复调 Omni。其他画布操作用 canvas_add_node / canvas_update_node / canvas_connect。语音转写/字幕/口播剪辑用 canvas_transcribe（豆包 ASR，长素材免分段）。${canvasCtx}${focusCtx}]\n\n`;
+    const prefix = `[用户正在画布视图中操作。生成图片/视频优先使用 canvas_generate 工具（按模型走对应渠道并自动更新节点）；GPT Image 2 使用「设置 → 图片模型」中的 API 槽位。如果用户看过 MG/视频结果后说“不满意/文字还是错/有错字/乱码/字幕不对/字不对/文案不对/还是不行”，优先调用 mg_text_fallback_generate 做二次兜底：GPT-Image-2 生成文字定版图，再用筷子 Seedance 2.0 Mini 图生视频；不要继续反复调 Omni。其他画布操作用 canvas_add_node / canvas_update_node / canvas_connect。语音转写/字幕/口播剪辑用 canvas_transcribe（豆包 ASR，长素材免分段）。${canvasCtx}${focusCtx}]\n\n`;
     onSendMessage(prefix + text, filePaths);
   };
 

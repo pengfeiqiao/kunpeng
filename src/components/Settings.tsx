@@ -742,7 +742,7 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
             />
       </CollapsibleSection>
 
-      <CollapsibleSection title="RunningHub" description="RunningHub 多媒体生成（MiniMax H3 渠道、视频/图片/音频/3D/AI应用）" defaultOpen={false}>
+      <CollapsibleSection title="RunningHub" description="RunningHub 多媒体生成（MiniMax H3、Seedream、长尾图片、音频、3D 与 AI 应用）" defaultOpen={false}>
         <div className="mb-3">
           <label className="block text-xs text-zinc-500 mb-1">站点</label>
           <div className="flex rounded-md bg-zinc-100 p-0.5">

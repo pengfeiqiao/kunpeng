@@ -8,7 +8,7 @@ import { useWorkshopStore } from '@/stores/workshopStore';
 import { useCanvasTaskStore } from '@/stores/canvasTaskStore';
 import { useRunStepStore } from '@/stores/runStepStore';
 import { listProjectFiles, projectAbsPath } from '@/lib/aigc/projectStore';
-import type { AssetCandidate, StoryboardFrame, WorkshopAssetKind, WorkshopProjectBibles, WorkshopStepId, WsCharacter, WsProp, WsScene, WsShot } from '@/lib/workshop/types';
+import type { AssetCandidate, StoryboardFrame, WorkshopAssetKind, WorkshopProjectBibles, WorkshopStepId, WorkshopStoryFact, WsCharacter, WsProp, WsScene, WsShot } from '@/lib/workshop/types';
 import { renderStepExport } from '@/lib/workshop/exportTemplates';
 import { writeProjectFile } from '@/lib/aigc/projectStore';
 import { homeDir } from '@tauri-apps/api/path';
@@ -38,6 +38,13 @@ import {
   valuesEqual,
   type WorkshopEditScope,
 } from '@/lib/workshop/narrativeGuard';
+import {
+  auditShotNarrative,
+  auditShotSequence,
+  auditStoryFactCoverage,
+  auditVideoPromptNarrative,
+  findFunctionalRoles,
+} from '@/lib/workshop/shotNarrativeAudit';
 
 const STEP_IDS = ['script', 'breakdown', 'assets', 'prompts', 'generate', 'handoff'];
 
@@ -284,6 +291,8 @@ function validatePromptPatch(
   warnings.push(...collectUnlinkedCharacterWarnings(shotNo, shot, data, [imagePrompt, videoPrompt]));
 
   if (videoPrompt) {
+    const narrativeAudit = auditVideoPromptNarrative(shot, videoPrompt, data.characters);
+    warnings.push(...narrativeAudit.warnings);
     const { refs: requiredRefs, sceneRefCount, sceneRefIndices } = buildShotRequiredRefs(shot, data);
     const validation = validateSeedancePrompt(videoPrompt, {
       refCount: requiredRefs.length,
@@ -373,6 +382,16 @@ async function applySinglePromptPatch(
   );
   if (unlinkedCharacters.length > 0) {
     return { ok: false, warnings: [], error: unlinkedCharacters.join('\n') };
+  }
+  if (normalizedVideo) {
+    const narrativeAudit = auditVideoPromptNarrative(shot, normalizedVideo, ws.data.characters);
+    if (narrativeAudit.errors.length > 0) {
+      return {
+        ok: false,
+        warnings: narrativeAudit.warnings,
+        error: `分镜 ${shotNo} 的剧情覆盖检查未通过：\n${narrativeAudit.errors.join('\n')}`,
+      };
+    }
   }
   const validation = validatePromptPatch(shotNo, shot, ws.data, normalizedImage, normalizedVideo);
   const promptPatch: Partial<WsShot> = {};
@@ -563,6 +582,7 @@ const getStateTool: Tool = {
         ? {
             synopsis: s.data.synopsis,
             sourceEvidence: s.data.breakdownSourceEvidence ?? [],
+            storyFacts: s.data.storyFacts ?? [],
             episodes: s.data.episodes,
             characters: s.data.characters,
             scenes: s.data.scenes,
@@ -737,14 +757,30 @@ const readSourceTool: Tool = {
 const setBreakdownTool: Tool = {
   definition: {
     name: 'workshop_set_breakdown',
-    description: '写入第②步拆解结果：故事梗概、分集分场、角色档案。首次从源剧本拆解必须携带 3-12 条逐字 sourceEvidence，证明人物、关系和事件来自原文。会自动把下游已完成步骤标记为需重做。已有拆解默认受事实锁保护：重新分析只能补充已有实体的外形/视觉描述，不得改故事、对白或凭空新增人物；只有用户本轮明确要求修改剧本时才能改变这些事实。',
+    description: '写入第②步拆解结果：故事梗概、逐字证据、逐场剧情事实账本、分集分场和角色档案。首次拆解必须先建立 storyFacts，再写分镜；司机、乘客、店员、保安等参与事件的功能角色也必须进入 characters 和 participantIds。已有拆解默认受事实锁保护：重新分析只能补漏纠错，不得凭空改故事、对白或人物。',
     parameters: {
       type: 'object',
       properties: {
         sourceEvidence: {
           type: 'array',
           items: { type: 'string' },
-          description: '3-12 条从剧本逐字摘录的短句。禁止润色、概括或填写提示词。',
+          description: '3-30 条从剧本逐字摘录的短句，覆盖主要人物和事件。禁止润色、概括或填写提示词。',
+        },
+        storyFacts: {
+          type: 'array',
+          description: '逐场剧情事实账本。每个有事件的段落至少一条，先于分镜设计建立。',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: '稳定事实 ID，如 scene-01-event-01' },
+              sceneId: { type: 'string', description: '对应场景 ID' },
+              sourceExcerpt: { type: 'string', description: '能证明该事实的剧本逐字原文' },
+              participantIds: { type: 'array', items: { type: 'string' }, description: '事件所有参与者 ID，含功能角色' },
+              event: { type: 'string', description: '谁触发了什么可见事件' },
+              result: { type: 'string', description: '事件结束时已成立的可见结果；无明确结果写“未交代”' },
+            },
+            required: ['id', 'sourceExcerpt', 'participantIds', 'event', 'result'],
+          },
         },
         synopsis: { type: 'string', description: '故事梗概（200-500字）' },
         episodes: {
@@ -830,12 +866,50 @@ const setBreakdownTool: Tool = {
         .filter(Boolean))]
       : [];
     const hasSourceMaterial = Boolean(s.project?.sources?.length);
-    if (!hasExistingBreakdown && hasSourceMaterial && (sourceEvidence.length < 3 || sourceEvidence.length > 12)) {
+    const storyFacts = Array.isArray(params.storyFacts)
+      ? (params.storyFacts as WorkshopStoryFact[]).filter((fact) => fact && typeof fact.id === 'string')
+      : [];
+    if (!hasExistingBreakdown && hasSourceMaterial && (sourceEvidence.length < 3 || sourceEvidence.length > 30)) {
       return {
         success: false,
         output: '',
-        error: '首次剧本拆解必须提交 3-12 条 sourceEvidence，逐字摘录剧本中能证明主要人物、关系和事件的短句。电影化表达可以丰富，但故事事实必须先有原文收据。',
+        error: '首次剧本拆解必须提交 3-30 条 sourceEvidence，逐字摘录并覆盖主要人物与事件。电影化表达可以丰富，但故事事实必须先有原文收据。',
       };
+    }
+    if (!hasExistingBreakdown && hasSourceMaterial && storyFacts.length === 0) {
+      return {
+        success: false,
+        output: '',
+        error: '首次剧本拆解必须提交 storyFacts。请先逐场记录“逐字原文、参与者、事件、结果”，再设计分镜，避免把人物事件拆成空镜。',
+      };
+    }
+    if (storyFacts.length > 0) {
+      const incomingCharacterIds = new Set([
+        ...(data?.characters ?? []).map((character) => character.id),
+        ...(Array.isArray(params.characters) ? (params.characters as WsCharacter[]).map((character) => character.id) : []),
+      ]);
+      const invalidFacts = storyFacts.flatMap((fact) => {
+        const issues: string[] = [];
+        if (!fact.sourceExcerpt?.trim()) issues.push(`${fact.id}: 缺少逐字 sourceExcerpt`);
+        if (!fact.event?.trim()) issues.push(`${fact.id}: 缺少可见事件 event`);
+        if (!fact.result?.trim()) issues.push(`${fact.id}: 缺少事件结果 result`);
+        for (const participantId of fact.participantIds ?? []) {
+          if (!incomingCharacterIds.has(participantId)) issues.push(`${fact.id}: participantIds 引用了未建档角色 ${participantId}`);
+        }
+        const factText = `${fact.sourceExcerpt ?? ''}\n${fact.event ?? ''}`;
+        for (const role of findFunctionalRoles(factText)) {
+          const roleCharacter = [
+            ...(data?.characters ?? []),
+            ...(Array.isArray(params.characters) ? params.characters as WsCharacter[] : []),
+          ].find((character) => character.name.includes(role));
+          if (!roleCharacter) issues.push(`${fact.id}: 原文出现功能角色“${role}”，但 characters 未建档。请把参与事件的功能角色作为正式角色保存。`);
+          else if (!(fact.participantIds ?? []).includes(roleCharacter.id)) issues.push(`${fact.id}: 原文出现“${role}”，但 participantIds 未包含 ${roleCharacter.id}`);
+        }
+        return issues;
+      });
+      if (invalidFacts.length > 0) {
+        return { success: false, output: '', error: `剧情事实账本检查未通过：\n${invalidFacts.join('\n')}` };
+      }
     }
     if (hasExistingBreakdown && scope !== 'story') {
       const conflicts: string[] = [];
@@ -870,12 +944,13 @@ const setBreakdownTool: Tool = {
         };
       }
     }
-    if (params.synopsis || sourceEvidence.length > 0) {
+    if (params.synopsis || sourceEvidence.length > 0 || storyFacts.length > 0) {
       useWorkshopStore.setState({
         data: {
           ...useWorkshopStore.getState().data!,
           ...(params.synopsis ? { synopsis: params.synopsis as string } : {}),
           ...(sourceEvidence.length > 0 ? { breakdownSourceEvidence: sourceEvidence } : {}),
+          ...(storyFacts.length > 0 ? { storyFacts: storyFacts.map((fact) => ({ ...fact, participantIds: [...(fact.participantIds ?? [])] })) } : {}),
         },
       });
     }
@@ -889,7 +964,7 @@ const setBreakdownTool: Tool = {
     await useWorkshopStore.getState().commitNow();
     return {
       success: true,
-      output: `拆解结果已写入工坊（梗概/分集/角色/场景）${sourceEvidence.length ? `，并保存 ${sourceEvidence.length} 条原文证据` : ''}，UI 已更新`,
+      output: `拆解结果已写入工坊（梗概/分集/角色/场景）${sourceEvidence.length ? `，保存 ${sourceEvidence.length} 条原文证据` : ''}${storyFacts.length ? `、${storyFacts.length} 条剧情事实` : ''}，UI 已更新`,
     };
   },
 };
@@ -901,6 +976,12 @@ const setShotsTool: Tool = {
 
 ⚠ mode 选择极其重要：merge（默认推荐）按 shotNo 合并，只更新传入字段不影响其他分镜；replace 会全量替换所有分镜——除非是新项目初始建立分镜骨架，否则禁止使用 replace。长剧本分批调用（每批 ≤15 镜，mode="merge"）。
 
+【先拆事件，再设计镜头——禁止把剧情拆成空镜合集】
+- 先从剧本逐场列出“人物/功能角色 → 触发动作 → 事件结果”的事实链，再为事实链分配镜头。司机、乘客、店员、保安、路人等只要参与事件，都必须建立角色并写入 characterIds，不能因为没有姓名就省略。
+- 每个剧本事件至少有一条 narrativeFunction="event" 的人物承载镜头；关键后果用 consequence，人物接收信息后的变化用 reaction。建立镜头只负责快速交代空间，不能代替事件镜头。
+- 无人物镜头是例外：只有空间建立、必要转场、线索细节、事件余波或结果状态才允许，并填写 emptyShotPurpose。禁止连续两条空镜，禁止把“公路上司机遇到事件”拆成只有道路、车辆和尘土的纯空镜。
+- 同一场景按信息推进组织：必要时短暂建立空间 → 事件人物与动作 → 反应/关键细节 → 事件结果。不要机械套固定景别顺序，但也不要让单一信息距离承包剧情；同场连续三条远景/全景、连续三条近景/特写、无递进的连续大特写都会被拒绝。多人事件必须有中景、过肩、双人同框或等价关系镜头。
+
 【必填字段纪律——每条分镜必须填齐】
 - sceneId: 必须关联场景（从 breakdown 步骤的 scenes 中选），不允许留空
 - characterIds: 必须列出该镜头中出现的所有角色 ID，不允许留空数组（除非确实无人物的空镜）
@@ -908,12 +989,14 @@ const setShotsTool: Tool = {
 - shotType: 该分镜的主景别（大远景/远景/全景/中景/近景/特写/大特写）
 - camera: 主运镜（推/拉/摇/移/升/降/甩/跟/环绕/固定 等）
 - mood: 情绪必填（紧张/悲伤/温馨/激昂/平静/压抑/释然 等）
+- narrativeFunction: 叙事职能必填（establish/event/reaction/detail/consequence/transition）
+- emptyShotPurpose: 仅 characterIds=[] 时必填，说明该空镜不可替代的叙事用途
 - durationSec: 时长必填，每条分镜 8-15 秒（Seedance 2.5 项目可到 30 秒；禁止 3-5 秒的短分镜！）
 
 【分镜结构——每条分镜是一段完整片段】
 每条分镜是一个 8-15 秒（2.5 项目可到 30 秒）的完整视频片段，内部包含多个子镜头（在 videoPrompt 里用多镜头模板实现）：
 - 格式：镜头N-1 Xs [{景别}/{运镜}] xxx，镜头N-2 Xs [{景别}/{运镜}] xxx，…
-- 子镜头景别根据场景灵活变化（如正反打全用近景完全可以），不要机械套远→中→近→特写
+- 子镜头景别跟随信息距离变化：先看清事件关系，再进入动作、反应或结果。正反打可保持近景，但连续大全景/全景或连续近景/特写都不得承包整段剧情；大特写只用于关键触点、线索和情绪峰值
 - 禁止一条分镜只写一个子镜头！8-15 秒必须有 2-4 个子镜头（2.5 项目的长分镜按比例增加切点）
 
 【画面描述质量要求】
@@ -921,7 +1004,7 @@ description 字段要有电影感：
 - 必须包含：人物动作（具体肢体+力度）、表情/情绪外化（低头/握拳/颤抖，不用抽象形容词"悲伤""愤怒"）、环境光线氛围
 - 必须包含当前空间站位：人物相对稳定场景锚点的位置、彼此前后/左右/距离、身体朝向和视线方向。同一 sceneId 的连续镜头继承 continuity.blockingContinuity，不能因正反打、特写或机位变化自动镜像换位
 - 只有剧情明确发生移动时才改站位，并写清“从哪个锚点、沿什么路径、到哪个锚点”；本镜结尾位置是下一关联镜头的起始状态
-- 优先描写：前景遮幅、路人反应、细节道具、动作过渡衔接
+- 优先保证：剧本事件承担者、触发动作和可见结果。前景遮幅、路人反应、细节道具只能服务事件，不能挤掉事件本身
 - 单个子镜头只用 1 种运镜（官方要求：不要同一镜头同时推拉摇移）`,
     parameters: {
       type: 'object',
@@ -936,16 +1019,23 @@ description 字段要有电影感：
               sceneId: { type: 'string', description: '【必填】关联场景 id（从 breakdown 的 scenes 中选）' },
               description: { type: 'string', description: '画面描述（需有电影感：具体动作+情绪外化+环境光线）' },
               sourceExcerpt: { type: 'string', description: '新建分镜时填写对应的剧本原文短句，必须逐字摘录，不要润色。它是事实锁证据，不是提示词。' },
+              sourceFactIds: { type: 'array', items: { type: 'string' }, description: '【有 storyFacts 时必填】本镜覆盖的剧情事实 ID；至少一条事件镜必须覆盖每个事实。' },
               dialogue: { type: 'string', description: '对白' },
               shotType: { type: 'string', description: '【必填】主景别（大远景/远景/全景/中景/近景/特写/大特写），内部子镜头可在 videoPrompt 里各自标 [景别/运镜]' },
               camera: { type: 'string', description: '【必填】主运镜（推/拉/摇/移/升/降/甩/跟/环绕/固定）' },
               mood: { type: 'string', description: '【必填】情绪（紧张/悲伤/温馨/激昂/平静/压抑/释然 等）' },
+              narrativeFunction: {
+                type: 'string',
+                enum: ['establish', 'event', 'reaction', 'detail', 'consequence', 'transition'],
+                description: '【必填】叙事职能：建立空间/推进事件/人物反应/关键细节/事件结果/必要转场',
+              },
+              emptyShotPurpose: { type: 'string', description: 'characterIds=[] 时必填。说明空镜用于空间建立、必要转场、线索、余波或结果状态，不能只写“氛围”。' },
               durationSec: { type: 'number', description: '【必填】时长 8-15 秒（Seedance 2.5 项目可到 30 秒；禁止 3-5s 短分镜）' },
               characterIds: { type: 'array', items: { type: 'string' }, description: '【必填】该镜头中出现的所有角色 ID（空镜除外不允许留空）' },
               propIds: { type: 'array', items: { type: 'string' }, description: '【有道具必填】关联道具 ID（参考图排在角色之后）' },
               videoRatio: { type: 'string', description: '视频生成比例（必填才能生成视频），如 "16:9"/"9:16"/"4:3"/"3:4"/"1:1"/"21:9"' },
             },
-            required: ['shotNo', 'description', 'sceneId', 'shotType', 'characterIds'],
+            required: ['shotNo', 'description', 'sceneId', 'shotType', 'characterIds', 'narrativeFunction'],
           },
         },
         mode: { type: 'string', enum: ['replace', 'merge'], description: '默认 merge（按 shotNo 合并）；replace 全量替换——仅限新项目初建' },
@@ -976,7 +1066,7 @@ description 字段要有电影感：
         if (!existing) {
           if (scope !== 'story' && scope !== 'shots') conflicts.push(`${shotNo} 新增分镜`);
         } else {
-          const structuralFields: Array<keyof WsShot> = ['description', 'episode', 'sceneId', 'characterIds', 'propIds'];
+          const structuralFields: Array<keyof WsShot> = ['description', 'episode', 'sceneId', 'characterIds', 'propIds', 'sourceFactIds', 'narrativeFunction', 'emptyShotPurpose'];
           const changed = structuralFields.filter((field) =>
             candidate[field] !== undefined && !valuesEqual(candidate[field], existing[field]));
           if (changed.length > 0 && scope !== 'story' && scope !== 'shots') {
@@ -1017,7 +1107,6 @@ description 字段要有电影感：
     const warnings: string[] = [];
     for (const shot of incoming) {
       if (!shot.sceneId) warnings.push(`${shot.shotNo}: 缺少 sceneId`);
-      if (!shot.characterIds || shot.characterIds.length === 0) warnings.push(`${shot.shotNo}: characterIds 为空（空镜除外必须填写角色）`);
       if (!shot.shotType) warnings.push(`${shot.shotNo}: 缺少景别 shotType`);
       if (!shot.camera) warnings.push(`${shot.shotNo}: 缺少运镜 camera`);
       if (!shot.mood) warnings.push(`${shot.shotNo}: 缺少情绪 mood`);
@@ -1035,13 +1124,53 @@ description 字段要有电影感：
       ) {
         warnings.push(`${shot.shotNo}: 缺少 sourceExcerpt。当前项目有源剧本，新建分镜必须附对应原文证据，不能只凭模型概括。`);
       }
+      const narrativeAudit = auditShotNarrative(shot, s.data!.characters);
+      warnings.push(...narrativeAudit.errors, ...narrativeAudit.warnings);
+      if ((s.data!.storyFacts?.length ?? 0) > 0) {
+        if (!shot.sourceFactIds?.length) {
+          warnings.push(`${shot.shotNo}: 缺少 sourceFactIds，无法证明本镜覆盖了哪条剧情事实。`);
+        } else {
+          const knownFactIds = new Set(s.data!.storyFacts!.map((fact) => fact.id));
+          const unknownFactIds = shot.sourceFactIds.filter((id) => !knownFactIds.has(id));
+          if (unknownFactIds.length > 0) warnings.push(`${shot.shotNo}: sourceFactIds 不存在：${unknownFactIds.join('、')}`);
+        }
+      }
     }
 
-    if (warnings.length > 0) {
+    const projectedShots = mode === 'replace'
+      ? incoming.map((shot) => ({ characterIds: [], ...shot }) as WsShot)
+      : (() => {
+          const incomingByNo = new Map(incoming.map((shot) => [shot.shotNo, shot]));
+          const merged = existingShots.map((shot) => ({
+            ...shot,
+            ...(incomingByNo.get(shot.shotNo) ?? {}),
+          }));
+          const existingNos = new Set(existingShots.map((shot) => shot.shotNo));
+          return merged.concat(
+            incoming
+              .filter((shot) => !existingNos.has(shot.shotNo ?? ''))
+              .map((shot) => ({ characterIds: [], ...shot }) as WsShot),
+          );
+        })();
+    projectedShots.sort((a, b) => a.shotNo.localeCompare(b.shotNo, 'zh-CN', { numeric: true }));
+
+    const sequenceAudit = auditShotSequence(incoming, s.data!.characters, { validateShots: false });
+    warnings.push(...sequenceAudit.errors, ...sequenceAudit.warnings);
+    if (mode === 'merge' && existingShots.length > 0 && incoming.length > 0) {
+      const projectedAudit = auditShotSequence(projectedShots, s.data!.characters, { validateShots: false });
+      warnings.push(...projectedAudit.errors, ...projectedAudit.warnings);
+    }
+    if ((s.data!.storyFacts?.length ?? 0) > 0) {
+      const factAudit = auditStoryFactCoverage(projectedShots, s.data!.storyFacts!);
+      warnings.push(...factAudit.errors, ...factAudit.warnings);
+    }
+
+    const uniqueWarnings = [...new Set(warnings)];
+    if (uniqueWarnings.length > 0) {
       return {
         success: false,
         output: '',
-        error: `分镜数据质量检查未通过，请修正后重试：\n${warnings.join('\n')}`,
+        error: `分镜数据质量检查未通过，请修正后重试：\n${uniqueWarnings.join('\n')}`,
       };
     }
 
@@ -1124,7 +1253,7 @@ const updateShotTool: Tool = {
     name: 'workshop_update_shot',
     description: `修改单条分镜的字段。事实锁：用户只要求改提示词时，不得修改 description/dialogue/sourceExcerpt/characterIds/sceneId/propIds；只有用户明确要求改剧本、对白或重排分镜时才放行。force_edit 不能绕过事实锁。
 
-patch 可用的字段名（必须严格一致）：description（画面描述）、sourceExcerpt（对应剧本逐字原文）、dialogue（对白）、shotType（景别）、camera（运镜）、mood（情绪）、durationSec（时长 8-15s）、characterIds（关联角色ID数组，必填！）、propIds（关联道具ID数组）、sceneId（关联场景ID，必填！）、voiceCharacterIds（本镜显式启用的角色音色资产ID数组；只有这里列出的角色 voicePath 才会传入视频生成；没有台词/不需要音色时传 []）、audioInjected（是否把 generatedAudios 作为本镜配音资产传入）、generatedAudios（已生成配音文件）、imagePrompt（生图提示词）、videoPrompt（视频提示词，默认必须用多镜头模板格式含 3-5 个子镜头；只有明确声明长镜头/一镜到底时才允许 1 个连续调度镜头）、expectedRefSignature（写提示词时从 workshop_get_shot_refs 原样带回的参考签名，不会存入分镜）、videoRatio（视频比例，如 "16:9"）、imagePath（生成图路径）、videoPath（视频路径）、genStatus。注意：不要用 prompt，必须用 imagePrompt 或 videoPrompt。批量或长文本提示词优先用 workshop_set_prompts；如果这里传 imagePrompt/videoPrompt，本工具会自动走同一套提示词校验与写后校验，videoPrompt 会按项目或单镜 videoPromptTemplate 写入经典版（videoPrompt）或新版（universalVideoPrompt）独立槽位，互不覆盖。
+patch 可用的字段名（必须严格一致）：description（画面描述）、sourceExcerpt（对应剧本逐字原文）、sourceFactIds（覆盖的剧情事实 ID）、narrativeFunction（叙事职能）、emptyShotPurpose（无人物镜头的必要用途）、dialogue（对白）、shotType（景别）、camera（运镜）、mood（情绪）、durationSec（时长 8-15s）、characterIds（关联角色ID数组，必填！）、propIds（关联道具ID数组）、sceneId（关联场景ID，必填！）、voiceCharacterIds（本镜显式启用的角色音色资产ID数组；只有这里列出的角色 voicePath 才会传入视频生成；没有台词/不需要音色时传 []）、audioInjected（是否把 generatedAudios 作为本镜配音资产传入）、generatedAudios（已生成配音文件）、imagePrompt（生图提示词）、videoPrompt（视频提示词，默认必须用多镜头模板格式含 3-5 个子镜头；只有明确声明长镜头/一镜到底时才允许 1 个连续调度镜头）、expectedRefSignature（写提示词时从 workshop_get_shot_refs 原样带回的参考签名，不会存入分镜）、videoRatio（视频比例，如 "16:9"）、imagePath（生成图路径）、videoPath（视频路径）、genStatus。注意：不要用 prompt，必须用 imagePrompt 或 videoPrompt。批量或长文本提示词优先用 workshop_set_prompts；如果这里传 imagePrompt/videoPrompt，本工具会自动走同一套提示词校验与写后校验，videoPrompt 会按项目或单镜 videoPromptTemplate 写入经典版（videoPrompt）或新版（universalVideoPrompt）独立槽位，互不覆盖。
 
 ⚠ videoPrompt 写作要求（和 workshop_set_prompts 一致）：
 - 每镜必须独立可读，禁止"承接上一镜"，首句重建空间锚点
@@ -1228,7 +1357,7 @@ patch 可用的字段名（必须严格一致）：description（画面描述）
     // Protection: warn when modifying shots that already have generated output
     const existingShot = s.data!.shots.find((x) => x.shotNo === shotNo)!;
     const { scope, request } = currentWorkshopEditScope();
-    const structuralFields: Array<keyof WsShot> = ['description', 'sourceExcerpt', 'episode', 'sceneId', 'characterIds', 'propIds'];
+    const structuralFields: Array<keyof WsShot> = ['description', 'sourceExcerpt', 'sourceFactIds', 'narrativeFunction', 'emptyShotPurpose', 'episode', 'sceneId', 'characterIds', 'propIds'];
     const changedStructural = structuralFields.filter((field) =>
       patch[field] !== undefined && !valuesEqual(patch[field], existingShot[field]));
     const changesDialogue = patch.dialogue !== undefined && patch.dialogue !== existingShot.dialogue;
@@ -1545,6 +1674,8 @@ const setPromptsTool: Tool = {
 - 导演表达层可以充分创作：景别、机位、运镜、焦点、光影、材质、空间层次、呼吸、视线、手部细节和剪辑节奏可以写到电影级。
 - 不得为了凑够“微表情、材质、运镜、剪辑”等项目，新增亲属/恋爱/师徒等关系，新增台词、旁白、人物，或让角色完成原分镜没有的剧情事件。
 - 微表演只能解释既有动作和情绪，不能改变剧情。例如可写“指节收紧、呼吸变浅”，不可凭空写“拥抱、亲吻、交付密信、揭露身份”。
+- 写提示词前先复述本镜的“事件主体 → 触发动作 → 可见结果”。所有 characterIds 里的剧情参与者必须在 videoPrompt 中按姓名出现；功能角色（司机、乘客、店员等）不能被环境镜头吞掉。
+- 空间、光影、材质和前景装饰只能辅助剧情。只要本镜有人物或事件，子镜头必须先保证人物动作、反应和结果，不得写成道路、建筑、车辆、烟尘等连续纯空镜。
 - 写前必须调用 workshop_get_shot_refs；写回时把 referenceSignature 原样放进 expectedRefSignature。
 
 【videoPrompt 版本】
@@ -1584,6 +1715,7 @@ const setPromptsTool: Tool = {
 - 只有剧情本身适合长镜头/一镜到底时，才允许 1 个连续调度镜头；此时必须明确写"长镜头/一镜到底"，并写清演员走位、焦点转移、空间调度、节奏段落和情绪递进
 - 各子镜头时长之和 = durationSec
 - 子镜头景别根据内容灵活选择（正反打可以全用近景，不要机械套远中近特写）
+- 建立空间后要进入事件主体、反应或关键细节；两个以上子镜头全部使用远景/全景会被拒绝。相同近景用于正反打时，必须有不同人物、视线和信息职能。
 - 整条提示词要达到电影级细节；各子镜头按剧情需要分配具体动作、微表情、环境光线、空间层次、镜头/焦点和剪辑触发点，不要为让每个子镜头机械凑齐全部项目而新增剧情事实
 - 禁止把分析说明写进提示词正文，例如"切换到镜头10-4的理由：..."、"切换理由："、"这样切是因为..."；剪辑动机必须改写成画面内可见的动作、视线、声音、遮挡或情绪落点
 - 单个子镜头只用 1 种运镜（官方：不要同一镜头同时推拉摇移）
@@ -1592,6 +1724,7 @@ const setPromptsTool: Tool = {
 
 【好莱坞剪辑/导演节奏——每条都要有】
 - 写出开场建立、推进、反应、情绪落点或悬念收束；不能所有子镜头都是同一种"人物看向/走向"。
+- “开场建立”不是每镜强制大全景。前一镜已建立空间，当前镜可直接从事件人物、动作触发点或反应进入；任何建立镜头都应尽快让位给剧情信息。
 - 根据内容使用：建立镜头、过肩反打、插入镜头、反应镜头、动作接动作、视线引导、慢推压迫、手持不稳定、移焦揭示、遮挡转场、声音或台词触发切换。
 - 如果本镜适合长镜头，仍要写出连续调度内部的节奏段落，例如"从背影跟拍到侧脸近景，焦点从手中物件移到眼神，人物停顿后再越过前景遮挡"。
 
@@ -1739,6 +1872,14 @@ imagePrompt 为中文（gpt-image-2），建议 80-220 中文字，必须写成�
       );
       if (characterWarnings.length > 0) {
         fatalErrors.push(...characterWarnings);
+      }
+      if (normalizedVideoForCheck) {
+        const narrativeAudit = auditVideoPromptNarrative(shot, normalizedVideoForCheck, ws.data!.characters);
+        if (narrativeAudit.errors.length > 0) fatalErrors.push(...narrativeAudit.errors);
+        if (narrativeAudit.warnings.length > 0) {
+          warnings.push(...narrativeAudit.warnings);
+          warningByShot.add(it.shotNo);
+        }
       }
       for (const audioPrompt of it.audioPrompts ?? []) {
         if (!ws.data!.characters.some((character) => character.id === audioPrompt.characterId)) {

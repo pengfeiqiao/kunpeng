@@ -51,8 +51,7 @@ const SORT_MODE_KEY = 'kunpeng.imageRouteSortMode.v1';
 const SELECTED_AT_KEY = 'kunpeng.imageRouteSelectedAt.v1';
 const MAX_METRICS = 300;
 const RHTV_ROUTES: ImageRouteDefinition[] = [
-  // 2026-08: RunningHub 海外节点（GPT-Image-2 低价/官方通道）已下线，RHTV
-  // 侧只保留国内节点的 Seedream 路由。GPT-Image-2 由下方 api: 槽位承接。
+  // RunningHub participates in the Seedream router only.
   { id: 'seedream-v5-pro-rhtv', label: 'RunningHub Seedream 5 Pro 文生', provider: 'runninghub', mode: 'text-to-image', tier: 'standard', model: 'seedream-v5-pro', engineId: 'seedream-v5-pro' },
   { id: 'seedream-v5-pro-rhtv-i2i', label: 'RunningHub Seedream 5 Pro 图生', provider: 'runninghub', mode: 'image-to-image', tier: 'standard', model: 'seedream-v5-pro', engineId: 'seedream-v5-pro-i2i' },
   { id: 'dreamina:seedream-v5-pro:text-to-image', label: '即梦 Seedream 5 Pro 文生', provider: 'dreamina', mode: 'text-to-image', tier: 'standard', model: 'seedream-v5-pro', engineId: 'seedream-v5-pro' },
@@ -412,8 +411,7 @@ export function pickNextHealthyChannel(mode: ImageRouteMode, excludeIds: Set<str
 
 export function chooseGptImageChannel(requestedEngineId: string, hasReference: boolean): string {
   const mode: ImageRouteMode = hasReference ? 'image-to-image' : 'text-to-image';
-  // RunningHub 的 GPT-Image-2 通道（海外节点）已于 2026-08 下线，只能选择
-  // 生图 API 槽位（dmxapi/aihubmix/zexapi 等 api: 路由）。
+  // GPT Image 2 candidates come exclusively from configured image API slots.
   const apiRoutes = getImageRouteDefinitions()
     .filter((r) => r.model === 'gpt-image-2' && r.mode === mode)
     .map((r) => r.id);
