@@ -376,6 +376,7 @@ fn main() {
             get_temp_dir,
             get_file_size,
             get_file_metadata,
+            prepare_image_for_vision,
             browser::browser_open,
             browser::browser_install,
             browser::browser_snapshot,

@@ -37,6 +37,8 @@ const GENERIC_PHRASES = [
   '真正的', '这背后', '重新定义', '不难发现', '毋庸置疑', '显而易见', '值得一提的是',
   '在这个时代', '在当下', '某种意义上', '高质量', '沉浸式', '赋能', '闭环', '打造',
   '助力', '引领', '革新', '焕新', '价值感', '松弛感',
+  // 模型惯用的提示语与洞察路标（human-writing skill 禁用项，MIT © KKKKhazix）
+  '说白了', '说穿了', '先说结论', '一句话总结', '更微妙的是', '还有一层', '只说对了一半',
 ];
 
 const METAPHOR_WORDS = [
@@ -137,18 +139,29 @@ export function auditCopywriting(content: string, options: AuditOptions = {}): W
     ));
   }
 
-  const contrastMatches = [
+  // 翻案腔家族（吸收 human-writing skill 的"禁修辞动作而非字面"原则，MIT © KKKKhazix）：
+  // 命中一项即 blocker——先立一个读者并没有的误解再推翻它来抬价，换任何字面都算命中。
+  const reversalMatches = [
     ...collectRegex(text, /不是[^。！？\n]{0,42}(?:而是|只是|却是)[^。！？\n]{0,42}/g),
     ...collectRegex(text, /并非[^。！？\n]{0,42}而是[^。！？\n]{0,42}/g),
     ...collectRegex(text, /不(?:只|仅)是[^。！？\n]{0,42}(?:更是|还是)[^。！？\n]{0,42}/g),
+    // 不是A，是B（没有"而"字的直转）
+    ...collectRegex(text, /不是[^。！？\n，,]{1,40}[，,]\s*是[^。！？\n]{0,42}/g),
+    ...collectRegex(text, /不在于[^。！？\n]{0,42}而在于[^。！？\n]{0,42}/g),
+    ...collectRegex(text, /与其说[^。！？\n]{0,42}不如说[^。！？\n]{0,42}/g),
+    ...collectRegex(text, /表面(?:上)?[^。！？\n]{0,42}实际(?:上)?[^。！？\n]{0,42}/g),
+    ...collectRegex(text, /看似[^。！？\n]{0,42}实则[^。！？\n]{0,42}/g),
+    ...collectRegex(text, /你以为[^。！？\n]{0,42}其实[^。！？\n]{0,42}/g),
+    ...collectRegex(text, /[^。！？\n]{0,42}不重要[^。！？\n]{0,12}重要的是[^。！？\n]{0,42}/g),
+    ...collectRegex(text, /答案恰恰相反|回头才发现|说到底[^。！？\n]{0,42}/g),
   ];
-  if (contrastMatches.length >= 2) {
+  if (reversalMatches.length >= 1) {
     issues.push(issue(
       'syntax.forced-contrast',
-      '对立句式重复',
-      contrastMatches.length >= 4 ? 'blocker' : 'warning',
-      contrastMatches,
-      '只保留一次确有认知反转的对比。其余句子直接陈述事实、动作、代价或判断，不要先树一个假靶子。',
+      '翻案腔（不是…而是…同类话术）',
+      'blocker',
+      reversalMatches,
+      '先立再推翻的抬价句式零容忍：不是A而是B、不是A，是B、并非…而是、不在于…而在于、表面…实际、看似…实则、你以为…其实、X不重要重要的是Y、说到底、答案恰恰相反，换字面也算。判断直接从正面下，先给判断再给依据；只有真的用材料走过了从误解到修正的过程才允许自我修正，且不套用以上任何句式。',
     ));
   }
 

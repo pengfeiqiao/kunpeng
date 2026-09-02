@@ -69,6 +69,7 @@ import {
   loadMediaInput,
   normalizeLocalMediaPath,
 } from '@/lib/agent/mediaInput';
+import { isImageMediaPath, isVideoMediaPath } from '@/lib/agent/mediaKind';
 import { uploadVideoToKimi, type KimiVideoUploadProgress } from '@/lib/agent/kimiFiles';
 import { normalizeRunProgress } from '@/lib/agent/runStepPresentation';
 import { buildChatRouteStrategy, getPrimaryRouteSelection } from '@/lib/agent/routeStrategy';
@@ -183,9 +184,8 @@ function buildDshConversationContext(messages: AgentMessage[], maxChars = 160_00
 async function buildDshMediaBlocks(filePaths: string[]): Promise<AgentUserContentBlock[]> {
   const blocks: AgentUserContentBlock[] = [];
   for (const path of filePaths) {
-    const cleanPath = path.split('?')[0].toLowerCase();
-    const isImage = /\.(png|jpe?g|webp|gif|bmp)$/.test(cleanPath);
-    const isRemoteVideo = /^https?:\/\//i.test(path) && /\.(mp4|mov|webm|m4v)$/.test(cleanPath);
+    const isImage = isImageMediaPath(path);
+    const isRemoteVideo = /^https?:\/\//i.test(path) && isVideoMediaPath(path);
     if (!isImage && !isRemoteVideo) continue;
     try {
       const { dataUrl, mediaType } = await loadMediaInput(path);
@@ -231,9 +231,8 @@ async function buildKimiMediaBlocks(
   const blocks: AgentUserContentBlock[] = [];
   const notices: string[] = [];
   for (const path of filePaths) {
-    const cleanPath = path.split('?')[0].toLowerCase();
-    const isImage = /\.(png|jpe?g|webp|gif|bmp)$/.test(cleanPath);
-    const isVideo = /\.(mp4|mov|webm|m4v)$/.test(cleanPath);
+    const isImage = isImageMediaPath(path);
+    const isVideo = isVideoMediaPath(path);
     if (!isImage && !isVideo) continue;
     try {
       const isRemote = /^https?:\/\//i.test(path) || path.startsWith('data:');

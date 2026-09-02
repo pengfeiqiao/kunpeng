@@ -1,5 +1,7 @@
-import { readBinaryFile } from '@tauri-apps/api/fs';
+import { readBinaryFile, removeFile } from '@tauri-apps/api/fs';
+import { invoke } from '@tauri-apps/api/tauri';
 import { agentLog } from './logger';
+import { isImageMediaPath, requiresNativeImageConversion } from './mediaKind';
 
 /**
  * 中文路径的 Unicode 规范化差异（macOS 磁盘多为 NFD，调用方/模型给的多为
@@ -29,6 +31,8 @@ const MIME_BY_EXT: Record<string, string> = {
   webp: 'image/webp',
   gif: 'image/gif',
   bmp: 'image/bmp',
+  heic: 'image/heic',
+  heif: 'image/heif',
   mp4: 'video/mp4',
   mov: 'video/quicktime',
   webm: 'video/webm',
@@ -86,13 +90,29 @@ async function downscaleToJpeg(bytes: Uint8Array): Promise<Uint8Array | null> {
   }
 }
 
+async function convertNativeImageToJpeg(path: string): Promise<Uint8Array> {
+  const convertedPath = await invoke<string>('prepare_image_for_vision', { path });
+  try {
+    return await readBinaryFileUnicode(convertedPath);
+  } finally {
+    void removeFile(convertedPath).catch(() => {});
+  }
+}
+
 export async function loadImageInput(image: string): Promise<string> {
   const input = image.trim();
   if (/^https?:\/\//i.test(input) || input.startsWith('data:')) return input;
 
   const path = normalizeLocalMediaPath(input);
   const mime = mediaTypeForPath(path) || 'image/png';
-  const bytes = await readBinaryFileUnicode(path);
+  const needsConversion = requiresNativeImageConversion(path);
+  const bytes = needsConversion
+    ? await convertNativeImageToJpeg(path)
+    : await readBinaryFileUnicode(path);
+  if (needsConversion) {
+    agentLog.info('MediaInput', `已将 ${path.split(/[\\/]/).pop() || 'HEIC 图片'} 转为原生视觉 JPEG`);
+    return `data:image/jpeg;base64,${bytesToBase64(bytes)}`;
+  }
   if (bytes.length > MAX_INLINE_IMAGE_BYTES) {
     const jpeg = await downscaleToJpeg(bytes);
     if (jpeg && jpeg.length < bytes.length) {
@@ -115,6 +135,13 @@ export async function loadMediaInput(media: string): Promise<{ dataUrl: string; 
   }
 
   const path = normalizeLocalMediaPath(input);
+  if (isImageMediaPath(path)) {
+    const dataUrl = await loadImageInput(path);
+    return {
+      dataUrl,
+      mediaType: dataUrl.match(/^data:([^;,]+)/)?.[1] || mediaTypeForPath(path),
+    };
+  }
   const mediaType = mediaTypeForPath(path);
   const bytes = await readBinaryFileUnicode(path);
   return { dataUrl: `data:${mediaType};base64,${bytesToBase64(bytes)}`, mediaType };

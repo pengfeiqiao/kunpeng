@@ -89,6 +89,51 @@ pub fn get_file_metadata(path: String) -> Result<LocalFileMetadata, String> {
     })
 }
 
+/// Convert image formats that browser/model runtimes do not reliably decode
+/// (notably HEIC/HEIF) into a bounded JPEG suitable for native vision input.
+#[tauri::command]
+pub fn prepare_image_for_vision(path: String) -> Result<String, String> {
+    let input = std::path::PathBuf::from(&path);
+    if !input.is_file() {
+        return Err(format!("图片文件不存在: {}", path));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+        let output = std::env::temp_dir().join(format!(
+            "kunpeng-vision-{}-{}.jpg",
+            std::process::id(),
+            unique
+        ));
+        let result = StdCommand::new("/usr/bin/sips")
+            .args(["-s", "format", "jpeg", "-s", "formatOptions", "85"])
+            .arg("--resampleHeightWidthMax")
+            .arg("1600")
+            .arg(&input)
+            .arg("--out")
+            .arg(&output)
+            .output()
+            .map_err(|error| format!("启动系统图片转换失败: {}", error))?;
+        if !result.status.success() || !output.is_file() {
+            let detail = String::from_utf8_lossy(&result.stderr).trim().to_string();
+            return Err(format!(
+                "HEIC/HEIF 转换失败{}",
+                if detail.is_empty() { String::new() } else { format!(": {}", detail) }
+            ));
+        }
+        return Ok(output.to_string_lossy().to_string());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("当前系统暂不支持 HEIC/HEIF 原生视觉转换，请先转换为 JPEG 或 PNG".to_string())
+    }
+}
+
 /// 用系统命令打开文件或在文件管理器中显示
 /// reveal=true 时在文件管理器中选中该文件（macOS: open -R，Windows: explorer /select）
 #[tauri::command]

@@ -53,6 +53,15 @@
 
 `src-tauri/` 的 Rust 依赖（tauri、serde、tokio、reqwest 等，见 `src-tauri/Cargo.toml` 与 `Cargo.lock`）以 MIT / Apache-2.0 / BSD 系列许可证为主，许可证文本随 crates.io 各 crate 分发。
 
+## 文案规范借鉴
+
+### human-writing（活人感写作 Skill）
+
+- **许可证**：MIT
+- **作者**：数字生命卡兹克（KKKKhazix）
+- **上游**：<https://github.com/KKKKhazix/human-writing>
+- **说明**：文案写作模块（`src/lib/copywriting/`）的翻案腔禁用句式清单与"禁修辞动作而非字面"原则参考了该项目的公开规则文本，未捆绑其代码或稿件内容。
+
 ---
 
 如认为本声明有遗漏或错误，欢迎提 Issue 指出。
