@@ -4,7 +4,7 @@ import { homeDir } from '@tauri-apps/api/path';
 import { uploadToCos } from '@/lib/cos';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { resolveApiKey } from '@/lib/credentials';
+import { resolveConfiguredApimartApiKey } from '@/lib/imageRouter/configuredChannels';
 import {
   PaidSubmissionUnknownError,
   PaidTaskCreatedError,
@@ -37,7 +37,7 @@ export class ApimartTaskFailedError extends Error {
 
 export function getApimartApiKey(): string {
   const s = useSettingsStore.getState();
-  return resolveApiKey(s, 'omniApimart', s.omniApimartApiKey).trim();
+  return resolveConfiguredApimartApiKey(s);
 }
 
 export function hasApimartApiKey(): boolean {

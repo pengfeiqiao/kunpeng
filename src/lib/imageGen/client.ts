@@ -25,6 +25,7 @@ import {
   submitApimartTask,
 } from '@/lib/apimart/client';
 import { APIMART_BASE_URL } from '@/lib/apimart/baseUrl';
+import { discoverConfiguredImageSlots } from '@/lib/imageRouter/configuredChannels';
 import {
   APIMART_GPT_IMAGE2_ENDPOINT,
   APIMART_GPT_IMAGE2_SLOT_ID,
@@ -81,7 +82,7 @@ interface EditReference {
 
 function getSlots(params: GenerateImageParams | undefined, model: string): ImageApiSlot[] {
   const settings = useSettingsStore.getState();
-  const slots = [...(settings.imageApiSlots ?? [])];
+  const slots: ImageApiSlot[] = [...discoverConfiguredImageSlots(settings)];
   const apimartKey = getApimartApiKey();
   if (model === 'seedream-v5-pro' && apimartKey) {
     // Keep APIMart on the existing global key. This virtual slot participates

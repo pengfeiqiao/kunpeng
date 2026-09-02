@@ -1,6 +1,10 @@
 import { useSettingsStore } from '@/stores/settingsStore';
-import { resolveApiKey, resolveSlotApiKey } from '@/lib/credentials';
+import { resolveApiKey } from '@/lib/credentials';
 import { APIMART_GPT_IMAGE2_SLOT_ID, APIMART_SEEDREAM_SLOT_ID } from '@/lib/apimart/contracts';
+import {
+  discoverConfiguredImageSlots,
+  resolveConfiguredApimartApiKey,
+} from './configuredChannels.ts';
 
 export type ImageRouteMode = 'text-to-image' | 'image-to-image';
 export type ImageRouteTier = 'cheap' | 'standard';
@@ -140,9 +144,8 @@ export function getImageRouteStats(): RouteStats[] {
 
 export function getImageRouteDefinitions(): ImageRouteDefinition[] {
   const settings = useSettingsStore.getState();
-  const slots = settings.imageApiSlots ?? [];
+  const slots = discoverConfiguredImageSlots(settings);
   const apiRoutes = slots
-    .filter((s) => s.enabled && s.baseUrl && resolveSlotApiKey(settings, s))
     .flatMap<ImageRouteDefinition>((slot) => {
       const provider = slot.provider ?? (slot.baseUrl.includes('aihubmix') ? 'aihubmix' : slot.baseUrl.includes('zexapi') ? 'zexapi' : 'dmxapi');
       const providerLabel = provider === 'aihubmix' ? 'AiHubMix' : provider === 'zexapi' ? 'ZexAPI' : 'DMX';
@@ -201,7 +204,7 @@ export function getImageRouteDefinitions(): ImageRouteDefinition[] {
   const builtInRoutes = RHTV_ROUTES.filter((route) => (
     route.provider !== 'runninghub' || Boolean(resolveApiKey(settings, 'runninghub', settings.runninghubApiKey).trim())
   ));
-  const apimartKey = resolveApiKey(settings, 'omniApimart', settings.omniApimartApiKey).trim();
+  const apimartKey = resolveConfiguredApimartApiKey(settings);
   const apimartSeedreamRoutes: ImageRouteDefinition[] = apimartKey
     ? [
         {
@@ -448,5 +451,5 @@ export function chooseSeedreamProChannel(requestedEngineId: string, hasReference
 
 export function imageApiSlotsConfigured(): boolean {
   const settings = useSettingsStore.getState();
-  return (settings.imageApiSlots ?? []).some((s) => s.enabled && s.baseUrl && resolveSlotApiKey(settings, s));
+  return discoverConfiguredImageSlots(settings).length > 0 || Boolean(resolveConfiguredApimartApiKey(settings));
 }
