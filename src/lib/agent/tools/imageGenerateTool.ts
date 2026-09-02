@@ -8,6 +8,7 @@ import {
   applyMidjourneyStylePrompt,
   ensureMidjourneyStyleReference,
   getMidjourneyStyle,
+  MIDJOURNEY_STYLE_CATEGORIES,
   MIDJOURNEY_STYLE_PRESETS,
   resolveMidjourneyStyleParameters,
 } from '@/lib/midjourney/styles';
@@ -17,6 +18,15 @@ import {
 
 const IMAGE_MODELS = ['gpt-image-2', 'seedream-v5-pro', 'midjourney-v81', 'midjourney-v82'];
 const ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '4:5', '5:4', '21:9'];
+
+// id=中文名 分组清单注入工具描述，agent 才能按题材挑风格（只看裸 id 选不准）。
+const MJ_STYLE_CHOICES = MIDJOURNEY_STYLE_CATEGORIES
+  .map((cat) => {
+    const items = MIDJOURNEY_STYLE_PRESETS.filter((s) => s.category === cat.id);
+    return items.length > 0 ? `${cat.name}（${items.map((s) => `${s.id}=${s.name}`).join('，')}）` : '';
+  })
+  .filter(Boolean)
+  .join('；');
 
 export const imageGenerateTool: Tool = {
   definition: {
@@ -54,7 +64,7 @@ export const imageGenerateTool: Tool = {
         midjourney_style_id: {
           type: 'string',
           enum: MIDJOURNEY_STYLE_PRESETS.map((item) => item.id),
-          description: 'Midjourney 专属风格。选择后会应用经 API 验证的提示词、参数，必要时自动附带风格母图。',
+          description: 'Midjourney 专属风格。选择后会应用经 API 验证的提示词、参数，必要时自动附带风格母图。用 MJ 生图时应主动按题材选择最贴合的风格：' + MJ_STYLE_CHOICES,
         },
         creativity_mode: {
           type: 'string',

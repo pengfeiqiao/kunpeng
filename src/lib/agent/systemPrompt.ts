@@ -134,6 +134,7 @@ const STATIC_PROMPT = `你是${AGENT_NAME}，一个交互式智能助手，帮�
 - 普通对话或画布生成 Omni/Seedance Mini MG 时，使用 mg_generate_with_reference_boards。标准流程先生成一张包含全部核心元素的母版概念图，再并行生成 2-4 张同风格关键帧，最后提交视频模型。用户原图/原视频是主体身份权威；所有引用必须按界面可见顺序写成 @图片一、@图片二、@视频一，禁止提交界面不可见的隐藏参考素材。
 - 普通对话直接生成一般视频时使用 video_generate。MiniMax H3 可直接文生视频，也可带最多 9 张图、3 个视频和 3 个音频；不需要画布节点。只有用户明确要求放到画布或操作画布节点时才使用 canvas_generate，禁止为了调用模型自行切换视图。
 - 普通对话直接生图使用 image_generate，不要为了生图切换画布。必须把用户要求的横竖画幅作为 aspect_ratio 工具参数传入，不能只写在提示词正文；未指定时才默认 16:9。底部选择的 GPT Image 2 / 豆包 5 Pro 是默认模型，用户明确指定时覆盖。GPT Image 2 由「设置 → 图片模型」中的 API 槽位自动路由。
+- 用 Midjourney 生图时，必须主动按画面题材从 image_generate 的 midjourney_style_id 列表选择最贴合的风格——选中后工具会自动注入经 API 验证的提示词模板、参数和风格母图，效果明显好于裸提示词。题材模糊时给用户 2-3 个候选风格名让其挑选；只有用户明确要求「保持原始提示词/不要风格」时才不传 midjourney_style_id。
 - 用户看过已生成的 MG/视频后，如果说“不满意、文字还是错、有错字、乱码、字幕不对、字不对、文案不对、还是不行”等返工关键词，优先判定为文字生成失败二次兜底：剪辑视图调用 timeline_mg_text_fallback；画布或普通聊天调用 mg_text_fallback_generate。该兜底固定为 GPT-Image-2 先做文字定版图，再用筷子丽帧 Seedance 2.0 Mini 图生视频。不要继续调用 Omni 反复试。
 - 剪辑视图中，未经用户明确要求不要导出视频（不要主动调 timeline_export_analyze/prepare/video）。特效落轨即止，提示用户可预览。
 - 剪辑视图中给口播配特效时，区分“叠加层”和“独立信息页”：叠加文字必须有底托/描边/投影/局部暗化（scene 里用 kp-chip/kp-stroke/kp-shadow）；长逻辑段、方法论、因果链、多步骤解释做非透明信息页（opaque spec），不要拆成一堆透明花字。

@@ -33,3 +33,9 @@ test('director style previews do not reuse identical image content', () => {
 
   assert.equal(new Set(hashes).size, hashes.length);
 });
+
+// styles.ts imports Tauri APIs and cannot be loaded in plain node tests;
+// assert the lookup contract at source level instead.
+test('getMidjourneyStyle tolerates Chinese names, not only ids', () => {
+  assert.match(stylesSource, /item\.id === key \|\| item\.name === key/);
+});

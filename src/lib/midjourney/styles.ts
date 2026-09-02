@@ -318,7 +318,10 @@ export function resolveMidjourneyStyleParameters(
 }
 
 export function getMidjourneyStyle(id: string | undefined): MidjourneyStylePreset | undefined {
-  return MIDJOURNEY_STYLE_PRESETS.find((item) => item.id === id);
+  const key = String(id ?? '').trim();
+  if (!key) return undefined;
+  // 宽松匹配：agent 可能传中文名而不是 id（尤其普通对话里枚举约束不一定强制）
+  return MIDJOURNEY_STYLE_PRESETS.find((item) => item.id === key || item.name === key);
 }
 
 export async function loadMidjourneyStyleLibrary(): Promise<{

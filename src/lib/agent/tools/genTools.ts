@@ -7,7 +7,7 @@ export const aigcOptimizePromptTool: Tool = {
   definition: {
     name: 'aigc_optimize_prompt',
     description: '根据当前导演风格和引擎公式优化生成提示词。'
-      + '在调用 image_client / runninghub / dreamina 前先调用此工具。',
+      + '在调用 image_generate / image_client / runninghub / dreamina / canvas_generate 前先调用此工具。',
     parameters: {
       type: 'object',
       properties: {
