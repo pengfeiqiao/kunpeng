@@ -74,10 +74,12 @@ import {
   chooseGptImageChannel,
   chooseSeedreamProChannel,
   getImageRouteDefinition,
+  getImageRouteDefinitions,
   pickNextHealthyChannel,
   recordImageRouteMetric,
   type ImageRouteModel,
 } from '@/lib/imageRouter/metrics';
+import { gptImageRouteExists } from '@/lib/imageRouter/gptRoute';
 import {
   isAmbiguousPaidSubmitStatus,
   PaidSubmissionUnknownError,
@@ -3070,6 +3072,7 @@ async function runSeedance25Generation(req: CoreGenRequest): Promise<CoreGenResu
 export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenResult> {
   const isDreaminaSeedance25 = req.engineId === DREAMINA_SEEDANCE_25_ENGINE_ID;
   const isCustomMediaRoute = isCustomMediaEngine(req.engineId);
+  const isGptImageRoute = req.engineId.startsWith('gpt-image');
   const isKuaiziRoute = req.engineId === KUAIZI_SEEDANCE_ENGINE_ID ||
     (isSeedanceVideoEngine(req.engineId) && shouldUseKuaiziForSeedance());
   const isMidjourneyRoute = isMidjourneyEngine(req.engineId);
@@ -3083,8 +3086,15 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
   // Midjourney V8.2 is an APIMart-only route and deliberately does not live in
   // the generic RunningHub canvas engine registry. Do not reject it before
   // runGeneration() can hand it to the dedicated APIMart implementation.
-  const resolved = dedicatedEngineKind ? { engine: undefined } : resolveGenEngine(req);
-  if (!dedicatedEngineKind && !resolved.engine) {
+  //
+  // gpt-image-2* 同样不在引擎注册表（海外 RunningHub 节点 2026-08 退役），
+  // 真实渠道由 runGeneration 内的 chooseGptImageChannel 路由到生图槽位
+  // (api:/dreamina:)。预校验只要存在对应模式的路由就放行；没有路由时仍走
+  // resolveGenEngine，报出准确的「未配置 GPT 槽位」错误。
+  const gptImageRouted = isGptImageRoute
+    && gptImageRouteExists(getImageRouteDefinitions(), req.engineId, (req.referenceUrls ?? []).length > 0);
+  const resolved = dedicatedEngineKind || gptImageRouted ? { engine: undefined } : resolveGenEngine(req);
+  if (!dedicatedEngineKind && !gptImageRouted && !resolved.engine) {
     return { success: false, taskId: '', resultPaths: [], error: resolved.error };
   }
   const engine = resolved.engine;
@@ -3097,7 +3107,7 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
     const store = useCanvasStore.getState();
     const srcNode = store.nodes.find((n) => n.id === req.nodeId);
     const srcData = srcNode?.data as Record<string, unknown> | undefined;
-    const expectedKind = dedicatedEngineKind ?? engine?.kind ?? 'video';
+    const expectedKind = dedicatedEngineKind ?? (gptImageRouted ? ('image' as const) : engine?.kind) ?? 'video';
     const hasResult = Boolean(
       expectedKind === 'image' ? srcData?.generatedImageUrl
         : expectedKind === 'audio' ? srcData?.audioUrl
@@ -3187,7 +3197,7 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
   // generatedVideoUrl，AudioNode 只认 audioUrl，导致音频节点永远空白）
   const paths = result.resultPaths;
   const primaryUrl = result.resultUrls[0];
-  const outKind = result.engineKind ?? dedicatedEngineKind ?? engine?.kind ?? 'video';
+  const outKind = result.engineKind ?? dedicatedEngineKind ?? (gptImageRouted ? ('image' as const) : engine?.kind) ?? 'video';
   patchNode(targetNodeId, {
     isGenerating: false,
     justCompletedAt: Date.now(),

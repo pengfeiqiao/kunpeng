@@ -62,7 +62,7 @@ export default function WorkspaceAgentModelPicker({ scope, variant = 'dark', dis
   };
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">
+    <div className="flex min-w-0 flex-1 items-center gap-0.5">
       <DeepseekHarnessControl providerId={selectedProviderId} variant={variant} disabled={disabled} compact />
       <div ref={rootRef} className="relative min-w-0 flex-1">
       <button

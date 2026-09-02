@@ -896,7 +896,7 @@ export default function AgentDrawer({
                   </button>
                   <ConfirmModeSelect variant={variant} compact />
                   {modelScope && (
-                    <div className="min-w-0 w-[88px] max-w-[104px] shrink overflow-hidden sm:w-[112px] sm:max-w-[112px]">
+                    <div className="min-w-0 w-[88px] max-w-[104px] shrink sm:w-[112px] sm:max-w-[112px]">
                       <WorkspaceAgentModelPicker
                         scope={modelScope}
                         variant={variant}
