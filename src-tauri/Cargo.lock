@@ -2100,7 +2100,7 @@ dependencies = [
 
 [[package]]
 name = "kunpeng-desktop"
-version = "2.9.19"
+version = "2.9.20"
 dependencies = [
  "aes",
  "base64 0.21.7",
