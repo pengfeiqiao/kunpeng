@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const node = join(root, 'node', 'bin', 'node');
+// Windows 布局是 node/node.exe，Unix 是 node/bin/node。
+const node = join(root, 'node', ...(process.platform === 'win32' ? ['node.exe'] : ['bin', 'node']));
+// cordis/loader entry 的 name 直接进 import()：Windows 裸绝对路径会被当成
+// URL scheme 'c:'，必须 file:// URL（与 dsh.rs 的 module_specifier 一致）。
+const fileUrl = (p) => 'file:///' + p.replace(/\\/g, '/');
 const bin = join(root, 'node_modules', '@deepseek-ai', 'dsh-acp-demo', 'lib', 'bin.js');
 const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
 
