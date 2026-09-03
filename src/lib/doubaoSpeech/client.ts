@@ -4,7 +4,7 @@ import { writeBinaryFile } from '@tauri-apps/api/fs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveApiKey, resolveCosSecrets } from '@/lib/credentials';
 import { generateSeedAudioViaKuaizi } from '@/lib/kuaizi/seedAudio';
-import { resolveKuaiziMediaRef } from '@/lib/kuaizi/seedance';
+import { getKuaiziApiKey, resolveKuaiziMediaRef } from '@/lib/kuaizi/seedance';
 import { uploadToCos } from '@/lib/cos';
 import { nanoid } from 'nanoid';
 import {
@@ -37,6 +37,13 @@ export interface DoubaoSpeechRequest {
   audio_config?: DoubaoAudioConfig;
 }
 
+export type SpeechChannel = 'auto' | 'kuaizi' | 'doubao';
+
+export interface GenerateSpeechOptions {
+  /** auto follows settings but skips providers that cannot accept this request. */
+  channel?: SpeechChannel;
+}
+
 export interface DoubaoSpeechResponse {
   code?: number;
   message?: string;
@@ -44,6 +51,9 @@ export interface DoubaoSpeechResponse {
   duration: number;
   original_duration: number;
   url?: string;
+  /** Local audit metadata; not part of the provider response body. */
+  provider?: 'kuaizi' | 'doubao';
+  model?: 'seed-audio' | 'seed-audio-1.0';
   subtitle?: {
     text?: string;
     sentences?: Array<{
@@ -60,8 +70,33 @@ export interface DoubaoSpeechResponse {
  * 可在「设置 → 豆包语音」切换为豆包官方）；筷子通道失败且已配置豆包语音
  * API Key 时自动降级回豆包官方通道，两者都失败则把两个错误一起抛出。
  */
-export async function generateSpeech(req: DoubaoSpeechRequest): Promise<DoubaoSpeechResponse> {
-  if (useSettingsStore.getState().speechKuaiziFirst) {
+export async function generateSpeech(
+  req: DoubaoSpeechRequest,
+  options: GenerateSpeechOptions = {},
+): Promise<DoubaoSpeechResponse> {
+  const settings = useSettingsStore.getState();
+  const channel = options.channel ?? 'auto';
+  const references = req.references ?? [];
+  const kuaiziCompatible = references.length >= 1
+    && references.length <= 10
+    && references.every((ref) => !ref.speaker && Boolean(ref.audio_url || ref.audio_data));
+  const hasKuaiziKey = Boolean(getKuaiziApiKey());
+  const hasDoubaoKey = Boolean(resolveApiKey(settings, 'doubaoSpeech', settings.doubaoSpeechApiKey).trim());
+
+  if (channel === 'kuaizi') {
+    if (!hasKuaiziKey) throw new Error('请先在设置中配置筷子丽帧 API Key');
+    if (!kuaiziCompatible) {
+      throw new Error('筷子丽帧 Seed-Audio 必须提供 1-10 条参考音频，speaker 音色 ID 仅豆包官方通道支持');
+    }
+    return generateSpeechViaKuaizi(req);
+  }
+  if (channel === 'doubao') return generateSpeechViaDoubao(req);
+
+  // Kuaizi requires audio references. A text-only or speaker-ID request must
+  // go directly to official Doubao when that key exists instead of first
+  // issuing a request that is guaranteed to fail validation.
+  const shouldTryKuaizi = settings.speechKuaiziFirst && hasKuaiziKey && kuaiziCompatible;
+  if (shouldTryKuaizi) {
     try {
       return await generateSpeechViaKuaizi(req);
     } catch (initialKuaiziErr) {
@@ -76,7 +111,6 @@ export async function generateSpeech(req: DoubaoSpeechRequest): Promise<DoubaoSp
           );
         }
       }
-      const hasDoubaoKey = Boolean(resolveApiKey(useSettingsStore.getState(), 'doubaoSpeech', useSettingsStore.getState().doubaoSpeechApiKey).trim());
       if (!hasDoubaoKey) {
         throw new Error(`${errText(kuaiziErr)}\n（未配置豆包语音 API Key，无法回退豆包官方通道）`);
       }
@@ -88,6 +122,14 @@ export async function generateSpeech(req: DoubaoSpeechRequest): Promise<DoubaoSp
       }
     }
   }
+  if (hasDoubaoKey) return generateSpeechViaDoubao(req);
+  if (settings.speechKuaiziFirst && hasKuaiziKey && !kuaiziCompatible) {
+    throw new Error('筷子丽帧 Seed-Audio 需要 1-10 条参考音频。请上传参考音频，或在「设置 → 豆包语音」配置豆包官方 API Key 以便纯文本配音');
+  }
+  // The preferred official channel is unavailable, but the request already
+  // satisfies Kuaizi Seed-Audio's stricter reference contract. Use the only
+  // runnable Seed-Audio provider instead of failing on a missing official key.
+  if (hasKuaiziKey && kuaiziCompatible) return generateSpeechViaKuaizi(req);
   return generateSpeechViaDoubao(req);
 }
 
@@ -178,6 +220,8 @@ async function generateSpeechViaKuaizi(req: DoubaoSpeechRequest): Promise<Doubao
     url: result.audioUrl,
     duration: result.duration,
     original_duration: result.duration,
+    provider: 'kuaizi',
+    model: 'seed-audio',
   };
 }
 
@@ -225,7 +269,7 @@ async function generateSpeechViaDoubao(req: DoubaoSpeechRequest): Promise<Doubao
     throw new PaidSubmissionUnknownError('豆包配音', `成功响应没有 audio 或 url${suffix}`);
   }
 
-  return data;
+  return { ...data, provider: 'doubao', model: 'seed-audio-1.0' };
 }
 
 export async function fetchSpeechAudioBytes(resp: DoubaoSpeechResponse): Promise<Uint8Array> {

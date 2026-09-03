@@ -20,7 +20,22 @@ export interface BuildRouteOptions {
   primary?: RouteSelection | null;
   /** Old per-agent preference kept only as a recovery path for migrated settings. */
   legacyAgentPreference?: string;
+  /**
+   * Background prompt-rewrite jobs should not depend on users having manually
+   * populated the fallback list. When enabled, append every other configured
+   * LLM provider after the visible primary and explicit fallback chain.
+   */
+  appendConfiguredProviders?: boolean;
 }
+
+const CONFIGURED_PROVIDER_FALLBACK_ORDER = [
+  'deepseek',
+  'glm',
+  'kimi',
+  'minimax',
+  'qwen',
+  'doubao',
+];
 
 function hasProviderKey(
   settings: RouteSettingsSnapshot,
@@ -74,6 +89,18 @@ export function buildChatRouteStrategy(
 
   for (const providerId of settings.providerFallbackChain ?? []) {
     add({ providerId });
+  }
+
+  if (options.appendConfiguredProviders) {
+    const credentialProviderIds = Object.keys(settings.credentialRefs ?? {})
+      .filter((capability) => capability.startsWith('provider:'))
+      .map((capability) => capability.slice('provider:'.length));
+    const configuredProviderIds = [
+      ...CONFIGURED_PROVIDER_FALLBACK_ORDER,
+      ...Object.keys(settings.providerApiKeys ?? {}),
+      ...credentialProviderIds,
+    ];
+    for (const providerId of configuredProviderIds) add({ providerId });
   }
 
   if (chain.length >= 2) return { kind: 'fallback_chain', chain };

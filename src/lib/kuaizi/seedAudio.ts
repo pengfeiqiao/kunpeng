@@ -19,6 +19,13 @@
 import { fetch as tauriFetch, ResponseType, Body } from '@tauri-apps/api/http';
 import { isTransientKuaiziError, requireKuaiziApiKey } from './seedance';
 import { isAmbiguousPaidSubmitStatus, PaidSubmissionUnknownError, PaidTaskCreatedError } from '@/lib/billingSafety';
+import {
+  buildSeedAudioPayload,
+  type KuaiziSeedAudioPayload,
+  type SeedAudioFormat,
+} from './seedAudioContract';
+
+export { buildSeedAudioText } from './seedAudioContract';
 
 // 与 seedance.ts 同源；那边未导出 BASE_URL，且该文件由其他代理在改，这里就地重定义。
 const BASE_URL = 'https://aiopenapi.kuaizi.cn';
@@ -27,19 +34,7 @@ const STATUS_PATH = '/ai-open-platform-api/v1/seed_audio/task/status';
 
 const INSUFFICIENT_BALANCE_MSG = '筷子丽帧余额不足（HTTP 429 / 40001），请充值后重试';
 
-export type KuaiziSeedAudioStatus = 'pending' | 'submitted' | 'running' | 'succeeded' | 'failed';
-
-export interface KuaiziSeedAudioPayload {
-  text: string;
-  references: Array<{ audio_url: string }>;
-  options?: {
-    format?: 'wav' | 'mp3' | 'pcm' | 'ogg_opus';
-    sample_rate?: number;
-    speed?: number;
-    volume?: number;
-    pitch?: number;
-  };
-}
+export type KuaiziSeedAudioStatus = 'running' | 'succeeded' | 'failed';
 
 export interface KuaiziSeedAudioCreateResponse {
   code: number;
@@ -66,7 +61,7 @@ export interface KuaiziSeedAudioStatusResponse {
 export interface GenerateSeedAudioOptions {
   text: string;
   referenceAudioUrls: string[];
-  format?: 'wav' | 'mp3' | 'pcm' | 'ogg_opus';
+  format?: SeedAudioFormat;
   sampleRate?: number;
   speed?: number;
   volume?: number;
@@ -90,11 +85,6 @@ export interface SeedAudioResult {
  * 自动补「参考录音1：」前缀——单参考默认取第 1 条，多参考自动前缀也只用第 1 条
  * 的音色。
  */
-export function buildSeedAudioText(text: string, referenceCount: number): string {
-  if (referenceCount <= 0 || text.includes('参考录音')) return text;
-  return `参考录音1：${text}`;
-}
-
 async function seedAudioCreateTask(
   payload: KuaiziSeedAudioPayload,
   signal?: AbortSignal,
@@ -124,7 +114,7 @@ async function seedAudioCreateTask(
   const parsed = res.data as KuaiziSeedAudioCreateResponse;
   if (parsed.code === 40001) throw new Error(INSUFFICIENT_BALANCE_MSG);
   if (parsed.code !== 0) {
-    throw new Error(`筷子丽帧 seed_audio 创建任务被拒绝: ${parsed.message || JSON.stringify(parsed).slice(0, 300)}`);
+    throw new Error(`筷子丽帧 seed_audio 创建任务被拒绝: ${parsed.message || JSON.stringify(parsed).slice(0, 300)}${parsed.trace_id ? `（trace_id: ${parsed.trace_id}）` : ''}`);
   }
   if (!parsed.data?.task_id) {
     throw new PaidSubmissionUnknownError('筷子丽帧配音', `成功响应未包含 task_id：${JSON.stringify(parsed).slice(0, 300)}`);
@@ -152,7 +142,10 @@ async function seedAudioQueryTask(
   const parsed = res.data as KuaiziSeedAudioStatusResponse;
   if (parsed.code === 40001) throw new Error(INSUFFICIENT_BALANCE_MSG);
   if (parsed.code !== 0 || !parsed.data?.status) {
-    throw new Error(`筷子丽帧 seed_audio 查询被拒绝: ${parsed.message || JSON.stringify(parsed).slice(0, 300)}`);
+    throw new Error(`筷子丽帧 seed_audio 查询被拒绝: ${parsed.message || JSON.stringify(parsed).slice(0, 300)}${parsed.trace_id ? `（trace_id: ${parsed.trace_id}）` : ''}`);
+  }
+  if (!['running', 'succeeded', 'failed'].includes(parsed.data.status)) {
+    throw new Error(`筷子丽帧 seed_audio 返回未知任务状态: ${parsed.data.status}${parsed.trace_id ? `（trace_id: ${parsed.trace_id}）` : ''}`);
   }
   return parsed;
 }
@@ -193,33 +186,10 @@ async function seedAudioPollTask(
  * 失败抛出带原文的 Error；余额不足（HTTP 429 / code 40001）报「筷子丽帧余额不足」。
  */
 export async function generateSeedAudioViaKuaizi(opts: GenerateSeedAudioOptions): Promise<SeedAudioResult> {
-  const referenceAudioUrls = (opts.referenceAudioUrls ?? []).map((u) => u.trim()).filter(Boolean).slice(0, 10);
-  if (referenceAudioUrls.length === 0) {
-    throw new Error('筷子丽帧 seed_audio 需要 1-10 条公网参考音色音频 URL');
-  }
-  const text = buildSeedAudioText(opts.text.trim(), referenceAudioUrls.length);
-  if (!text) throw new Error('筷子丽帧 seed_audio 的 text 不能为空');
-  if (text.length > 4096) {
-    throw new Error(`筷子丽帧 seed_audio 的 text 超长（${text.length} 字，上限 4096）`);
-  }
-
-  const options: KuaiziSeedAudioPayload['options'] = {};
-  if (opts.format) options.format = opts.format;
-  if (opts.sampleRate != null) options.sample_rate = Math.min(48000, Math.max(8000, Math.trunc(opts.sampleRate)));
-  if (opts.speed != null) options.speed = Math.min(2, Math.max(0.5, opts.speed));
-  if (opts.volume != null) options.volume = Math.min(2, Math.max(0.5, opts.volume));
-  if (opts.pitch != null) options.pitch = Math.min(12, Math.max(-12, Math.trunc(opts.pitch)));
-
-  const created = await seedAudioCreateTask(
-    {
-      text,
-      references: referenceAudioUrls.map((audio_url) => ({ audio_url })),
-      ...(Object.keys(options).length > 0 ? { options } : {}),
-    },
-    opts.signal,
-  );
+  const payload = buildSeedAudioPayload(opts);
+  const created = await seedAudioCreateTask(payload, opts.signal);
   const taskId = created.data!.task_id!;
-  console.log('[kuaizi-seed-audio] 任务已创建:', taskId, '参考数:', referenceAudioUrls.length);
+  console.log('[kuaizi-seed-audio] 任务已创建:', taskId, '参考数:', payload.references.length);
 
   try {
     const status = await seedAudioPollTask(taskId, {

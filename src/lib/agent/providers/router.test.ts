@@ -88,3 +88,29 @@ test('fallback error names both the selected and actual final provider', () => {
   assert.match(message, /HTTP 401/);
   assert.match(message, /model id must be k3/);
 });
+
+test('prompt rewrite route appends other configured LLM providers', () => {
+  const strategy = buildChatRouteStrategy({
+    providerApiKeys: {
+      deepseek: 'deepseek-key',
+      kimi: 'kimi-key',
+      qwen: 'qwen-key',
+    },
+    providerModels: {
+      deepseek: 'deepseek-v4-flash',
+      kimi: 'k3[1m]',
+      qwen: 'qwen3.8-max',
+    },
+    providerDefault: 'deepseek',
+    providerFallbackChain: [],
+  }, { appendConfiguredProviders: true });
+
+  assert.deepEqual(strategy, {
+    kind: 'fallback_chain',
+    chain: [
+      { providerId: 'deepseek', modelId: 'deepseek-v4-flash' },
+      { providerId: 'kimi', modelId: 'k3[1m]' },
+      { providerId: 'qwen', modelId: 'qwen3.8-max' },
+    ],
+  });
+});

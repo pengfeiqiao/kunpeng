@@ -15,14 +15,18 @@ import type { CompletionResult, SimpleCompletionRequest } from './providers/type
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveApiKey } from '@/lib/credentials';
 import { buildChatRouteStrategy } from './routeStrategy';
-import { isTruncatedFinishReason, mergePromptContinuation } from './completionGuard';
+import { hasUsableCompletionText, isTruncatedFinishReason, mergePromptContinuation } from './completionGuard';
 
 /** 从 settings 构建 fallback 链策略（与 useAgent 的 buildRouteStrategy 同逻辑）。 */
-export function buildRouteStrategyFromSettings(preferredProviderId?: string): RouteStrategy | undefined {
+export function buildRouteStrategyFromSettings(
+  preferredProviderId?: string,
+  appendConfiguredProviders = false,
+): RouteStrategy | undefined {
   const s = useSettingsStore.getState();
   return buildChatRouteStrategy(s, {
     legacyGlmApiKey: s.glmApiKey,
     primary: preferredProviderId ? { providerId: preferredProviderId } : null,
+    appendConfiguredProviders,
   });
 }
 
@@ -42,6 +46,11 @@ export interface QuickChatOptions {
   continueOnTruncation?: boolean;
   /** 自动续写次数，默认 2。全部用尽仍被截断时会明确报错。 */
   maxContinuations?: number;
+  /**
+   * 提示词改写专用容灾：空输出、模型级 4xx 和续写空结果都会切换到
+   * 其他已配置 LLM；同时自动补齐未手动加入 fallback chain 的 provider。
+   */
+  resilientPromptRewrite?: boolean;
 }
 
 type QuickMessage = { role: string; content: string };
@@ -88,7 +97,11 @@ export async function quickChat(
   const completeOnce = async (turnMessages: QuickMessage[]): Promise<CompletionResult> => {
     if (directEnabled) {
       try {
-        return await quickChatDirectDeepseek(turnMessages, opts.maxTokens);
+        const directResult = await quickChatDirectDeepseek(turnMessages, opts.maxTokens);
+        if (opts.resilientPromptRewrite && !hasUsableCompletionText(directResult.text)) {
+          throw new Error('DeepSeek 提示词改写返回为空');
+        }
+        return directResult;
       } catch (error) {
         // Direct DeepSeek is an optimization for long structured output, not a hard
         // dependency. Do not retry the broken direct route for continuation turns.
@@ -98,7 +111,10 @@ export async function quickChat(
       }
     }
 
-    strategy ??= buildRouteStrategyFromSettings(opts.preferredProviderId);
+    strategy ??= buildRouteStrategyFromSettings(
+      opts.preferredProviderId,
+      opts.resilientPromptRewrite,
+    );
     if (!strategy) {
       if (directError) throw directError;
       throw new Error('未配置任何可用的 AI provider Key（设置 → Agent 引擎）');
@@ -107,7 +123,15 @@ export async function quickChat(
       messages: turnMessages,
       ...(opts.maxTokens ? { maxTokens: opts.maxTokens } : {}),
     };
-    return chatWithFallbackDetailed(strategy, req, { source: 'background' }, opts.signal);
+    return chatWithFallbackDetailed(
+      strategy,
+      req,
+      { source: 'background' },
+      opts.signal,
+      opts.resilientPromptRewrite
+        ? { requireNonEmptyText: true, fallbackOnAnyError: true }
+        : undefined,
+    );
   };
 
   let result = await completeOnce(messages);

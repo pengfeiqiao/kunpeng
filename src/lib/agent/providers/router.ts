@@ -26,6 +26,7 @@ import type { StreamDelta } from '../types';
 import { getProvider } from './registry';
 import { agentLog } from '../logger';
 import { isRetryableFallbackStatus } from './networkPolicy';
+import { hasUsableCompletionText } from '../completionGuard';
 import {
   ProviderRouteError,
   type ProviderRouteAttempt,
@@ -74,6 +75,20 @@ const DEFAULT_TRIGGERS = [408, 429, 500, 502, 503, 504, 529];
 export interface ResolvedProvider {
   provider: Provider;
   modelId?: string;
+}
+
+export interface CompletionFallbackPolicy {
+  /** Treat whitespace-only model output as a failed attempt and try the next LLM. */
+  requireNonEmptyText?: boolean;
+  /** Prompt rewrites may move on from route-specific 4xx/model errors as well. */
+  fallbackOnAnyError?: boolean;
+}
+
+class EmptyCompletionError extends Error {
+  constructor() {
+    super('模型返回为空');
+    this.name = 'EmptyCompletionError';
+  }
 }
 
 function routeAttempt(link: FallbackLink, provider: Provider | undefined, err: unknown): ProviderRouteAttempt {
@@ -220,6 +235,7 @@ export async function chatWithFallbackDetailed(
   req: SimpleCompletionRequest,
   opts: ChatOptions,
   signal?: AbortSignal,
+  policy: CompletionFallbackPolicy = {},
 ): Promise<CompletionResult> {
   const chain = flattenToChain(strategy);
 
@@ -237,9 +253,13 @@ export async function chatWithFallbackDetailed(
     const triggers = link.triggerCodes ?? DEFAULT_TRIGGERS;
     try {
       const providerReq = { ...req, modelId: link.modelId ?? req.modelId };
-      return provider.chatDetailed
+      const result = provider.chatDetailed
         ? await provider.chatDetailed(providerReq, opts)
         : { text: await provider.chat(providerReq, opts), finishReason: null };
+      if (policy.requireNonEmptyText && !hasUsableCompletionText(result.text)) {
+        throw new EmptyCompletionError();
+      }
+      return result;
     } catch (err) {
       lastErr = err;
       attempts.push(routeAttempt(link, provider, err));
@@ -248,12 +268,14 @@ export async function chatWithFallbackDetailed(
       const status = extractStatus(err);
       const shouldFallback =
         i < chain.length - 1 &&
-        isRetryableFallbackStatus(status, triggers);
+        (policy.fallbackOnAnyError || isRetryableFallbackStatus(status, triggers));
 
       if (!shouldFallback) throw routeFailure(attempts, err);
 
       const next = chain[i + 1];
-      const reason = status !== undefined && status > 0 ? `HTTP ${status}` : 'network';
+      const reason = err instanceof EmptyCompletionError
+        ? 'empty response'
+        : status !== undefined && status > 0 ? `HTTP ${status}` : 'network';
       const detail = err instanceof Error ? err.message : String(err);
       agentLog.warn(
         'router',

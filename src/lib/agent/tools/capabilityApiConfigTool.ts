@@ -18,7 +18,7 @@ function describe(module: ModuleId): string {
   const s = useSettingsStore.getState();
   if (module === 'vision') {
     const lines = [
-      `模式：${s.visionApiMode === 'custom' ? '自定义端点' : '自动（原生 Kimi → DMX kimi-k3 → 豆包 lite → GPT-4o-mini 容灾链）'}`,
+      `模式：${s.visionApiMode === 'custom' ? '自定义端点' : '自动（原生 Kimi → DMX kimi-k3 → 豆包 lite → GPT-4o-mini 容灾链；原生配置/鉴权错误不降级，直接报错）'}`,
     ];
     if (s.visionApiMode === 'custom') {
       lines.push(`Base URL：${s.visionCustomBaseUrl || '（未填）'}`);

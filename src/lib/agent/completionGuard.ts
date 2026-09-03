@@ -5,6 +5,11 @@ export function isTruncatedFinishReason(reason?: string | null): boolean {
     || normalized === 'length';
 }
 
+/** Empty/whitespace-only completions are unusable for prompt rewrite jobs. */
+export function hasUsableCompletionText(text?: string | null): boolean {
+  return Boolean(text?.trim());
+}
+
 /** Remove the short overlap some gateways repeat when continuing a completion. */
 export function mergePromptContinuation(base: string, continuation: string): string {
   const next = continuation.trimStart();

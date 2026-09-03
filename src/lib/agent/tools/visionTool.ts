@@ -4,6 +4,9 @@
  * 容灾顺序：原生 Kimi K3（已配置时）→ DMXAPI kimi-k3 → 豆包 lite
  *           → gpt-4o-mini → mimo-v2-omni → DeepSeek-OCR → qwen3-omni-flash-all
  * （Gemini 已按成本要求移除）
+ * 降级纪律：原生 Kimi 的配置/鉴权错误（400/401/403/404）直接报错、不降级，
+ * 避免静默烧 DMX 备用额度；只有瞬时故障（429/5xx/网络）才降级，且结果中
+ * 会标注「已降级」及原因。
  *
  * image 参数接受公网 URL、data URI 或本地路径（本地自动转 base64）。
  */

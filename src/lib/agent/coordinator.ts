@@ -18,6 +18,11 @@ import { getProvider } from './providers/registry';
 import { sanitizeProgressText } from './toolSummary';
 import { buildTemporalTurnContext, isTimeSensitiveQuery } from './temporalContext';
 import { terminalToolResults } from './completionGuard';
+import {
+  buildDoubaoSpeechRoutingNotice,
+  isConflictingDoubaoSpeechGenerationTool,
+  shouldRequireDoubaoSpeechToolCall,
+} from './speechIntent';
 import { osDisplayName, userAgentPlatform } from '@/lib/platform';
 
 export interface CoordinatorConfig {
@@ -324,6 +329,8 @@ export class AgentCoordinator {
   }> {
     this.refreshScopedSkills(userInput);
     const additions: string[] = [];
+    const speechRoutingNotice = buildDoubaoSpeechRoutingNotice(userInput);
+    if (speechRoutingNotice) additions.push(speechRoutingNotice);
     if (isTimeSensitiveQuery(userInput)) additions.push(buildTemporalTurnContext());
     try {
       const notice = this.config.skillNoticeResolver?.(userInput);
@@ -493,6 +500,8 @@ export class AgentCoordinator {
           ? [...mediaBlocks, { type: 'text', text: userInput }]
           : userInput,
       });
+      const speechRoutingNotice = buildDoubaoSpeechRoutingNotice(userInput);
+      if (speechRoutingNotice) this.transientOnce.push({ role: 'user', content: speechRoutingNotice });
 
       // Tier 2.3: pick 3-4 memories relevant to this user turn and inject
       // them as a transient addendum on the outbound request only. They are
@@ -541,6 +550,9 @@ export class AgentCoordinator {
       let continuationText = '';
       let emptyFinalRetryCount = 0;
       let todoNudgeCount = 0;
+      const requireSpeechToolCall = shouldRequireDoubaoSpeechToolCall(userInput);
+      let speechToolAttempted = false;
+      let speechToolNudgeCount = 0;
       // Soft warning threshold: nudge the model to converge at ~70% of the
       // turn budget instead of hitting the hard maxTurns cutoff mid-task.
       const budgetWarnTurn = Math.floor(this.config.maxTurns * 0.7);
@@ -609,6 +621,21 @@ export class AgentCoordinator {
             }
             throw new Error('模型已结束任务，但连续两次没有返回可展示的回复。请重试或切换模型。');
           }
+          if (requireSpeechToolCall && !speechToolAttempted && speechToolNudgeCount < 1) {
+            speechToolNudgeCount += 1;
+            agentLog.warn('Coordinator', 'Explicit Doubao speech request ended without Seed-Audio tool; requiring one repair turn');
+            this.messages.push({
+              role: 'assistant',
+              content: response.text || '',
+              ...(response.thinkingBlocks.length ? { thinking_blocks: response.thinkingBlocks } : {}),
+            });
+            this.messages.push({
+              role: 'user',
+              content: '[系统纠正 — 无需向用户复述] 用户已给出可配音的台词并明确指定豆包 Seed-Audio，但你刚才没有调用正确工具。现在必须调用 doubao_speech_generate，并传入用户当前提供的参考音频；不得调用其他生成模型。',
+            });
+            continuationText = '';
+            continue;
+          }
           // Unfinished-work guard (e.g. todo list still has pending items):
           // give the model one chance to continue instead of silently
           // stopping half-way. Capped at one nudge per run to avoid loops.
@@ -635,6 +662,10 @@ export class AgentCoordinator {
           });
           callbacks.onComplete(fullText);
           return;
+        }
+
+        if (response.toolCalls.some((call) => call.function.name === 'doubao_speech_generate')) {
+          speechToolAttempted = true;
         }
 
         // Add assistant message with tool_calls.
@@ -664,6 +695,13 @@ export class AgentCoordinator {
           } catch {
             agentLog.warn('Coordinator', `Failed to parse tool args for ${call.function.name}`, call.function.arguments);
             params = {};
+          }
+
+          if (requireSpeechToolCall && isConflictingDoubaoSpeechGenerationTool(call.function.name)) {
+            const reason = `当前请求明确指定豆包 Seed-Audio 配音，禁止改用 ${call.function.name}。请调用 doubao_speech_generate 并传入当前参考音频。`;
+            agentLog.warn('Coordinator', `Blocked conflicting generation tool for Seed-Audio request: ${call.function.name}`);
+            prepared.push({ call, params, skip: `[denied] ${reason}` });
+            continue;
           }
 
           // Check tool risk level (dynamic check > static risk)

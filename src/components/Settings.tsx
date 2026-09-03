@@ -995,7 +995,7 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
               </div>
             )}
             <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
-              自动模式按「原生 Kimi → DMXAPI kimi-k3 → 豆包 lite → GPT-4o-mini」容灾；自定义模式只走你填的端点，需要 OpenAI 兼容的 chat/completions 且模型支持图片输入。
+              自动模式按「原生 Kimi → DMXAPI kimi-k3 → 豆包 lite → GPT-4o-mini」容灾；自定义模式只走你填的端点，需要 OpenAI 兼容的 chat/completions 且模型支持图片输入。原生 Kimi 配置/鉴权错误会直接报错而不是降级，避免静默消耗备用通道额度。
             </p>
           </div>
           <div className="border-t border-zinc-100 pt-4">

@@ -211,15 +211,38 @@ export async function visionWithFallback(
   }
 
   let kimiError = '';
+  let kimiStatus: number | undefined;
   if (isKimiK3Configured()) {
     try {
       return await kimiK3Vision(image, instruction);
     } catch (error) {
       kimiError = error instanceof Error ? error.message : String(error);
+      const status = (error as { status?: number })?.status;
+      kimiStatus = typeof status === 'number' ? status : undefined;
     }
   }
+  // 配置/鉴权类错误（400/401/403/404）是确定性的：重试和换通道都不会变好，
+  // 静默落到 DMX 只会持续烧用户额度（真实问题：用户配了原生 Kimi，DMX
+  // kimi-k3 却被大量调用）。直接报错并给出修复指引，不自动降级。
+  if (kimiError && kimiStatus !== undefined && [400, 401, 403, 404].includes(kimiStatus)) {
+    throw new Error(
+      `原生 Kimi K3 识图被拒（HTTP ${kimiStatus}）：${kimiError.slice(0, 200)}。`
+      + '这属于配置问题，已停止自动降级到 DMX 备用通道以免持续产生意外扣费。'
+      + '请检查「设置 → 模型与服务 → Kimi」的 Key 与 Base URL（coding 套餐与普通开放平台 Key 不通用），'
+      + '或在「设置 → 识图与联网」改用自定义端点。',
+    );
+  }
   try {
-    return await dmxVisionWithFallback(image, instruction);
+    const fallback = await dmxVisionWithFallback(image, instruction);
+    // 只有瞬时故障（429/5xx/网络）才走到这里；在结果标注降级及原因，
+    // 让本次 DMX 备用消耗对用户可见，而不是无声发生。
+    if (kimiError) {
+      return {
+        ...fallback,
+        model: `${fallback.model}（原生 Kimi 暂时失败，已降级 DMX: ${kimiError.replace(/\s+/g, ' ').slice(0, 80)}）`,
+      };
+    }
+    return fallback;
   } catch (error) {
     if (!kimiError) throw error;
     const dmxError = error instanceof Error ? error.message : String(error);

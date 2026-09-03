@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isTruncatedFinishReason, mergePromptContinuation, terminalToolResults } from './completionGuard.ts';
+import {
+  hasUsableCompletionText,
+  isTruncatedFinishReason,
+  mergePromptContinuation,
+  terminalToolResults,
+} from './completionGuard.ts';
 
 test('recognizes Anthropic and OpenAI truncation finish reasons', () => {
   assert.equal(isTruncatedFinishReason('max_tokens'), true);
@@ -8,6 +13,13 @@ test('recognizes Anthropic and OpenAI truncation finish reasons', () => {
   assert.equal(isTruncatedFinishReason('length'), true);
   assert.equal(isTruncatedFinishReason('end_turn'), false);
   assert.equal(isTruncatedFinishReason('stop'), false);
+});
+
+test('prompt rewrite output must contain non-whitespace text', () => {
+  assert.equal(hasUsableCompletionText('优化后的提示词'), true);
+  assert.equal(hasUsableCompletionText('  \n\t'), false);
+  assert.equal(hasUsableCompletionText(''), false);
+  assert.equal(hasUsableCompletionText(undefined), false);
 });
 
 test('merges repeated continuation overlap without losing content', () => {

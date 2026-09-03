@@ -1867,7 +1867,13 @@ export default function NodeInfoBar() {
               `原始要求：${current}`,
             ].filter(Boolean).join('\n'),
           },
-        ], { maxTokens: 5000, continueOnTruncation: true });
+        ], {
+          // MG 提示词结构较长，thinking 也可能占用输出预算。提高预算可减少
+          // 首轮截断；若单模型失败或续写为空，quickChat 会切到其他已配置 LLM。
+          maxTokens: 12000,
+          continueOnTruncation: true,
+          resilientPromptRewrite: true,
+        });
         const next = cleanPromptRewrite(rewritten);
         if (next) {
           const target = useCanvasStore.getState().nodes.find((item) => item.id === targetNodeId);
