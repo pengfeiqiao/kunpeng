@@ -8,7 +8,11 @@ import { join, resolve } from 'node:path';
 // pipeline actually delivers images to the model (识图), or drops/errors them.
 
 const root = resolve(import.meta.dirname, '..');
-const node = join(root, 'node', 'bin', 'node');
+// Windows 布局是 node/node.exe，Unix 是 node/bin/node。
+const node = join(root, 'node', ...(process.platform === 'win32' ? ['node.exe'] : ['bin', 'node']));
+// cordis/loader entry 的 name 直接进 import()：Windows 裸绝对路径会被当成
+// URL scheme 'c:'，必须 file:// URL（与 dsh.rs 的 module_specifier 一致）。
+const fileUrl = (p) => 'file:///' + p.replace(/\\/g, '/');
 const bin = join(root, 'node_modules', '@deepseek-ai', 'dsh-acp-demo', 'lib', 'bin.js');
 const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
 if (!apiKey) throw new Error('DEEPSEEK_API_KEY is required');
@@ -19,6 +23,9 @@ const imagePath = process.env.SMOKE_IMAGE || '/tmp/smoke-red.png';
 
 const bridgeToken = 'smoke-token';
 const bridge = net.createServer((socket) => {
+  // Windows 被子进程强杀时 socket 收 RST 而非优雅 FIN，假桥必须吞掉
+  // error 事件，否则进程在打印结果前就崩溃（同 PR #2 对生命周期测试的修法）。
+  socket.on('error', () => {});
   socket.setEncoding('utf8');
   let buffer = '';
   socket.on('data', (chunk) => {
@@ -53,7 +60,7 @@ const config = [
     // KUNPENG: 视觉轮次走 pi-ai 适配器（dsh-llm-deepseek 是 text-only 设计），
     // 模型级声明 input:[text,image]；图片经 attachment store 落盘后 base64 内联进模型。
     id: 'llm-pi-ai',
-    name: join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-pi-ai', 'lib', 'index.js'),
+    name: fileUrl(join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-pi-ai', 'lib', 'index.js')),
     config: {
       providers: {
         deepseek: {
@@ -67,7 +74,7 @@ const config = [
   },
   {
     id: 'acp',
-    name: join(root, 'kunpeng-acp-host.mjs'),
+    name: fileUrl(join(root, 'kunpeng-acp-host.mjs')),
     config: {
       provider: 'deepseek',
       model,
