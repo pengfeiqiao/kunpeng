@@ -1,6 +1,7 @@
 import { quickChat } from '@/lib/agent/quickChat';
 import { auditUniversalVideoPrompt } from './audit';
 import { AI_DRAMA_BAN, PERFORMANCE_GUIDE } from './performance.ts';
+import { HIDDEN_DIRECTOR_REASONING } from '@/lib/workshop/directorReasoning';
 
 export { auditUniversalVideoPrompt } from './audit';
 export type { VideoPromptAuditResult } from './audit';
@@ -35,6 +36,8 @@ export interface RewriteUniversalVideoPromptInput {
 
 const SYSTEM_PROMPT = `你是专业影视导演与视频生成提示词编辑器。只输出可直接提交视频模型的最终提示词，不解释，不使用 Markdown 代码块。
 
+${HIDDEN_DIRECTOR_REASONING}
+
 目标：把用户要求整理成清楚、可执行、无内部矛盾的通用视频提示词。保留电影级摄影、材质、光影、表演和物理细节，但不得为了丰富而新增原文没有的人物、人物关系、事件、对白、旁白或关键道具。
 
 输出结构依次为：
@@ -65,6 +68,8 @@ ${AI_DRAMA_BAN}
 提交前在内部完成一致性检查：素材编号、左右/前后方位、阵营、攻击目标、身体部位数量、肢体占用、动作因果、机位切换、时间段总长必须互相一致。只输出检查后的最终版本。`;
 
 const CLASSIC_SYSTEM_PROMPT = `你是专业影视导演与多镜头视频提示词编辑器。只输出可直接提交视频模型的最终提示词，不解释，不使用 Markdown 代码块。
+
+${HIDDEN_DIRECTOR_REASONING}
 
 请沿用鲲鹏经典版多镜头写法，结构依次为：
 分镜场景设定在：交代地点、时间、空间、光线、人物和道具的初始关系。

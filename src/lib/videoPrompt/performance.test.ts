@@ -35,5 +35,7 @@ test('workshop prompt builders carry the performance brief', () => {
     assert.ok(prompt.includes('触发→发酵→释放'), 'builder output should include the performance layering rule');
     assert.ok(prompt.includes('行为目的'), 'builder output should include the behavior-purpose rule');
     assert.ok(prompt.includes('AI 短剧/漫剧风'), 'builder output should include the AI-drama ban');
+    assert.ok(prompt.includes('内部导演决策'), 'builder output should include the hidden directing protocol');
+    assert.ok(prompt.includes('不向用户展示'), 'internal directing labels must not become visible output');
   }
 });

@@ -778,6 +778,8 @@ const setBreakdownTool: Tool = {
               participantIds: { type: 'array', items: { type: 'string' }, description: '事件所有参与者 ID，含功能角色' },
               event: { type: 'string', description: '谁触发了什么可见事件' },
               result: { type: 'string', description: '事件结束时已成立的可见结果；无明确结果写“未交代”' },
+              entryState: { type: 'string', description: '事件开始前已成立的人物位置、关系、道具和动作状态；供内部接戏检查' },
+              exitState: { type: 'string', description: '事件结束后必须延续的人物位置、关系、道具和动作状态；供内部接戏检查' },
             },
             required: ['id', 'sourceExcerpt', 'participantIds', 'event', 'result'],
           },
@@ -1030,6 +1032,19 @@ description 字段要有电影感：
                 description: '【必填】叙事职能：建立空间/推进事件/人物反应/关键细节/事件结果/必要转场',
               },
               emptyShotPurpose: { type: 'string', description: 'characterIds=[] 时必填。说明空镜用于空间建立、必要转场、线索、余波或结果状态，不能只写“氛围”。' },
+              directorDecision: {
+                type: 'object',
+                description: 'Agent 内部镜头决策，不在普通界面额外展示。用于保证每镜有新信息、景别有理由、切点明确且前后接戏。',
+                properties: {
+                  entryState: { type: 'string', description: '本镜开始时继承的人物位置、朝向、视线、手中物和动作进度' },
+                  newInformation: { type: 'string', description: '本镜相比上一镜新增的唯一主要信息' },
+                  shotScaleReason: { type: 'string', description: '为什么观众此刻需要这个景别/观察距离' },
+                  cutTrigger: { type: 'string', description: '触发切镜的动作、视线、声音、揭示或情绪变化' },
+                  exitState: { type: 'string', description: '本镜结束时下一镜必须继承的状态' },
+                  soundRole: { type: 'string', description: '声音承担的叙事作用；没有特殊作用可省略' },
+                },
+                required: ['entryState', 'newInformation', 'shotScaleReason', 'cutTrigger', 'exitState'],
+              },
               durationSec: { type: 'number', description: '【必填】时长 8-15 秒（Seedance 2.5 项目可到 30 秒；禁止 3-5s 短分镜）' },
               characterIds: { type: 'array', items: { type: 'string' }, description: '【必填】该镜头中出现的所有角色 ID（空镜除外不允许留空）' },
               propIds: { type: 'array', items: { type: 'string' }, description: '【有道具必填】关联道具 ID（参考图排在角色之后）' },
@@ -1066,7 +1081,7 @@ description 字段要有电影感：
         if (!existing) {
           if (scope !== 'story' && scope !== 'shots') conflicts.push(`${shotNo} 新增分镜`);
         } else {
-          const structuralFields: Array<keyof WsShot> = ['description', 'episode', 'sceneId', 'characterIds', 'propIds', 'sourceFactIds', 'narrativeFunction', 'emptyShotPurpose'];
+          const structuralFields: Array<keyof WsShot> = ['description', 'episode', 'sceneId', 'characterIds', 'propIds', 'sourceFactIds', 'narrativeFunction', 'emptyShotPurpose', 'directorDecision'];
           const changed = structuralFields.filter((field) =>
             candidate[field] !== undefined && !valuesEqual(candidate[field], existing[field]));
           if (changed.length > 0 && scope !== 'story' && scope !== 'shots') {

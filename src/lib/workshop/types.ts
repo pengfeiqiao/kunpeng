@@ -130,6 +130,10 @@ export interface WorkshopStoryFact {
   event: string;
   /** 事件结束时已成立的状态；无明确结果时写“未交代”。 */
   result: string;
+  /** 事件开始前已成立的状态，供内部接戏检查；旧项目可为空。 */
+  entryState?: string;
+  /** 事件结束后必须延续的状态，供内部接戏检查；旧项目可为空。 */
+  exitState?: string;
 }
 
 export type ShotGenStatus = 'idle' | 'queued' | 'generating' | 'done' | 'failed';
@@ -142,6 +146,22 @@ export type ShotNarrativeFunction =
   | 'detail'
   | 'consequence'
   | 'transition';
+
+/** Agent 内部使用的镜头决策记录，不作为额外表单展示给用户。 */
+export interface ShotDirectorDecision {
+  /** 本镜开始时必须承接的空间、人物、道具和动作状态。 */
+  entryState: string;
+  /** 相比上一镜，本镜让观众新知道或新感受到的唯一主要信息。 */
+  newInformation: string;
+  /** 为什么此刻需要这个观察距离，而不是机械套景别。 */
+  shotScaleReason: string;
+  /** 由动作、视线、声音、揭示或情绪变化触发的剪切理由。 */
+  cutTrigger: string;
+  /** 本镜结束时留给下一镜继承的状态。 */
+  exitState: string;
+  /** 声音在本镜承担的作用；无特殊作用可省略。 */
+  soundRole?: string;
+}
 
 export interface GeneratedAudio {
   characterId: string;
@@ -220,6 +240,8 @@ export interface WsShot {
   narrativeFunction?: ShotNarrativeFunction;
   /** 无人物镜头必须说明其不可替代的叙事用途；旧项目可为空。 */
   emptyShotPurpose?: string;
+  /** 隐藏的导演决策记录，由 Agent 用于信息推进和接戏校验。 */
+  directorDecision?: ShotDirectorDecision;
   durationSec?: number;
   characterIds: string[];
   propIds?: string[];

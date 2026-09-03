@@ -1,4 +1,5 @@
 import type { ShotNarrativeFunction, WorkshopStoryFact, WsCharacter, WsShot } from './types.ts';
+import { auditDirectorDecisionSequence } from './directorReasoning.ts';
 
 const WIDE_SCALE_RE = /(?:大远景|大全景|远景|全景)/u;
 const EXTREME_CLOSE_SCALE_RE = /(?:大特写|微距)/u;
@@ -132,6 +133,11 @@ export function auditShotSequence(
   if (options.validateShots !== false) {
     shots.forEach((shot) => mergeResult(result, auditShotNarrative(shot, characters)));
   }
+  const directorAudit = auditDirectorDecisionSequence(shots);
+  // Missing decisions and repeated information are deterministic failures.
+  // Continuity wording is intentionally advisory: two equivalent states may
+  // be phrased very differently, so it must not block a valid save.
+  result.errors.push(...directorAudit.errors);
 
   for (let i = 1; i < shots.length; i += 1) {
     const previous = shots[i - 1];

@@ -4,6 +4,7 @@
  */
 import type { WorkshopData, WorkshopStepId } from './types';
 import { PERFORMANCE_BRIEF } from '../videoPrompt/performance.ts';
+import { HIDDEN_DIRECTOR_REASONING } from './directorReasoning.ts';
 
 /** 把风格关键词格式化为 prompt 附加段（兜底用，主路径走 StyleSelector.buildStyleSection） */
 export function formatStyleSection(style?: WorkshopData['style']): string {
@@ -16,11 +17,13 @@ export function formatStyleSection(style?: WorkshopData['style']): string {
 export function buildBreakdownPrompt(styleSection = ''): string {
   return `请对当前工坊项目执行剧本拆解（第②步）：
 
+${HIDDEN_DIRECTOR_REASONING}
+
 1. 先调用 workshop_get_state 了解项目状态，再调用 workshop_read_source 拿到剧本文件路径
 2. 读取剧本内容（docx/pdf 用相应 skill 或工具；纯文本直接 read）
    - 事实优先：所有人物、事件、人物关系、场景和对白都必须能在剧本源文中找到依据
    - 选取 3-30 条能覆盖主要人物、关系和事件的原文短句，逐字放入 workshop_set_breakdown.sourceEvidence；不要润色或概括
-   - 逐场建立 storyFacts：每条记录稳定 id、sceneId、逐字 sourceExcerpt、participantIds、可见 event 和可见 result。先把剧本事实列完整，再设计镜头
+   - 逐场建立 storyFacts：每条记录稳定 id、sceneId、逐字 sourceExcerpt、participantIds、可见 event、可见 result，以及可承接的 entryState/exitState。先把剧本事实列完整，再设计镜头
    - 司机、乘客、店员、保安、警察、医生、路人等只要参与事件，即使没有姓名也必须建立角色档案并进入 participantIds；不能把功能角色省略后只保留道路、建筑、车辆或环境
    - 如果项目已有拆解，本次只是“重新拆解/重新分析”，默认保留既有剧情事实和对白，只补漏、纠错或完善视觉描述
    - 只有用户本轮明确要求改剧本、改剧情、改对白或增删人物时，才允许创作性改写；“优化提示词”绝不等于“改剧本”
@@ -36,7 +39,8 @@ export function buildBreakdownPrompt(styleSection = ''): string {
    - character：角色外观、服装、音色、阶段变化的不可漂移规则
    - scene：场景空间、材质、光源方向、色温和可变边界
    - continuity：跨镜头参考图顺序、服化道、道具、光源、剪辑连续性；blockingContinuity 必须按“幕/场景”建立站位基准：稳定空间锚点、人物相对位置/朝向/距离、180度轴线、出入口，以及只有剧本事件触发时才发生的走位变化
-5. 再调用 workshop_set_shots 写入分镜表（每镜：shotNo 用"集-镜"如 01-01、sourceFactIds、narrativeFunction、画面描述、对白、景别、运镜、情绪、时长 8-15 秒（Seedance 2.5 项目可到 30 秒）、关联 characterIds/sceneId）。**长剧本分批写，每批 ≤15 镜，第二批起用 mode:"merge"**
+5. 再调用 workshop_set_shots 写入分镜表（每镜：shotNo 用"集-镜"如 01-01、sourceFactIds、narrativeFunction、画面描述、对白、景别、运镜、情绪、时长 8-15 秒（Seedance 2.5 项目可到 30 秒）、关联 characterIds/sceneId，以及仅供 Agent 使用的 directorDecision）。**长剧本分批写，每批 ≤15 镜，第二批起用 mode:"merge"**
+   - directorDecision 必须填写 entryState、newInformation、shotScaleReason、cutTrigger、exitState；它只用于内部校验，不要在给用户的分镜文案里显示这些字段名
    - 先逐条检查 storyFacts 是否被分镜覆盖：每个事件至少有一条 event 镜头呈现人物、触发动作和结果；反应与后果可拆为 reaction/consequence，但不能只保留空镜
    - 同一场景按“必要时短暂建立空间 → 人物承担事件 → 反应/关键细节 → 结果”推进。不要机械套远中近特写，也不要让单一信息距离承包剧情：禁止连续两条空镜、同场连续三条远景/全景、同场连续三条近景/特写；连续两条大特写必须有明确的线索递进、匹配剪辑、动作连接或先细节后揭示
    - 景别按叙事任务选择：远景/全景交代空间与规模，中景/过肩交代人物关系和完整动作，近景承载反应与表演，大特写只用于关键触点、线索或情绪峰值。多人事件至少安排一个能看清关系的中景、过肩、双人同框或等价关系镜头
@@ -88,12 +92,14 @@ export function buildShotPromptsPrompt(styleSection = '', template: 'legacy' | '
     : '当前项目选择【经典版】。videoPrompt 沿用 Seedance 多镜头模板，使用“分镜场景设定在/分镜具体动作描述/镜头N-X”结构。';
   return `请为当前工坊项目的所有分镜编写生图与视频提示词（第④步）：
 
+${HIDDEN_DIRECTOR_REASONING}
+
 ${templateRule}
 
 1. 先 workshop_get_state（detail:"step"）查看分镜表、角色/场景/道具/色卡资产和 bibles。色卡也是图片资产，若 referenceOrder / imageReferenceOrder / videoReferenceOrder 里出现「色卡」，必须使用它对应的 @图片N 编号，禁止写 @色卡；但色卡是全局配色参考，只能在提示词末尾统一点名一次，不要在每个画面/每个子镜头反复写色调色卡。
    - 本任务只改提示词：不得调用 workshop_update_shot/workshop_set_shots 改 description、dialogue、角色、场景或道具关系
    - 所有画面内对白、VO、旁白必须逐字来自该镜 dialogue；dialogue 没有对应内容就整段不写，禁止为了“更电影化”自行补台词
-   - 写每镜前先核对 sourceFactIds 对应的 storyFacts，并用一句内部检查概括“事件主体 → 触发动作 → 可见结果”。videoPrompt 必须完整呈现这条事实链，且 characterIds 中每个剧情参与者都要按姓名出现
+   - 写每镜前先核对 sourceFactIds 对应的 storyFacts 和 directorDecision。内部确认“接戏状态 → 唯一新增信息 → 切点 → 出镜状态”；videoPrompt 必须完整呈现事实链，且 characterIds 中每个剧情参与者都要按姓名出现
    - 环境、材质、光影、前景遮挡只服务事件。已有角色或事件时，禁止把提示词写成道路、建筑、车辆、烟尘等连续纯空镜
 2. 读取 aigc-memory/prompt-templates/seedance/README.md 和 aigc-memory/prompt-templates/seedance/multi-shot.md。Seedance 规范以该目录为唯一准则。
 3. 如果发现某镜需要新增/删除/替换参考图（例如换角色图、删除 @图片七、把某个已有角色加入本镜），必须先调用 workshop_update_shot_refs 修改真实资产引用；不要只在提示词里删字或保留空 @图片 编号。
@@ -135,6 +141,7 @@ ${templateRule}
 /** 单条分镜 AI 优化 */
 export function buildOptimizeShotPrompt(shotNo: string): string {
   return `请优化工坊分镜 ${shotNo} 的提示词：先 workshop_get_state（detail:"step", section:"prompts", shot_no:"${shotNo}"）查看该镜事实，再调用 workshop_get_shot_refs 读取当前引用顺序和 referenceSignature。若用户要求换参考图、删除已引用参考图、加入角色/道具引用，必须先用 workshop_update_shot_refs 更新真实资产引用，再重新读取签名；不要只改提示词文字。
+${HIDDEN_DIRECTOR_REASONING}
 事实锁：本任务只优化提示词，不得修改 description、dialogue 或剧本人物关系。人物、人物关系、对白、关键动作目标和剧情结果只能来自 sourceExcerpt/description/dialogue；所有台词、VO、旁白必须逐字来自该镜 dialogue，没有就不写。电影级细节继续保留并加强：可以丰富机位、运镜、焦点、光影、材质、空间层次、呼吸、视线、手部细节和剪辑节奏，但不能为了凑项目新增人物关系、对白或剧情事件。只有用户明确说要改剧本/对白时，才先修改分镜事实再重写提示词。
 imagePrompt：必须继承 bibles，用 @图片N 引用场景和角色参考图；编号严格按 workshop_get_state 的 imageReferenceOrder，默认只使用最终场景资产，只有 imageReferenceOrder 中确实出现多张场景图时才全部写入；强调复刻参考图人物形象保持人脸一致，含景别/构图/光线/画风关键词；如启用色卡，只在最后一句写「画面配色严格参考 @图片N（色卡），用于统一整体色彩」，禁止写 @色卡，也禁止在多个短句反复写色卡/色调。
 videoPrompt：先读取项目和本镜 videoPromptTemplate。经典版按 aigc-memory/prompt-templates/seedance/README.md 的既有多镜头结构；新版使用【素材身份】【空间与初始站位】【一句话概述】【时间戳动作与机位】【物理与一致性】【视觉与声音】六段式结构。参考图编号严格按 videoReferenceOrder。若本镜有高清分镜板，第一句话必须把所有分镜板 @图片一/@图片二… 全部写出，并明确它们是“本镜景别变化和画面参考”，不要当场景图处理，也不要写成必须完全按每格逐镜切分。若 videoReferenceOrder 出现导演约束卡，必须在开头以“@导演约束卡（对应 @图片N）”明确引用，并读取 directorConstraintCard.prompt，把站位、视线、机位、动线和动作关系落实进正文；不能只把图片放进请求却不在提示词中使用。若有色卡，只在全文最后一句统一点名一次，例如「全片画面配色严格参考 @图片N（色卡），用于统一色彩风格。」不要在每个子镜头重复写。VO 只在真实存在旁白/画外内心独白/解说时才写；当 dialogue/description 明确写了旁白、画外音、内心独白、解说时必须写 VO 行。没有旁白就整行省略，禁止写“本句没有VO/本镜没有旁白/无画外音”等占位说明。有配音/音色资产不等于一定要写 VO，画面内人物说话/唱词仍写进镜头描述行；台词/音效/音乐符号按模板执行。默认写成 700-950 字、约 800 字的导演分镜；非长镜头含 3-5 个子镜头，必须写出建立/推进/反应/情绪落点/悬念收束的节奏变化。只有明确适合长镜头/一镜到底时才减少切点，并写清连续调度、走位、移焦和节奏段落。
@@ -219,7 +226,12 @@ export function buildExportPrompt(step: WorkshopStepId): string {
 export function buildAutoRunPrompt(): string {
   return `请对当前工坊项目执行一键全流程（从拆解到生成）。按顺序完成，每步完成后调用 workshop_set_step_status 标记 done 再进入下一步：
 
-第②步 拆解：${'\n'}- workshop_read_source 读剧本 → workshop_set_breakdown 写梗概/分集/角色/场景 → workshop_set_shots 写分镜表（分批 ≤15 镜）
+${HIDDEN_DIRECTOR_REASONING}
+
+第②步 拆解：${'\n'}- workshop_read_source 读剧本 → workshop_set_breakdown 写梗概/分集/角色/场景、sourceEvidence 和 storyFacts → workshop_set_shots 写分镜表（分批 ≤15 镜）
+- 所有人物、关系、对白、事件和结果以原剧本事实为准。功能角色也必须保留；只有用户明确修改剧本时，才以用户修改后的文本为新事实
+- 每镜内部填写 directorDecision（entryState、newInformation、shotScaleReason、cutTrigger、exitState），只用于 Agent 校验，不向用户展示字段名
+- 每镜只承担一个主要新增信息，景别由观众需要看清的内容决定；同场景承接人物站位、视线、手中物和动作进度，不机械套远中近特写
 
 第③步 资产：
 - 为每个角色/场景 workshop_set_asset_prompt 编写提示词（统一画风）
@@ -227,6 +239,7 @@ export function buildAutoRunPrompt(): string {
 
 第④步 提示词：
 - workshop_set_prompts 为全部分镜写 imagePrompt（中文，必须按 imageReferenceOrder 用 @图片N 引用场景和角色参考图；默认只使用最终场景资产，只有 imageReferenceOrder 中确实出现多张场景图时才全部写入；强调复刻参考图人物形象保持人脸一致，写成导演可执行首帧画面）+ videoPrompt（遵守 aigc-memory/prompt-templates/seedance/README.md 和 multi-shot.md；严格使用 videoReferenceOrder；如果本镜有高清分镜板，第一句话必须全部 @ 并明确作为本镜景别变化和画面参考；如果出现导演约束卡，必须按其真实 @图片N 明确引用并把 directorConstraintCard.prompt 的空间调度落实进子镜头；默认每镜 3-5 个子镜头、700-950 字约 800 字，必须有好莱坞导演/剪辑师级的景别变化、机位/焦点设计、表演节奏、剪辑切换、光线、材质反馈、环境响应；只有明确适合长镜头/一镜到底时才减少切点；${PERFORMANCE_BRIEF}；MJ 资产卡的提示词用英文短语式）
+- 写提示词时以 sourceFactIds 对应事实和 directorDecision 为边界。允许充分扩展导演表达，但不得新增剧本没有的人物、关系、对白、旁白、动作目标或剧情结果
 
 第⑤步 生成：
 - workshop_generate（kind:"image", targets:"missing"）生成分镜图，再 workshop_generate（kind:"video", targets:"missing"）生成视频，等待我确认

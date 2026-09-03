@@ -326,7 +326,8 @@ export function formatWritingAuditForAgent(audit: WritingQualityAudit): string {
     `文风审校：${audit.score}/100，${status}，类型=${audit.kind}。`,
     audit.summary,
   ];
-  for (const current of audit.issues) {
+  const prioritized = prioritizeWritingIssues(audit.issues);
+  for (const current of prioritized) {
     const evidence = current.excerpts.length > 0 ? `  证据：${current.excerpts.join('；')}` : '';
     lines.push(`- [${current.severity}] ${current.label}（${current.count}）：${current.suggestion}${evidence}`);
   }
@@ -334,8 +335,19 @@ export function formatWritingAuditForAgent(audit: WritingQualityAudit): string {
 }
 
 export function buildTargetedRewritePrompt(audit: WritingQualityAudit): string {
-  const issueBrief = audit.issues
+  const issueBrief = prioritizeWritingIssues(audit.issues)
     .map((current) => `- ${current.label}：${current.suggestion}${current.excerpts.length > 0 ? ` 例：${current.excerpts.join('；')}` : ''}`)
     .join('\n');
-  return `请对当前文档做一次定向精修。只修改下列被审校命中的段落，不要把全文换一种风格，也不要改变事实、人物关系、品牌信息和用户已经写好的好句。\n\n${issueBrief || '- 暂无机械问题，请只检查观点是否具体、场景是否成立、开头是否有压力。'}\n\n修改后再次调用 copywriting_review_doc 复查。不要输出分析过程，直接用 copywriting_patch_doc 写回最小必要改动。`;
+  return `请对当前文档做一次定向精修。只处理下面优先级最高的 3 类问题，不要把全文换一种风格，也不要改变事实、人物关系、品牌信息和用户已经写好的好句。用户明确要求修改剧本时，可以改对应剧情，但不能顺带改动未被要求的事实。\n\n${issueBrief || '- 暂无机械问题，请只检查观点是否具体、场景是否成立、开头是否有压力。'}\n\n修改后再次调用 copywriting_review_doc 复查。不要输出分析过程，直接用 copywriting_patch_doc 写回最小必要改动。`;
+}
+
+export function prioritizeWritingIssues(issues: WritingQualityIssue[], limit = 3): WritingQualityIssue[] {
+  const severityWeight: Record<WritingIssueSeverity, number> = { blocker: 3, warning: 2, note: 1 };
+  return [...issues]
+    .sort((left, right) => {
+      const severity = severityWeight[right.severity] - severityWeight[left.severity];
+      if (severity !== 0) return severity;
+      return right.count - left.count;
+    })
+    .slice(0, Math.max(0, limit));
 }

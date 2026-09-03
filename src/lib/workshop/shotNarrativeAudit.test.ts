@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { auditShotSequence, auditStoryFactCoverage, auditVideoPromptNarrative } from './shotNarrativeAudit.ts';
+import { auditDirectorDecisionSequence } from './directorReasoning.ts';
 import type { WsCharacter, WsShot } from './types.ts';
 
 const characters: WsCharacter[] = [
@@ -135,4 +136,70 @@ test('referencing a fact id cannot hide its functional-role participant', () => 
 
   assert.match(result.errors.join('\n'), /driver/u);
   assert.match(result.errors.join('\n'), /没有 event 镜头/u);
+});
+
+test('internal director decisions reject repeated information and warn about broken continuity', () => {
+  const decisions = [
+    shot({
+      shotNo: '01-01',
+      directorDecision: {
+        entryState: '司机坐在驾驶位，汽车正在行驶',
+        newInformation: '司机发现前方障碍',
+        shotScaleReason: '中景同时看清驾驶动作和前方视线',
+        cutTrigger: '司机视线突然定住',
+        exitState: '司机仍在驾驶位，右脚开始移向刹车',
+      },
+    }),
+    shot({
+      shotNo: '01-02',
+      directorDecision: {
+        entryState: '司机已经站在车外，手中拿着手机',
+        newInformation: '司机发现前方障碍',
+        shotScaleReason: '特写看清眼神',
+        cutTrigger: '司机眨眼',
+        exitState: '司机站在车外',
+      },
+    }),
+  ];
+  const result = auditShotSequence(decisions, characters, { validateShots: false });
+  const advisory = auditDirectorDecisionSequence(decisions);
+
+  assert.match(result.errors.join('\n'), /主要新增信息高度重复/u);
+  assert.match(advisory.warnings.join('\n'), /缺少明显承接/u);
+});
+
+test('old shots without internal director decisions remain compatible', () => {
+  const result = auditShotSequence([
+    shot({ shotNo: '01-01' }),
+    shot({ shotNo: '01-02', description: '司机坐在驾驶位踩下刹车。' }),
+  ], characters, { validateShots: false });
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.warnings, []);
+});
+
+test('continuity phrasing differences stay advisory and never block a save', () => {
+  const result = auditShotSequence([
+    shot({
+      shotNo: '01-01',
+      directorDecision: {
+        entryState: '司机坐在驾驶位，双手扶方向盘',
+        newInformation: '汽车接近路口',
+        shotScaleReason: '中景看清驾驶状态',
+        cutTrigger: '车辆驶入路口',
+        exitState: '司机仍坐在车内，右手握方向盘，视线看向前方',
+      },
+    }),
+    shot({
+      shotNo: '01-02',
+      directorDecision: {
+        entryState: '驾驶员保持坐姿，面朝道路，手掌压在方向盘上',
+        newInformation: '司机看见障碍物',
+        shotScaleReason: '近景看清察觉反应',
+        cutTrigger: '司机瞳孔收紧',
+        exitState: '司机开始踩刹车',
+      },
+    }),
+  ], characters, { validateShots: false });
+
+  assert.deepEqual(result.errors, []);
 });

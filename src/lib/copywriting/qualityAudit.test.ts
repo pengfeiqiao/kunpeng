@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { auditCopywriting } from './qualityAudit.ts';
+import { auditCopywriting, prioritizeWritingIssues } from './qualityAudit.ts';
 
 function reversalIssue(text: string) {
   return auditCopywriting(text).issues.find((i) => i.ruleId === 'syntax.forced-contrast');
@@ -39,4 +39,11 @@ test('干净文本零误伤', () => {
 test('提示语与洞察路标进入空泛词检测', () => {
   const audit = auditCopywriting('说白了，这件事很简单。先说结论，我们赢了。一句话总结，就是坚持。说穿了也没那么难。');
   assert.ok(audit.issues.some((i) => i.ruleId === 'wording.generic-abstraction'));
+});
+
+test('审校只把最重要的三个问题交给改写链路', () => {
+  const audit = auditCopywriting('不是能力问题，而是态度问题。首先要破局再重塑。说白了，这背后是真正的答案。———');
+  const prioritized = prioritizeWritingIssues(audit.issues);
+  assert.equal(prioritized.length, Math.min(3, audit.issues.length));
+  assert.equal(prioritized[0]?.severity, 'blocker');
 });
