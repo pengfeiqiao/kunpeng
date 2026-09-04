@@ -38,7 +38,8 @@ export function extractMediaPathFromOutput(output: unknown): string | undefined 
   for (const candidate of candidates) {
     const path = candidate.trim();
     // 只接受绝对路径——上述工具产物均为绝对路径；相对片段多半不是路径。
-    if (path.startsWith('/')) return path;
+    // Windows 盘符路径（C:\...）同样是绝对路径。
+    if (path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)) return path;
   }
   return undefined;
 }

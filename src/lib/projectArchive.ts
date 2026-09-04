@@ -12,6 +12,7 @@
 import { invoke } from '@tauri-apps/api/tauri';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { readTextFile, writeTextFile, exists, BaseDirectory } from '@tauri-apps/api/fs';
+import { stripDriveLeadingSlash } from '@/lib/platform';
 import { useProjectStore, type Project } from '@/stores/projectStore';
 import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
 import { useWorkshopStore } from '@/stores/workshopStore';
@@ -78,13 +79,14 @@ export async function exportProject(
 /** asset:// URL 的两种形态 → 反解出本地绝对路径 */
 function assetUrlToLocalPath(url: string): string {
   if (url.startsWith('file://')) {
-    return decodeURIComponent(url.replace('file://', ''));
+    // file:///C:/... 反解后是 '/C:/...'，Windows 需去前导斜杠
+    return stripDriveLeadingSlash(decodeURIComponent(url.replace('file://', '')));
   }
   if (url.startsWith('https://asset.localhost/')) {
-    return decodeURIComponent(url.replace('https://asset.localhost/', '/').replace(/^\/+/, '/'));
+    return stripDriveLeadingSlash(decodeURIComponent(url.replace('https://asset.localhost/', '/').replace(/^\/+/, '/')));
   }
   if (url.startsWith('asset://localhost/')) {
-    return decodeURIComponent(url.replace('asset://localhost/', '/').replace(/^\/+/, '/'));
+    return stripDriveLeadingSlash(decodeURIComponent(url.replace('asset://localhost/', '/').replace(/^\/+/, '/')));
   }
   return url;
 }
@@ -129,7 +131,8 @@ async function rewriteCanvasAssetUrls(canvasProjectId: string): Promise<void> {
     for (const f of DISPLAY_FIELDS) {
       if (isLocalFilePath(d[f])) {
         const lp = assetUrlToLocalPath(d[f] as string);
-        if (lp.startsWith('/')) {
+        // POSIX 绝对路径与 Windows 盘符路径都要转 asset URL
+        if (lp.startsWith('/') || /^[A-Za-z]:[\\/]/.test(lp)) {
           const newUrl = convertFileSrc(lp);
           if (d[f] !== newUrl) { d[f] = newUrl; changed = true; }
         }

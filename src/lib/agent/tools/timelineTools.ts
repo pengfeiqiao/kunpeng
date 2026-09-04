@@ -6,6 +6,7 @@
 import type { Tool } from '../types';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { readTextFile } from '@tauri-apps/api/fs';
+import { stripDriveLeadingSlash } from '@/lib/platform';
 import { useEditorStore } from '@/stores/editorStore';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -1673,12 +1674,14 @@ function normalizeFreePageAssetUrl(raw: string): string {
   if (/^asset:\/\//i.test(value) || /^https?:\/\/asset\.localhost\//i.test(value)) return value;
   if (/^file:\/\//i.test(value)) {
     try {
-      return convertFileSrc(decodeURIComponent(value.replace(/^file:\/\//i, '')));
+      // file:///C:/... 反解后是 '/C:/...'，Windows 需去前导斜杠
+      return convertFileSrc(stripDriveLeadingSlash(decodeURIComponent(value.replace(/^file:\/\//i, ''))));
     } catch {
       return value;
     }
   }
-  if (value.startsWith('/')) return convertFileSrc(value);
+  // POSIX 绝对路径与 Windows 盘符路径都要转 asset URL
+  if (value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value)) return convertFileSrc(value);
   return value;
 }
 

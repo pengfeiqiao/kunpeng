@@ -335,6 +335,10 @@ fn main() {
             // 部署内置资源（AGENT.md/skills/aigc-memory 种子），版本变更时覆盖
             commands::deploy_bundled_resources(&app.handle());
 
+            // Windows：补 python3 shim（有 python 无 python3 时自愈）
+            #[cfg(target_os = "windows")]
+            std::thread::spawn(ensure_python3_shim);
+
             // macOS：接管 Dock 图标点击，恢复主窗口（issue #4）
             #[cfg(target_os = "macos")]
             install_dock_reopen_handler(app.handle());
@@ -488,4 +492,101 @@ unsafe fn set_transparent_recursive(view: id) {
         let subview: id = objc::msg_send![subviews, objectAtIndex: i];
         set_transparent_recursive(subview);
     }
+}
+
+/// Windows 的 python.org 安装包通常只有 python.exe（无 python3.exe），而项目
+/// 里大量路径（COS 上传、agent 技能脚本、shell 示例）按 POSIX 习惯调用
+/// python3。首次启动时自愈：有 python 无 python3 就把 python.exe 复制为
+/// ~/.kunpeng/bin/python3.exe 并加入用户 PATH（.NET 写入会同时广播
+/// WM_SETTINGCHANGE）。没有 Python 则不动作（应用内会给出明确安装指引）。
+#[cfg(target_os = "windows")]
+fn ensure_python3_shim() {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let run = |prog: &str, args: &[&str]| -> Option<std::process::Output> {
+        std::process::Command::new(prog)
+            .args(args)
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .ok()
+    };
+    let works = |prog: &str| {
+        run(prog, &["--version"])
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    };
+
+    if works("python3") {
+        return;
+    }
+
+    // 定位可用的 python.exe：PATH → py 启动器 → 常见安装目录
+    let python_exe = if works("python") {
+        run("where", &["python"]).and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .next()
+                .map(|s| s.trim().to_string())
+        })
+    } else {
+        None
+    }
+    .or_else(|| {
+        run("py", &["-3", "-c", "import sys; print(sys.executable)"]).and_then(|o| {
+            if o.status.success() {
+                let p = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                (!p.is_empty() && std::path::Path::new(&p).is_file()).then_some(p)
+            } else {
+                None
+            }
+        })
+    })
+    .or_else(|| {
+        let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let mut candidates = vec![];
+        for v in ["314", "313", "312", "311", "310"] {
+            candidates.push(format!("C:\\Python{}\\python.exe", v));
+            candidates.push(format!("{}\\Programs\\Python\\Python{}\\python.exe", local, v));
+        }
+        candidates
+            .into_iter()
+            .find(|p| std::path::Path::new(p).is_file())
+    });
+
+    let Some(python_exe) = python_exe else {
+        eprintln!("[python3-shim] 未检测到 Python，跳过 shim（应用内会提示安装）");
+        return;
+    };
+
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return,
+    };
+    let bin_dir = home.join(".kunpeng").join("bin");
+    if std::fs::create_dir_all(&bin_dir).is_err() {
+        return;
+    }
+    let shim = bin_dir.join("python3.exe");
+    if !shim.exists() && std::fs::copy(&python_exe, &shim).is_err() {
+        eprintln!("[python3-shim] 复制 {} -> {:?} 失败", python_exe, shim);
+        return;
+    }
+    eprintln!("[python3-shim] 已创建 {:?}（源 {}）", shim, python_exe);
+
+    // 加入用户 PATH（幂等）：用 .NET 写入，自带 WM_SETTINGCHANGE 广播。
+    let bin_str = bin_dir.to_string_lossy().to_string();
+    let ps = format!(
+        "$bin='{}'; $cur=[Environment]::GetEnvironmentVariable('Path','User'); \
+         if (($cur -split ';') -notcontains $bin) {{ \
+           [Environment]::SetEnvironmentVariable('Path', ($cur.TrimEnd(';') + ';' + $bin), 'User') }}",
+        bin_str.replace('\'', "''")
+    );
+    let ok = run("powershell", &["-NoProfile", "-Command", &ps])
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    eprintln!(
+        "[python3-shim] 用户 PATH {}（{}）",
+        if ok { "已包含 shim 目录" } else { "写入失败" },
+        bin_str
+    );
 }

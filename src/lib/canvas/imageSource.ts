@@ -13,15 +13,18 @@
  */
 import { readBinaryFile } from '@tauri-apps/api/fs';
 import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
+import { stripDriveLeadingSlash } from '@/lib/platform';
 
 /** asset URL / 绝对路径 → 本地绝对路径；解不出来返回 null。 */
 export function assetUrlToLocalPath(url: string): string | null {
-  if (url.startsWith('/')) return url;
+  // Windows 原生绝对路径（C:\... 或 C:/...）直通
+  if (/^[A-Za-z]:[\\/]/.test(url)) return url;
+  if (url.startsWith('/')) return stripDriveLeadingSlash(url);
   if (url.startsWith('https://asset.localhost/')) {
-    return decodeURIComponent(url.replace('https://asset.localhost/', '/').replace(/^\/+/, '/'));
+    return stripDriveLeadingSlash(decodeURIComponent(url.replace('https://asset.localhost/', '/').replace(/^\/+/, '/')));
   }
   if (url.startsWith('asset://localhost/')) {
-    return decodeURIComponent(url.replace('asset://localhost/', '/').replace(/^\/+/, '/'));
+    return stripDriveLeadingSlash(decodeURIComponent(url.replace('asset://localhost/', '/').replace(/^\/+/, '/')));
   }
   return null;
 }

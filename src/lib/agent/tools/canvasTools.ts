@@ -3,6 +3,7 @@ import { useCanvasStore } from '@/stores/canvasStore';
 import { useCanvasTaskStore } from '@/stores/canvasTaskStore';
 import { nanoid } from 'nanoid';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
+import { stripDriveLeadingSlash } from '@/lib/platform';
 import { defaultNodeStyle, estimateNodeSize } from '@/lib/canvas/layout';
 import { recoverCanvasTaskNow } from '@/hooks/useCanvasTaskRecovery';
 import { useChatStore } from '@/stores/chatStore';
@@ -37,11 +38,14 @@ function normalizeUrlWithPath(url: unknown): { url?: string; localPath?: string 
     return { url };
   }
   let filePath = url.startsWith('file://') ? url.replace('file://', '') : url;
+  // file:///C:/... 反解后是 '/C:/...'，Windows 需去前导斜杠
+  filePath = stripDriveLeadingSlash(filePath);
   // agent 常用 ~/ 前缀路径（工具文档就是这么写的），不展开就变死链
   if (filePath.startsWith('~/') && cachedHome) {
     filePath = `${cachedHome}${filePath.slice(1)}`;
   }
-  if (filePath.startsWith('/')) {
+  // Windows 原生绝对路径（C:\...）同样转 asset URL 并给出 localPath
+  if (filePath.startsWith('/') || /^[A-Za-z]:[\\/]/.test(filePath)) {
     return { url: convertFileSrc(filePath), localPath: filePath };
   }
   return { url };
