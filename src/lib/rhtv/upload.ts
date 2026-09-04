@@ -8,6 +8,7 @@
  */
 import { fetch as tauriFetch, ResponseType, Body } from '@tauri-apps/api/http';
 import { invoke } from '@tauri-apps/api/tauri';
+import { stripDriveLeadingSlash } from '@/lib/platform';
 import { appUploadUrl, requireRhtvApiKey } from './client';
 import { RhtvBusinessError } from './types';
 
@@ -27,10 +28,10 @@ function mimeOf(path: string): string {
 /** Convert asset:// display URLs back to plain filesystem paths. */
 export function assetUrlToLocalPath(url: string): string {
   if (url.startsWith('https://asset.localhost/')) {
-    return decodeURIComponent(url.replace('https://asset.localhost/', '/').replace(/^\/+/, '/'));
+    return stripDriveLeadingSlash(decodeURIComponent(url.replace('https://asset.localhost/', '/').replace(/^\/+/, '/')));
   }
   if (url.startsWith('asset://localhost/')) {
-    return decodeURIComponent(url.replace('asset://localhost/', '/').replace(/^\/+/, '/'));
+    return stripDriveLeadingSlash(decodeURIComponent(url.replace('asset://localhost/', '/').replace(/^\/+/, '/')));
   }
   return url;
 }

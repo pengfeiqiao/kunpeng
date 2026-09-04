@@ -18,6 +18,7 @@
 import { invoke } from '@tauri-apps/api/tauri';
 import { createDir, exists, removeDir } from '@tauri-apps/api/fs';
 import { stopBackgroundProcessCommand } from '@/lib/platform';
+import { pythonCommand } from '@/lib/python';
 import {
   useEditorStore, EXPORT_RESOLUTIONS,
   type EditorClip, type OverlayClip, type AudioClip, type ExportSettings, type MaskSettings,
@@ -613,7 +614,7 @@ function textToBase64(text: string): string {
 async function writeTextViaShell(path: string, contents: string): Promise<void> {
   const b64 = textToBase64(contents);
   const script = [
-    "python3 - <<'PY'",
+    `${await pythonCommand()} - <<'PY'`,
     'import base64, pathlib',
     `path = ${JSON.stringify(path)}`,
     `data = ${JSON.stringify(b64)}`,

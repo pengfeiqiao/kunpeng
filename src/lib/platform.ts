@@ -35,6 +35,15 @@ export function isWindowsSync(): boolean {
   return userAgentPlatform() === 'windows';
 }
 
+/**
+ * Windows 盘符路径修正：asset URL（asset.localhost/file://）反解出来的
+ * '/C:\Users\...' 或 '/c:/...' 去掉前导斜杠。macOS 的绝对路径以 / 开头天然
+ * 正确；Windows 上传给 python/原生 API 时前导斜杠会让路径非法（WinError 123）。
+ */
+export function stripDriveLeadingSlash(p: string): string {
+  return /^\/[A-Za-z]:[\\/]/.test(p) ? p.slice(1) : p;
+}
+
 /** 提示词用的展示名（macOS / Windows / Linux）。 */
 export function osDisplayName(platform: ShellInfo['platform']): string {
   if (platform === 'windows') return 'Windows';

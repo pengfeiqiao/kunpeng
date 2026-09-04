@@ -55,6 +55,14 @@ export async function uploadToCos(
   const pyScript = `
 import sys, os, subprocess, glob, warnings
 warnings.filterwarnings('ignore')
+# 中文 Windows 控制台默认 GBK：Tauri shell 按严格 UTF-8 解码子进程输出，
+# 任何 GBK 字节都会让读取端抛 "invalid utf-8 sequence"。全程强制 UTF-8。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+os.environ['PYTHONUTF8'] = '1'
 home = os.path.expanduser('~')
 for p in glob.glob(os.path.join(home, 'Library/Python/*/lib/python/site-packages')):
     if p not in sys.path:
@@ -122,14 +130,18 @@ print(f"OK:{resp.get('ETag','')}")
 `.trim();
 
   // Secrets go via env (argv is world-visible in `ps`); only non-secret
-  // positional args remain.
-  const command = new Command('python3', [
-    '-c', pyScript,
+  // positional args remain. Windows 的 python.org 安装包只有 python.exe（无
+  // python3），直启固定名会以 "program not found" 失败——两个名字依次尝试。
+  const buildCommand = (prog: string) => new Command(prog, [
+    '-X', 'utf8', '-c', pyScript,
     cosRegion, localPath, cosBucket, key, contentType,
   ], {
     env: {
       COS_SECRET_ID: sid,
       COS_SECRET_KEY: skey,
+      // 解释器级 UTF-8 模式 + IO 编码，覆盖 pip/qcloud_cos 的全部输出路径
+      PYTHONUTF8: '1',
+      PYTHONIOENCODING: 'utf-8',
     },
   });
   let stdout = '';
@@ -163,8 +175,9 @@ print(f"OK:{resp.get('ETag','')}")
     }
   };
 
-  const result = await new Promise<{ code: number | null; signal: number | null }>((resolve, reject) => {
+  const runWithPython = (prog: string) => new Promise<{ code: number | null; signal: number | null }>((resolve, reject) => {
     let settled = false;
+    const command = buildCommand(prog);
     command.stdout.on('data', (chunk: string) => parseStdout(chunk));
     command.stderr.on('data', (chunk: string) => { stderr += chunk; });
     command.on('error', (error) => {
@@ -184,6 +197,18 @@ print(f"OK:{resp.get('ETag','')}")
       reject(error);
     });
   });
+
+  let result: { code: number | null; signal: number | null };
+  try {
+    result = await runWithPython('python3');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/program not found|not found|ENOENT|无法找到/i.test(msg)) throw err;
+    // python3 不存在（Windows 常见），回退 python 再试一次。
+    stdout = '';
+    stderr = '';
+    result = await runWithPython('python');
+  }
 
   if (result.code !== 0 || !stdout.includes('OK:')) {
     const errMsg = stderr.trim() || stdout.trim();

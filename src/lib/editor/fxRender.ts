@@ -14,6 +14,7 @@ import { writeBinaryFile, writeTextFile, createDir, exists, readTextFile, BaseDi
 import { homeDir, resourceDir } from '@tauri-apps/api/path';
 import { invoke } from '@tauri-apps/api/tauri';
 import { stopBackgroundProcessCommand, isWindowsSync } from '@/lib/platform';
+import { pythonCommand } from '@/lib/python';
 import MOTION_RUNTIME_SRC from '../../../scripts/motion-runtime.js?raw';
 import { KP_MOTION_VERSION } from '@/lib/motion/runtimeVersion';
 import { DEFAULT_FX_TRANSFORM, useEditorStore, type EditorRenderError, type TextClip, type FxClip } from '@/stores/editorStore';
@@ -657,7 +658,7 @@ async function writeJsonViaShell(path: string, data: unknown): Promise<void> {
   }
   const b64 = btoa(bin);
   const script = [
-    "python3 - <<'PY'",
+    `${await pythonCommand()} - <<'PY'`,
     'import base64, pathlib',
     `path = ${JSON.stringify(path)}`,
     `data = ${JSON.stringify(b64)}`,
@@ -677,7 +678,7 @@ async function writeTextViaShell(path: string, text: string): Promise<void> {
   }
   const b64 = btoa(bin);
   const script = [
-    "python3 - <<'PY'",
+    `${await pythonCommand()} - <<'PY'`,
     'import base64, pathlib',
     `path = ${JSON.stringify(path)}`,
     `data = ${JSON.stringify(b64)}`,
@@ -864,7 +865,9 @@ async function runWorkerLayer(doc: FxDoc, opts: FxRenderOptions): Promise<FxLaye
     (_match, encodedPath: string) => {
       try {
         const decoded = decodeURIComponent(encodedPath);
-        const absolute = decoded.startsWith('/') ? decoded : `/${decoded}`;
+        // Windows 盘符路径统一成正斜杠，拼出合法 file:///C:/... URL
+        const normalized = /^[A-Za-z]:[\\/]/.test(decoded) ? decoded.replace(/\\/g, '/') : decoded;
+        const absolute = normalized.startsWith('/') ? normalized : `/${normalized}`;
         return encodeURI(`file://${absolute}`);
       } catch {
         return _match;
