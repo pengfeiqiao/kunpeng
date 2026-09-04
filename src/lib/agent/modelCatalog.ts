@@ -76,6 +76,11 @@ export function getDefaultModelId(providerId: string): string {
   return CHAT_MODELS[providerId]?.[0]?.value ?? providerId;
 }
 
+/** Stable model ids accepted by agent-side validation and evolution. */
+export function getAllChatModelIds(): string[] {
+  return [...new Set(Object.values(CHAT_MODELS).flatMap((models) => models.map((model) => model.value)))];
+}
+
 export function inferAgentWorkspaceScope(content: string): AgentWorkspaceScope | null {
   if (content.startsWith('[用户正在画布视图中操作')) return 'canvas';
   if (content.startsWith('[工坊上下文：')) return 'workshop';

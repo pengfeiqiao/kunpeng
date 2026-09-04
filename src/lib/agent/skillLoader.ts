@@ -1,7 +1,9 @@
 import { invoke } from '@tauri-apps/api/tauri';
-import { buildSkillDescriptionText } from './skillPromptPolicy';
+import { buildSkillDescriptionText } from './skillPromptPolicy.ts';
 
 export interface AgentSkillManifest {
+  /** Stable public id from skill.json. Only skills with an id are invokable. */
+  id?: string;
   name: string;
   displayName?: string;
   description: string;
@@ -16,6 +18,8 @@ export interface AgentSkillManifest {
   /** true = has skill.json (can be invoked via skill_invoke tool); false = SKILL.md only (agent reference, read via bash) */
   invokable?: boolean;
   visibility?: 'toolbar' | 'library' | 'internal' | 'disabled';
+  /** Original skill.json fields used by the UI projection. Never enters prompts. */
+  sourceManifest?: Record<string, unknown>;
 }
 
 export interface SkillParameter {
@@ -28,30 +32,56 @@ export interface SkillParameter {
   options?: Array<{ label: string; value: string }>;
 }
 
+export interface SkillLoaderAdapter {
+  scan(): Promise<string[]>;
+  read(path: string): Promise<string>;
+}
+
 /**
  * 技能加载器 — 从磁盘加载和管理 Skills
  */
 export class SkillLoader {
   private skills: AgentSkillManifest[] = [];
   private scanDirs: string[];
+  private loadPromise: Promise<AgentSkillManifest[]> | null = null;
+  private lastLoadedAt = 0;
+  private readonly adapter?: SkillLoaderAdapter;
 
-  constructor(scanDirs: string[]) {
-    this.scanDirs = scanDirs;
+  constructor(scanDirs: string[], adapter?: SkillLoaderAdapter) {
+    this.scanDirs = Array.from(new Set(scanDirs));
+    this.adapter = adapter;
+  }
+
+  addScanDirs(scanDirs: string[]): void {
+    this.scanDirs = Array.from(new Set([...this.scanDirs, ...scanDirs]));
   }
 
   /** 从所有扫描目录加载技能 */
   async loadAll(): Promise<AgentSkillManifest[]> {
-    this.skills = [];
+    if (this.loadPromise) return this.loadPromise;
+    this.loadPromise = this.loadAllNow();
+    try {
+      return await this.loadPromise;
+    } finally {
+      this.loadPromise = null;
+    }
+  }
+
+  /** Reload before the next prompt while coalescing concurrent UI/agent reads. */
+  async refreshIfDue(minIntervalMs = 750): Promise<AgentSkillManifest[]> {
+    if (Date.now() - this.lastLoadedAt < minIntervalMs) return this.skills;
+    return this.loadAll();
+  }
+
+  private async loadAllNow(): Promise<AgentSkillManifest[]> {
     let skillNames: string[] = [];
     try {
       // scan_skills_dir already targets ~/.kunpeng/skills. Calling it once per
       // candidate base directory duplicated the complete scan and could make
       // Agent startup wait forever on one stale/non-existent fallback path.
-      skillNames = await this.invokeWithTimeout<string[]>(
-        'scan_skills_dir',
-        undefined,
-        5_000,
-      );
+      skillNames = this.adapter
+        ? await this.withTimeout(this.adapter.scan(), 'scan_skills_dir', 5_000)
+        : await this.invokeWithTimeout<string[]>('scan_skills_dir', undefined, 5_000);
     } catch (err) {
       console.warn('Failed to scan skills directory:', err);
       return this.skills;
@@ -71,6 +101,7 @@ export class SkillLoader {
     });
 
     this.skills = manifests.filter((manifest): manifest is AgentSkillManifest => Boolean(manifest));
+    this.lastLoadedAt = Date.now();
 
     return this.skills;
   }
@@ -94,6 +125,29 @@ export class SkillLoader {
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
     }
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, label: string, timeoutMs: number): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  }
+
+  private async readSkillFile(path: string): Promise<string> {
+    if (this.adapter) return this.withTimeout(this.adapter.read(path), `read ${path}`, 3_000);
+    const result = await this.invokeWithTimeout<{ content: string; total_lines: number }>(
+      'read_file',
+      { path },
+    );
+    return result.content;
   }
 
   private async mapWithConcurrency<T, R>(
@@ -124,42 +178,50 @@ export class SkillLoader {
   ): Promise<AgentSkillManifest | null> {
     const skillPath = `${baseDir}/${skillName}`;
     let hasSkillJson = false;
+    let sourceManifest: Record<string, unknown> | undefined;
 
     // Check if skill.json exists (marks skill as invokable via skill_invoke)
     try {
-      const skillJson = await this.invokeWithTimeout<{ content: string; total_lines: number }>(
-        'read_file',
-        { path: `${skillPath}/skill.json` },
-      );
-      const rawJson = skillJson.content.replace(/^\s*\d+\t/gm, '');
+      const skillJson = await this.readSkillFile(`${skillPath}/skill.json`);
+      const rawJson = skillJson.replace(/^\s*\d+\t/gm, '');
       // Only manifests with a stable public id can be resolved by
       // skill_invoke. Legacy skill.json files that only have `name` remain
       // useful as reference skills but must not be advertised as invokable.
-      hasSkillJson = Boolean(JSON.parse(rawJson)?.id);
+      sourceManifest = JSON.parse(rawJson) as Record<string, unknown>;
+      hasSkillJson = Boolean(sourceManifest.id);
     } catch {
       // no skill.json
     }
 
     // Try reading SKILL.md
     try {
-      const result = await this.invokeWithTimeout<{ content: string; total_lines: number }>(
-        'read_file',
-        { path: `${skillPath}/SKILL.md` },
-      );
+      const result = await this.readSkillFile(`${skillPath}/SKILL.md`);
 
-      const manifest = this.parseSkillMd(result.content, skillPath, skillName);
+      const manifest = this.parseSkillMd(result, skillPath, skillName);
       if (manifest?.visibility === 'disabled') return null;
-      if (manifest) manifest.invokable = hasSkillJson;
+      if (manifest) {
+        manifest.id = typeof sourceManifest?.id === 'string' ? sourceManifest.id : undefined;
+        manifest.invokable = hasSkillJson;
+        manifest.sourceManifest = sourceManifest;
+        const sourceVisibility = sourceManifest?.visibility;
+        if (sourceVisibility === 'toolbar' || sourceVisibility === 'library' || sourceVisibility === 'internal' || sourceVisibility === 'disabled') {
+          manifest.visibility = sourceVisibility;
+        }
+        // Auto skills created before the library visibility policy may still
+        // say `internal` on disk. Treat them as reference skills immediately;
+        // the background consolidator persists the migration later.
+        if (skillName.startsWith('auto-') && manifest.visibility === 'internal') {
+          manifest.visibility = 'library';
+        }
+      }
+      if (manifest?.visibility === 'disabled') return null;
       return manifest;
     } catch {
       // Try skill.json as fallback for manifest data
       if (hasSkillJson) {
         try {
-          const result = await this.invokeWithTimeout<{ content: string; total_lines: number }>(
-            'read_file',
-            { path: `${skillPath}/skill.json` },
-          );
-          const manifest = this.parseSkillJson(result.content, skillPath, skillName);
+          const result = await this.readSkillFile(`${skillPath}/skill.json`);
+          const manifest = this.parseSkillJson(result, skillPath, skillName);
           if (manifest) manifest.invokable = true;
           return manifest;
         } catch {
@@ -260,6 +322,7 @@ export class SkillLoader {
       const json = JSON.parse(content);
 
       return {
+        id: typeof json.id === 'string' ? json.id : undefined,
         name: json.name || skillName,
         displayName: json.displayName,
         description: json.description || `Skill: ${skillName}`,
@@ -282,6 +345,7 @@ export class SkillLoader {
         visibility: json.visibility === 'internal' || json.visibility === 'library' || json.visibility === 'disabled'
           ? json.visibility
           : 'toolbar',
+        sourceManifest: json,
       };
     } catch {
       return null;
@@ -307,13 +371,36 @@ export class SkillLoader {
 
     if (params) {
       for (const [key, value] of Object.entries(params)) {
+        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         prompt = prompt.replace(
-          new RegExp(`\\{\\{${key}\\}\\}|\\$\\{${key}\\}`, 'g'),
-          String(value),
+          new RegExp(`\\{\\{\\s*${escapedKey}\\s*\\}\\}|\\$\\{${escapedKey}\\}`, 'g'),
+          () => String(value),
         );
       }
     }
 
-    return prompt;
+    // {{name}} is Kunpeng's explicit skill-template syntax. `${name}` is also
+    // common inside shell/JS examples, so only unresolved credential-style
+    // legacy placeholders are removed from that form.
+    return prompt
+      .replace(/\{\{[^{}]+\}\}/g, '')
+      .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) => (
+        /^(?:userContent|.*api_?key|.*token|.*secret|password|credential|cookie|session)$/i.test(key)
+          ? ''
+          : match
+      ));
   }
+}
+
+let sharedSkillLoader: SkillLoader | null = null;
+
+export async function getSharedSkillLoader(scanDirs?: string[]): Promise<SkillLoader> {
+  let resolvedDirs = scanDirs;
+  if (!resolvedDirs?.length) {
+    const home = await invoke<string>('get_home_dir').catch(() => '~');
+    resolvedDirs = [`${home}/.kunpeng/skills`, `${home}/kunpeng/skills`];
+  }
+  if (!sharedSkillLoader) sharedSkillLoader = new SkillLoader(resolvedDirs);
+  else sharedSkillLoader.addScanDirs(resolvedDirs);
+  return sharedSkillLoader;
 }

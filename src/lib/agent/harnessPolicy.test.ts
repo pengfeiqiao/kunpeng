@@ -3,6 +3,9 @@ import test from 'node:test';
 import { normalizeCustomRules } from './rulePolicy.ts';
 import { buildToolEvidenceSummary } from './toolEvidence.ts';
 import { buildSkillDescriptionText, compactSkillDescription, shouldIncludeInternalSkill, type PromptSkill } from './skillPromptPolicy.ts';
+import { SCOPED_INTERNAL_SKILLS } from './skillPromptPolicy.ts';
+import { buildSystemPrompt } from './systemPrompt.ts';
+import { readFileSync } from 'node:fs';
 import {
   buildTemporalTurnContext,
   getAgentTemporalContext,
@@ -46,9 +49,13 @@ test('custom hidden-reasoning request becomes observable rationale rule', () => 
 
 test('internal skill scoping is conservative', () => {
   const canvas: PromptSkill = { name: 'canvas-project-manager', description: '', triggers: [], promptTemplate: '', skillPath: '' };
+  const anchor: PromptSkill = { name: 'scene-image-anchor', description: '', triggers: [], promptTemplate: '', skillPath: '' };
   const future: PromptSkill = { name: 'future-internal', description: '', triggers: [], promptTemplate: '', skillPath: '' };
   assert.equal(shouldIncludeInternalSkill(canvas, 'chat', '修复 Swift 文件'), false);
   assert.equal(shouldIncludeInternalSkill(canvas, 'canvas', ''), true);
+  assert.equal(shouldIncludeInternalSkill(anchor, 'chat', ''), true);
+  assert.equal(shouldIncludeInternalSkill(anchor, 'canvas', ''), true);
+  assert.equal(shouldIncludeInternalSkill(anchor, 'workshop', ''), true);
   assert.equal(shouldIncludeInternalSkill(future, 'chat', ''), true);
   assert.equal(compactSkillDescription('a'.repeat(240)).length <= 181, true);
 });
@@ -66,6 +73,28 @@ test('skill prompt keeps the complete catalog while scoping known internal rules
   assert.doesNotMatch(chat, /PUBLIC_BODY|LARK_BODY/);
   const canvas = buildSkillDescriptionText(skills, { activeView: 'canvas', query: '调整节点' });
   assert.match(canvas, /CANVAS_FULL_RULE/);
+});
+
+test('internal skill scope matches each SKILL.md self-description', () => {
+  const anchor = readFileSync(new URL('../../../skills/scene-image-anchor/SKILL.md', import.meta.url), 'utf8');
+  const canvas = readFileSync(new URL('../../../skills/canvas-project-manager/SKILL.md', import.meta.url), 'utf8');
+  assert.deepEqual(SCOPED_INTERNAL_SKILLS['scene-image-anchor'].views, ['chat', 'canvas', 'workshop']);
+  assert.match(anchor, /工坊、画布和普通对话/);
+  assert.deepEqual(SCOPED_INTERNAL_SKILLS['canvas-project-manager'].views, ['canvas']);
+  assert.match(canvas, /画布/);
+});
+
+test('planning discipline is present for every provider, not only DeepSeek or Kimi', () => {
+  for (const primaryProviderId of ['glm', 'anthropic', 'openai', 'deepseek', 'kimi']) {
+    const prompt = buildSystemPrompt({
+      cwd: '/tmp/project',
+      os: 'macOS',
+      shell: 'zsh',
+      primaryProviderId,
+    });
+    assert.match(prompt, /复杂任务开始前先调用 todo_write/, primaryProviderId);
+    assert.match(prompt, /跨越剧本、分镜、生图、生视频、剪辑、配音中两个及以上阶段/, primaryProviderId);
+  }
 });
 
 test('runtime date is formatted in Asia Shanghai instead of inferred from paths', () => {

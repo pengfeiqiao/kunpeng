@@ -4,7 +4,7 @@ import type { CoordinatorCallbacks, Tool, ToolResult } from '../types.ts';
 import type { ToolRegistry } from '../toolRegistry.ts';
 import { sanitizeOpenAIToolPairing } from '../providers/pairing.ts';
 import { parseDshStreamUpdate } from './streamUpdate.ts';
-import { executeDshToolCall, serializeDshTools } from './toolRpc.ts';
+import { executeDshToolCall, isAgentDelegateDshAvailable, serializeDshTools } from './toolRpc.ts';
 
 function callbacks(confirm = true): CoordinatorCallbacks {
   return {
@@ -27,6 +27,18 @@ function registryFor(tool: Tool): ToolRegistry {
       return tool.execute(params, signal);
     },
   } as unknown as ToolRegistry;
+}
+
+function fakeDelegateTool(): Tool {
+  return {
+    definition: {
+      name: 'agent_delegate',
+      description: 'delegate',
+      parameters: { type: 'object', properties: { task: { type: 'string' } }, required: ['task'] },
+    },
+    risk: 'ask',
+    execute: async () => ({ success: true, output: 'done' }),
+  };
 }
 
 test('mock ACP stream maps reasoning, text, tools and native usage', () => {
@@ -75,6 +87,20 @@ test('MCP RPC serializes and executes the active Kunpeng tool with confirmation'
   );
   assert.equal(result.output, 'node:42');
   assert.equal(executed, 1);
+});
+
+test('DSH exposes agent_delegate only after the frontend binds that run', () => {
+  const delegate = fakeDelegateTool();
+  const availableRuns = new Set<string>();
+  const registry = {
+    getDefinitions: () => [delegate.definition],
+    hasDelegateForRun: (runId: string) => availableRuns.has(runId),
+  } as unknown as ToolRegistry;
+  assert.equal(isAgentDelegateDshAvailable(registry, 'run-a'), false);
+  assert.deepEqual(serializeDshTools(registry, 'run-a'), []);
+  availableRuns.add('run-a');
+  assert.equal(isAgentDelegateDshAvailable(registry, 'run-a'), true);
+  assert.equal(serializeDshTools(registry, 'run-a')[0]?.name, 'agent_delegate');
 });
 
 test('MCP RPC does not execute an ask-risk tool after rejection', async () => {

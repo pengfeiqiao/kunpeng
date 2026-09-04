@@ -48,6 +48,7 @@ export const canvasGenerateTool: Tool = {
       + 'seedance-2.5（多模态，别名 dreamina-seedance-2.5；默认走筷子丽帧通道，失败才降级即梦 CLI；支持图片≤30、视频≤10、音频≤10，总素材≤50，480p/720p，时长 4-30 秒；提交前应按官方 2.5 结构改写提示词，并严格按实际素材顺序使用 @图片N/@视频N/@音频N）、'
       + 'minimax-hailuo-h3（MiniMax H3 多模态，别名 minimax-h3；有无参考图均可，图≤9/视频≤3/音频≤3，固定 2K，时长 5-15 秒）。'
       + 'wan-3.0（万相 3.0 全能参考视频：图≤10/视频≤5/音频≤5，另支持 file_url 文档与 link_url 网页参考，两者互斥；480P/720P/1080P，时长 2-30 秒；默认筷子丽帧主渠道，失败自动容灾 RunningHub/APIMart）。'
+      + 'video-upscaler（视频超分：把已有视频节点提升到 720p/1080p/2K/4K，params.targetResolution 传档，默认 720p；需连接源视频节点，标准模型主通道、失败自动容灾快速通道）。'
       + 'Omni版MG动画: omni-mg-animation，适合用户明确要 MG 动画、图形类动效、App 展示动效；正常路线固定 10 秒 720p，参考视频最多 1 个。系统会先生成母版概念图和 2-4 张同风格关键帧并显示在画布，再连同用户原始图片/视频提交；@图片N/@视频一必须与节点显示顺序一致，原始人物/物品主体不得改变。'
       + 'Seedance 视频默认通过筷子丽帧（Kuaizi）API 通道生成，无需你额外处理——只要传 seedance 引擎 ID，后端自动路由到丽帧；用户在设置中开启 RHTV Seedance 开关后才走 RunningHub 通道。'
       + '生成是异步长任务（图 ~30s，视频可能 1-20min）。若工具返回超时但已有 taskId，后台仍会继续轮询；也可用 canvas_recover_task 主动从 API 取回迟到结果。',

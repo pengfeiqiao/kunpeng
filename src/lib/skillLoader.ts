@@ -1,6 +1,6 @@
 import type { SkillManifest } from '@/types/skill';
-import { readDir, readTextFile, createDir, BaseDirectory } from '@tauri-apps/api/fs';
 import { homeDir } from '@tauri-apps/api/path';
+import { getSharedSkillLoader, type AgentSkillManifest } from '@/lib/agent/skillLoader';
 
 // ── 7 Built-in skill fallbacks ──────────────────────────────────────────────
 // These are embedded so the app works even without ~/.kunpeng/skills/
@@ -1563,6 +1563,26 @@ function applyProductMeta(skill: SkillManifest): SkillManifest {
   return { ...skill, ...PRODUCT_META[skill.id] };
 }
 
+export function projectAgentSkillToUi(skill: AgentSkillManifest): SkillManifest | null {
+  if (!skill.id || !skill.invokable || skill.visibility === 'internal' || skill.visibility === 'disabled') return null;
+  const source = skill.sourceManifest ?? {};
+  const sourceVisibility = source.visibility;
+  const visibility = sourceVisibility === 'toolbar' || sourceVisibility === 'library' || sourceVisibility === 'internal'
+    ? sourceVisibility
+    : skill.visibility === 'library' ? 'library' : 'toolbar';
+  return applyProductMeta({
+    ...source,
+    id: skill.id,
+    name: typeof source.name === 'string' ? source.name : skill.displayName || skill.name,
+    icon: typeof source.icon === 'string' ? source.icon : 'sparkles',
+    description: skill.description,
+    version: typeof source.version === 'string' ? source.version : skill.version || '1.0.0',
+    hasPanel: typeof source.hasPanel === 'boolean' ? source.hasPanel : skill.hasPanel,
+    promptTemplate: skill.promptTemplate,
+    visibility,
+  } as SkillManifest);
+}
+
 /**
  * Load skills from ~/.kunpeng/skills/ directory, with built-in fallbacks.
  * Disk skills override built-in skills by ID.
@@ -1575,40 +1595,19 @@ export async function loadSkills(): Promise<SkillManifest[]> {
     skillMap.set(normalized.id, normalized);
   }
 
-  // Try to scan disk skills
+  // Project the shared Agent catalog into UI manifests. The UI deliberately
+  // does not scan the filesystem independently, so prompt discovery and
+  // skill_invoke always see the same disk snapshot.
   try {
     const home = await homeDir();
-    const skillsDir = `${home}.kunpeng/skills`;
-    const entries = await readDir(skillsDir).catch(async () => {
-      // Directory doesn't exist — try to create it
-      try {
-        await createDir('.kunpeng/skills', { dir: BaseDirectory.Home, recursive: true });
-        console.log('[skillLoader] Created ~/.kunpeng/skills/ directory');
-      } catch {
-        // ignore creation failure
-      }
-      return [];
-    });
-
-    for (const entry of entries) {
-      if (!entry.path) continue;
-
-      // Skip files (entries with extensions in name)
-      if (entry.name?.includes('.')) continue;
-
-      // 只加载带 skill.json 的技能到 tool 栏；
-      // 只有 SKILL.md 的目录（给 agent 参考用的那种）静默跳过，不再刷日志。
-      try {
-        const manifestPath = `${entry.path}/skill.json`;
-        const content = await readTextFile(manifestPath);
-        const manifest: SkillManifest = JSON.parse(content);
-        if (manifest.id) {
-          console.log('[skillLoader] 已加载技能:', manifest.id, manifest.name);
-          skillMap.set(manifest.id, applyProductMeta(manifest));
-        }
-      } catch {
-        // skill.json 不存在或解析失败 —— 静默跳过
-      }
+    const loader = await getSharedSkillLoader([
+      `${home}.kunpeng/skills`,
+      `${home}kunpeng/skills`,
+    ]);
+    const diskSkills = await loader.refreshIfDue(0);
+    for (const skill of diskSkills) {
+      const projected = projectAgentSkillToUi(skill);
+      if (projected) skillMap.set(projected.id, projected);
     }
   } catch (err) {
     // ~/.kunpeng/skills/ doesn't exist, use built-in fallbacks only

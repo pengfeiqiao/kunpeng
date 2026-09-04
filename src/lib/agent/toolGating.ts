@@ -11,6 +11,7 @@
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useDirectorStore } from '@/stores/directorStore';
+import { isSubagentEntryView } from './subagentPolicy';
 
 /** 受设置门控的工具名集合（其余工具默认始终启用） */
 const GATED: Record<string, () => boolean> = {
@@ -42,6 +43,9 @@ const GLOBAL_TIMELINE_TOOLS = new Set([
 ]);
 
 export function isToolEnabled(name: string): boolean {
+  if (name === 'agent_delegate') {
+    return isSubagentEntryView(useChatStore.getState().activeView);
+  }
   if (GLOBAL_TIMELINE_TOOLS.has(name)) {
     return true;
   }

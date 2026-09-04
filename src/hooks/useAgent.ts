@@ -6,6 +6,7 @@ import {
   AgentCoordinator,
   createDefaultRegistry,
   SkillLoader,
+  getSharedSkillLoader,
   createBackgroundTaskTool,
   createTodoWriteTool,
   executeCommand,
@@ -17,7 +18,18 @@ import { ensureMemoryDirs } from '@/lib/aigc/seedData';
 import { appendGenerationLog } from '@/lib/aigc/genLogger';
 import { registerHook } from '@/lib/agent/hooks';
 import { buildSkillRelevanceNotice } from '@/lib/agent/skillPromptPolicy';
-import { recordTrajectory, maybeEvolve } from '@/lib/agent/evolution';
+import {
+  configureEvolutionCatalog,
+  maybeEvolve,
+  recordAutoSkillReferences,
+  recordTrajectory,
+  reflectNegativeTrajectory,
+} from '@/lib/agent/evolution';
+import { detectNegativeFeedback, summarizeToolTrace } from '@/lib/agent/evolutionPolicy';
+import { buildPipelineStagePrefix, resolveTodoAwareMaxTurns } from '@/lib/agent/pipelineStages';
+import { SubagentRunner } from '@/lib/agent/subagentRunner';
+import { isOrdinarySubagentRun } from '@/lib/agent/subagentPolicy';
+import { buildTaskResumeContext, TaskResumeContextQueue } from '@/lib/agent/resumeContext';
 import { registerCleanup } from '@/lib/cleanupRegistry';
 import { getShellInfo, osDisplayName } from '@/lib/platform';
 import { safeLocalStorage } from '@/lib/safeStorage';
@@ -64,7 +76,7 @@ import {
 } from '@/lib/agent/projectMessages';
 import { stripHarnessPrefix } from '@/lib/agent/harnessDisplay';
 import type { RouteStrategy } from '@/lib/agent/providers/router';
-import { decodeChatModel, inferAgentWorkspaceScope } from '@/lib/agent/modelCatalog';
+import { decodeChatModel, getAllChatModelIds, inferAgentWorkspaceScope } from '@/lib/agent/modelCatalog';
 import {
   loadMediaInput,
   normalizeLocalMediaPath,
@@ -646,13 +658,16 @@ export function useAgent(options?: { primary?: boolean }) {
   // during which a second send would start a competing run on the same
   // coordinator and silently drop the first message.
   const sendingRef = useRef(false);
+  const resumeContextQueueRef = useRef(new TaskResumeContextQueue());
+  const ordinaryRunIdsRef = useRef(new Set<string>());
   const [isReady, setIsReady] = useState(false);
 
   // Hermes-style self-evolution: every finished run appends a compact
   // trajectory record, then maybe fires a background reflection pass.
   // Best-effort — never blocks or breaks the foreground run.
   const recordRunTrajectory = useCallback(
-    (status: 'done' | 'failed' | 'aborted', req: string, startTime: number | null) => {
+    (status: 'done' | 'failed' | 'aborted', req: string, startTime: number | null, ordinaryChat = false) => {
+      if (!ordinaryChat) return;
       try {
         const tools: Record<string, number> = {};
         const fail: Record<string, number> = {};
@@ -660,15 +675,26 @@ export function useAgent(options?: { primary?: boolean }) {
           tools[te.toolName] = (tools[te.toolName] || 0) + 1;
           if (te.status === 'error') fail[te.toolName] = (fail[te.toolName] || 0) + 1;
         }
-        void recordTrajectory({
+        const record = {
           ts: Date.now(),
           req: req.slice(0, 160),
           tools,
           fail,
+          traces: toolExecutionsRef.current.slice(-40).map((execution) => summarizeToolTrace({
+            toolName: execution.toolName,
+            params: execution.params,
+            status: execution.status,
+            result: execution.result,
+          })),
+          negative: detectNegativeFeedback(req, status),
           secs: startTime ? Math.max(0, Math.floor((Date.now() - startTime) / 1000)) : 0,
           status,
-        })
-          .then(() => maybeEvolve())
+        } as const;
+        void recordTrajectory(record)
+          .then(async () => {
+            if (record.negative) await reflectNegativeTrajectory(record);
+            await maybeEvolve();
+          })
           .catch(() => {});
       } catch { /* evolution is best-effort */ }
     },
@@ -744,7 +770,7 @@ export function useAgent(options?: { primary?: boolean }) {
 
       // Load skills first so we can inject descriptions into system prompt
       markStage('正在加载技能库');
-      const loader = new SkillLoader([
+      const loader = await getSharedSkillLoader([
         `${homeDir}/.kunpeng/skills`,
         `${homeDir}/kunpeng/skills`,
       ]);
@@ -807,6 +833,10 @@ export function useAgent(options?: { primary?: boolean }) {
       registry.register(createTodoWriteTool(
         () => activeRunSessionRef.current || useChatStore.getState().currentSessionId || '',
       ));
+      configureEvolutionCatalog({
+        toolNames: registry.getAll().map((tool) => tool.definition.name),
+        modelNames: getAllChatModelIds(),
+      });
 
       // Ensure workspace exists and get today's workspace path
       let workspace = '';
@@ -1024,6 +1054,15 @@ export function useAgent(options?: { primary?: boolean }) {
             }
           }
         }
+        let restoredUiMessages = readMessagesFromLocalStorage(currentSessionId);
+        if (restoredUiMessages === null) {
+          restoredUiMessages = (await readSessionFromFile(currentSessionId))?.messages ?? [];
+        }
+        resumeContextQueueRef.current.stage(currentSessionId, buildTaskResumeContext({
+          todos: useTodoStore.getState().todosBySession[currentSessionId] ?? [],
+          agentMessages: defaultCoordinator.getMessages(),
+          uiMessages: restoredUiMessages,
+        }));
         markStage('当前会话恢复完成');
       }
 
@@ -1040,6 +1079,10 @@ export function useAgent(options?: { primary?: boolean }) {
           for (const tool of mcpTools) {
             registry.register(tool);
           }
+          configureEvolutionCatalog({
+            toolNames: registry.getAll().map((tool) => tool.definition.name),
+            modelNames: getAllChatModelIds(),
+          });
           // Refresh system prompt so ALL coordinators pick up new MCP tools
           for (const c of coordinatorsRef.current.values()) {
             c.refreshSystemPrompt();
@@ -1190,6 +1233,10 @@ export function useAgent(options?: { primary?: boolean }) {
         setError('Agent 引擎未初始化，请检查 API Key 设置');
         return;
       }
+      // The system catalog, skill_invoke and the toolbar share this loader.
+      // Refreshing here makes newly written evolution skills visible on the
+      // next task without rebuilding the Agent engine.
+      await skillLoaderRef.current?.refreshIfDue();
       // Secondary (wizard) engines share the global chat stores but must not
       // write session files — their coordinators hold wizard-scoped history
       // that would overwrite the real chat session's agent history on disk.
@@ -1243,6 +1290,11 @@ export function useAgent(options?: { primary?: boolean }) {
       setError(null);
       const settings = useSettingsStore.getState();
       const surface = inferAgentWorkspaceScope(content);
+      const isOrdinaryChatRun = isOrdinarySubagentRun(
+        isPrimary,
+        surface !== null,
+        useChatStore.getState().activeView,
+      );
       const workspaceSelection = surface
         ? decodeChatModel(settings.workspaceAgentModels[surface])
         : null;
@@ -1340,6 +1392,13 @@ export function useAgent(options?: { primary?: boolean }) {
       // which session we write to. All persist/streaming callbacks use this value.
       const sessionId = useChatStore.getState().currentSessionId;
       activeRunSessionRef.current = sessionId;
+      const resumeContext = isOrdinaryChatRun
+        ? resumeContextQueueRef.current.consume(sessionId)
+        : null;
+      // Media preprocessing can still fail before a provider receives this
+      // turn. Keep the one-shot context recoverable until dispatch begins.
+      let resumeContextDelivered = false;
+      let stagePrefix: string | null = null;
 
       // Add user message to UI
       addMessage({
@@ -1367,6 +1426,11 @@ export function useAgent(options?: { primary?: boolean }) {
         modelId: primaryRoute.modelId,
       });
       activeRunIdsRef.current.set(currentAgentId, runId);
+      if (isOrdinaryChatRun) {
+        ordinaryRunIdsRef.current.add(runId);
+        const loadedSkills = skillLoaderRef.current?.getAll() ?? [];
+        void recordAutoSkillReferences(loadedSkills, displayContent, runId).catch(() => {});
+      }
 
       // Yield one frame so "正在思考..." renders before the network call
       await new Promise((r) => requestAnimationFrame(r));
@@ -1565,7 +1629,7 @@ export function useAgent(options?: { primary?: boolean }) {
           setStreamingPhase('idle');
           emit('agent-status-change', 'idle');
           useRunStepStore.getState().finishRun('done', runId);
-          recordRunTrajectory('done', displayContent, startTime);
+          recordRunTrajectory('done', displayContent, startTime, isOrdinaryChatRun);
 
           // Tier 4: OS notification when window is unfocused. Skip very
           // short turns (<5s) — those are clearly already in front of the user.
@@ -1593,7 +1657,7 @@ export function useAgent(options?: { primary?: boolean }) {
           setStreamingPhase('idle');
           emit('agent-status-change', 'error');
           useRunStepStore.getState().finishRun('failed', runId);
-          recordRunTrajectory('failed', displayContent, startTime);
+          recordRunTrajectory('failed', displayContent, startTime, isOrdinaryChatRun);
 
           if (useSettingsStore.getState().notificationsEnabled) {
             void notify({
@@ -1612,10 +1676,29 @@ export function useAgent(options?: { primary?: boolean }) {
           return useToolConfirmStore.getState().requestConfirm(name, params, reason);
         },
 
-        onSubAgentDelta: (text) => {
+        onSubAgentDelta: (text, event) => {
           if (!isCurrentRun()) return;
-          accumulatedSubAgent += text;
-          scheduleFlush();
+          if (text) {
+            accumulatedSubAgent += `${accumulatedSubAgent ? '\n' : ''}${text}`;
+            scheduleFlush();
+          }
+          if (!event) return;
+          const steps = useRunStepStore.getState();
+          if (event.type === 'start') {
+            steps.startSubAgent({ taskId: event.id, task: event.task, async: true }, runId);
+          } else if (event.type === 'progress') {
+            steps.appendSubAgentProgress(event.id, event.text, runId);
+          } else if (event.type === 'tool_start') {
+            steps.appendSubAgentProgress(event.id, `正在使用 ${event.toolName}`, runId);
+          } else if (event.type === 'tool_end') {
+            steps.appendSubAgentProgress(
+              event.id,
+              `${event.toolName}${event.success ? ' 已完成' : ' 未完成'}`,
+              runId,
+            );
+          } else if (event.type === 'terminal') {
+            steps.finishSubAgent(event.id, event.status, event.conclusion, event.error, runId);
+          }
         },
 
         onContextUsage: (stats) => {
@@ -1655,7 +1738,39 @@ export function useAgent(options?: { primary?: boolean }) {
             '请继续完成这些事项；如果它们确实不需要做了，先用 todo_write 更新列表（标记完成或移除），再给出最终答复。'
           );
         },
+
+        getMaxTurns: () => {
+          // 只有普通对话的 run 才享受 todo 放宽；画布/工坊/剪辑的 wizard run
+          // 共享 chat 会话的 todo store，不能因为它们沾光放宽。
+          if (!isOrdinaryChatRun) return maxTurns;
+          const unfinished = sessionId
+            ? (useTodoStore.getState().todosBySession[sessionId] ?? []).some((todo) => todo.status !== 'completed')
+            : false;
+          return resolveTodoAwareMaxTurns(maxTurns, unfinished);
+        },
       };
+
+      let subagentRunner: SubagentRunner | null = null;
+      const registry = coordinator.getToolRegistry();
+      if (isOrdinaryChatRun) {
+        subagentRunner = new SubagentRunner({
+          parentRunId: runId,
+          parentRegistry: registry,
+          callbacks,
+          createCoordinator: ({ registry: childRegistry, parentAbortController, idempotencyRunId, maxTurns: childMaxTurns }) =>
+            coordinator.createSubagentCoordinator(
+              childRegistry,
+              parentAbortController,
+              idempotencyRunId,
+              childMaxTurns,
+            ),
+        });
+        registry.bindRunContext(runId, {
+          idempotencyRunId: runId,
+          subagentDepth: 0,
+          delegate: (request, signal) => subagentRunner!.run(request, signal),
+        });
+      }
 
       // Periodic mid-stream snapshot. The global queue enforces the same
       // 15-second minimum across tool-completion bursts.
@@ -1666,6 +1781,16 @@ export function useAgent(options?: { primary?: boolean }) {
         if (filePaths?.length) {
           const pathList = filePaths.map(p => `- ${p}`).join('\n');
           finalContent = `[用户附加了以下文件，请根据需要读取]\n${pathList}\n\n${content}`;
+        }
+        if (isOrdinaryChatRun) {
+          const unfinishedTodos = sessionId
+            ? (useTodoStore.getState().todosBySession[sessionId] ?? [])
+              .filter((todo) => todo.status !== 'completed')
+              .map((todo) => todo.content)
+            : [];
+          // 阶段卡只在当前 run 生效：内置链路的每个工具轮次都能看到，
+          // 但不进入持久历史；DSH 链路仍只拼进当轮 input。
+          stagePrefix = buildPipelineStagePrefix(displayContent, { unfinishedTodos });
         }
         let mediaBlocks: AgentUserContentBlock[] = [];
         if (primaryRoute.providerId === 'kimi' && filePaths?.length) {
@@ -1686,6 +1811,8 @@ export function useAgent(options?: { primary?: boolean }) {
             let input = context.turnContext
               ? `${context.turnContext}\n\n[用户请求]\n${finalContent}`
               : finalContent;
+            if (resumeContext) input = `${resumeContext}\n\n${input}`;
+            if (stagePrefix) input = `${stagePrefix}\n\n${input}`;
             if (filePaths?.length) mediaBlocks = await buildDshMediaBlocks(filePaths);
             // DeepSeek 视觉模型（deepseek-v4-flash-vision-exp 起）在 Harness
             // 里原生看图：fork 的 ACP 桥（dsh-runtime/kunpeng-acp.mjs）接受
@@ -1701,7 +1828,10 @@ export function useAgent(options?: { primary?: boolean }) {
             if (hasImageMedia && !hasVideoMedia && !harnessVisionCapable) {
               executingHarness = false;
               coordinator.setRouteStrategy(deepseekBuiltinRoute(primaryRoute.modelId));
-              await coordinator.run(finalContent, callbacks, mediaBlocks);
+              if (resumeContext) coordinator.queueTransientNotice(resumeContext);
+              if (stagePrefix) coordinator.queueRunNotice(stagePrefix);
+              resumeContextDelivered = true;
+              await coordinator.run(finalContent, callbacks, mediaBlocks, runId);
             } else {
             // 视觉模型：图片以 ACP image 块原生进 Harness；非视觉模型或含
             // 视频时维持工具路径（图片块在 mediaFilter 丢 base64 前有 directive 指引）。
@@ -1718,6 +1848,7 @@ export function useAgent(options?: { primary?: boolean }) {
               input += '\n\n[媒体附件说明] 图片已作为原生内容块直接传入，你能直接看到画面内容；'
                 + '请直接看图回答，禁止再调用 image_recognition 做重复识别。';
             }
+            resumeContextDelivered = true;
             const result = await bridge.run({
               runId,
               apiKey: resolveApiKey(settings, 'provider:deepseek', settings.providerApiKeys.deepseek || ''),
@@ -1765,7 +1896,10 @@ export function useAgent(options?: { primary?: boolean }) {
                 reason: normalized.message,
               });
               coordinator.setRouteStrategy(deepseekBuiltinRoute(primaryRoute.modelId));
-              await coordinator.run(finalContent, callbacks, mediaBlocks);
+              if (resumeContext) coordinator.queueTransientNotice(resumeContext);
+              if (stagePrefix) coordinator.queueRunNotice(stagePrefix);
+              resumeContextDelivered = true;
+              await coordinator.run(finalContent, callbacks, mediaBlocks, runId);
             } else {
               callbacks.onError(normalized);
             }
@@ -1777,7 +1911,10 @@ export function useAgent(options?: { primary?: boolean }) {
             unregisterSharedDshBridge(currentAgentId, bridge);
           }
         } else {
-          await coordinator.run(finalContent, callbacks, mediaBlocks);
+          if (resumeContext) coordinator.queueTransientNotice(resumeContext);
+          if (stagePrefix) coordinator.queueRunNotice(stagePrefix);
+          resumeContextDelivered = true;
+          await coordinator.run(finalContent, callbacks, mediaBlocks, runId);
         }
       } catch (err) {
         persistAgentMsgs();
@@ -1789,6 +1926,13 @@ export function useAgent(options?: { primary?: boolean }) {
         emit('agent-status-change', 'error');
         useRunStepStore.getState().finishRun('failed', runId);
       } finally {
+        await subagentRunner?.dispose();
+        registry.clearRunContext(runId);
+        if (resumeContext && !resumeContextDelivered) {
+          resumeContextQueueRef.current.restore(sessionId, resumeContext);
+        }
+        coordinator.getToolRegistry().clearRunIdempotency(runId);
+        ordinaryRunIdsRef.current.delete(runId);
         if (activeRunIdsRef.current.get(currentAgentId) === runId) {
           activeRunIdsRef.current.delete(currentAgentId);
         }
@@ -1928,7 +2072,13 @@ export function useAgent(options?: { primary?: boolean }) {
     }
     // Aborts are a user-dissatisfaction signal — feed the evolution journal.
     const lastUserMsg = [...useChatStore.getState().messages].reverse().find((m) => m.role === 'user');
-    recordRunTrajectory('aborted', lastUserMsg?.content || '', useChatStore.getState().streamingSentAt);
+    recordRunTrajectory(
+      'aborted',
+      lastUserMsg?.content || '',
+      useChatStore.getState().streamingSentAt,
+      Boolean(activeRunId && ordinaryRunIdsRef.current.has(activeRunId)),
+    );
+    if (activeRunId) ordinaryRunIdsRef.current.delete(activeRunId);
   }, [setIsStreaming, setStreamingPhase, recordRunTrajectory]);
 
   /** 切换工作目录（应用到所有 agent 的 coordinator） */
@@ -2029,6 +2179,17 @@ export function useAgent(options?: { primary?: boolean }) {
       }
     }
     // Refresh the context-usage pill for the newly active conversation.
+    let restoredUiMessages = readMessagesFromLocalStorage(sessionId);
+    if (restoredUiMessages === null) {
+      const fromFile = await readSessionFromFile(sessionId);
+      if (isStale()) return;
+      restoredUiMessages = fromFile?.messages ?? [];
+    }
+    resumeContextQueueRef.current.stage(sessionId, buildTaskResumeContext({
+      todos: useTodoStore.getState().todosBySession[sessionId] ?? [],
+      agentMessages: coordinator.getMessages(),
+      uiMessages: restoredUiMessages,
+    }));
     useChatStore.getState().setContextStats(coordinator.getContextStats());
   }, []);
 

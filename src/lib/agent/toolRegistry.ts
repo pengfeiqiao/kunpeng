@@ -1,7 +1,9 @@
-import type { Tool, ToolDefinition, ToolResult } from './types';
+import type { Tool, ToolDefinition, ToolExecutionContext, ToolResult } from './types';
 import { agentLog } from './logger';
 import { isToolEnabled } from './toolGating';
 import { useChatStore } from '@/stores/chatStore';
+import { PaidToolIdempotencyGate, type PaidExecutionContext } from './paidToolIdempotency';
+import { summarizeTrajectoryValue } from './evolutionPolicy';
 
 const TOOL_TEXT_DESCRIPTION_LIMIT = 900;
 const TOOL_TEXT_PARAM_DESCRIPTION_LIMIT = 220;
@@ -26,6 +28,12 @@ function viewHintForTool(name: string): string | null {
  */
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
+  private paidGate: PaidToolIdempotencyGate;
+  private readonly runContexts = new Map<string, Omit<ToolExecutionContext, 'runId'>>();
+
+  constructor(paidGate = new PaidToolIdempotencyGate()) {
+    this.paidGate = paidGate;
+  }
 
   register(tool: Tool): void {
     this.tools.set(tool.definition.name, tool);
@@ -61,6 +69,27 @@ export class ToolRegistry {
     return registry;
   }
 
+  /** Project a child registry while sharing the parent's paid-call ledger. */
+  project(predicate: (tool: Tool) => boolean): ToolRegistry {
+    const registry = new ToolRegistry(this.paidGate);
+    for (const tool of this.tools.values()) {
+      if (predicate(tool)) registry.register(tool);
+    }
+    return registry;
+  }
+
+  bindRunContext(runId: string, context: Omit<ToolExecutionContext, 'runId'>): void {
+    this.runContexts.set(runId, context);
+  }
+
+  clearRunContext(runId: string): void {
+    this.runContexts.delete(runId);
+  }
+
+  hasDelegateForRun(runId: string): boolean {
+    return typeof this.runContexts.get(runId)?.delegate === 'function';
+  }
+
   /** 运行期对模型可见的工具（应用 toolGating 门控） */
   getEnabled(): Tool[] {
     return this.getAll().filter((t) => isToolEnabled(t.definition.name));
@@ -76,6 +105,7 @@ export class ToolRegistry {
     name: string,
     params: Record<string, unknown>,
     signal?: AbortSignal,
+    context: PaidExecutionContext & ToolExecutionContext = {},
   ): Promise<ToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
@@ -88,28 +118,41 @@ export class ToolRegistry {
       };
     }
 
+    const bound = context.runId ? this.runContexts.get(context.runId) : undefined;
+    const executionContext: ToolExecutionContext = { ...bound, ...context };
+    const paidRunId = executionContext.idempotencyRunId ?? executionContext.runId;
+    const blocked = this.paidGate.reserve(paidRunId, name, params);
+    if (blocked) return { success: false, output: '', error: blocked };
+
     const start = Date.now();
-    agentLog.info('Tool', `→ ${name}`, params);
+    agentLog.info('Tool', `→ ${name}`);
 
     try {
-      const result = await tool.execute(params, signal);
+      const result = await tool.execute(params, signal, executionContext);
       const ms = Date.now() - start;
       if (result.success) {
         agentLog.info('Tool', `← ${name} OK (${ms}ms, ${result.output.length} chars)`);
       } else {
-        agentLog.error('Tool', `← ${name} FAIL (${ms}ms): ${result.error}`);
+        agentLog.error('Tool', `← ${name} FAIL (${ms}ms): ${summarizeTrajectoryValue(result.error ?? 'unknown error')}`);
       }
+      this.paidGate.record(paidRunId, name, params, result);
       return result;
     } catch (err) {
       const ms = Date.now() - start;
       const msg = err instanceof Error ? err.message : String(err);
-      agentLog.error('Tool', `← ${name} THROW (${ms}ms): ${msg}`);
-      return {
+      agentLog.error('Tool', `← ${name} THROW (${ms}ms): ${summarizeTrajectoryValue(msg)}`);
+      const result = {
         success: false,
         output: '',
         error: msg,
       };
+      this.paidGate.record(paidRunId, name, params, result);
+      return result;
     }
+  }
+
+  clearRunIdempotency(runId: string): void {
+    this.paidGate.clearRun(runId);
   }
 
   /** 获取工具描述文本 (用于系统提示词) */
@@ -166,6 +209,7 @@ import { videoGenerateTool } from './tools/videoGenerateTool';
 import { imageGenerateTool } from './tools/imageGenerateTool';
 import { memoryWriteTool } from './tools/memoryTool';
 import { apimartRouteStatusTool } from './tools/apimartRouteTool';
+import { agentDelegateTool } from './tools/agentDelegateTool';
 
 /** 创建包含所有内置工具的默认注册表 */
 export function createDefaultRegistry(): ToolRegistry {
@@ -195,6 +239,7 @@ export function createDefaultRegistry(): ToolRegistry {
   registry.register(videoGenerateTool);
   registry.register(imageGenerateTool);
   registry.register(apimartRouteStatusTool);
+  registry.register(agentDelegateTool);
   for (const tool of allAppTools) {
     registry.register(tool);
   }

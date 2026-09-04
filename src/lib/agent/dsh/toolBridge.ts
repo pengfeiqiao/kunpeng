@@ -74,7 +74,7 @@ export class DshToolBridge {
   }
 
   async start(): Promise<void> {
-    const tools = serializeDshTools(this.registry);
+    const tools = serializeDshTools(this.registry, this.runId);
     await invoke('dsh_set_tools', { runId: this.runId, instanceId: this.instanceId, tools });
     this.unlisten.push(await listen<DshToolCallEvent>('dsh-tool-call', ({ payload }) => {
       if (payload.runId !== this.runId || payload.instanceId !== this.instanceId) return;

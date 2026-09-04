@@ -7,12 +7,18 @@ export interface DshToolHooks {
   after?: (name: string, params: Record<string, unknown>, result: ToolResult, durationMs: number) => Promise<void>;
 }
 
-export function serializeDshTools(registry: ToolRegistry): Array<Record<string, unknown>> {
-  return registry.getDefinitions().map((definition) => ({
+export function isAgentDelegateDshAvailable(registry: ToolRegistry, runId?: string): boolean {
+  return Boolean(runId && registry.hasDelegateForRun(runId));
+}
+
+export function serializeDshTools(registry: ToolRegistry, runId?: string): Array<Record<string, unknown>> {
+  return registry.getDefinitions()
+    .filter((definition) => definition.name !== 'agent_delegate' || isAgentDelegateDshAvailable(registry, runId))
+    .map((definition) => ({
     name: definition.name,
     description: definition.description,
     inputSchema: definition.parameters,
-  }));
+    }));
 }
 
 /** Execute one MCP-originated call through Kunpeng's registry and confirmation surface. */
@@ -45,7 +51,7 @@ export async function executeDshToolCall(
   const startedAt = Date.now();
   const result = pre?.cancel
     ? { success: false, output: '', error: pre.reason || 'cancelled by hook' }
-    : await registry.execute(call.name, params, signal);
+    : await registry.execute(call.name, params, signal, { runId: call.runId });
   callbacks.onToolEnd(call.name, result);
   callbacks.onToolBatchEnd?.([{ name: call.name, success: result.success }]);
   await hooks.after?.(call.name, params, result, Date.now() - startedAt);

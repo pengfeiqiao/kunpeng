@@ -1,136 +1,81 @@
 /**
- * evolution — Hermes 式自进化闭环（不训练模型，纯 harness 层）：
- *
- *   执行轨迹（情景记忆）→ 周期自省（Nudge）→ 记忆/技能产出 → 后续召回增强
- *
- * 三层产出对应 Hermes 的三层记忆：
- * - 语义/用户记忆：feedback/project/user 记忆写入 ~/.kunpeng/memory/，
- *   由 findRelevantMemories 在后续 run 自动召回（memory_write 同款格式）。
- * - 程序性记忆（技能）：反复成功的多工具流程被提炼为 ~/.kunpeng/skills/auto-*
- *   草稿技能，skillLoader 下次启动加载；前缀 auto- + [自进化] 标记可辨识。
- * - 情景记忆：trajectories.jsonl 本身就是最近执行的压缩台账。
- *
- * 成本控制：每攒 REFLECT_MIN_NEW 条轨迹、且距上次 ≥30 分钟才自省一次；
- * 单次自省 = 一次 quickChat 非流式调用（走 settings 的 fallback 链）。
- * 所有后台路径失败静默；只有 /evolve 手动触发才向用户报错。
+ * Harness-level evolution loop. Persisted data is compact and redacted;
+ * candidate skills pass a deterministic quality gate before becoming visible.
  */
-
 import {
-  readTextFile,
-  writeTextFile,
+  BaseDirectory,
+  copyFile,
   createDir,
   readDir,
+  readTextFile,
   removeDir,
-  BaseDirectory,
+  writeTextFile,
 } from '@tauri-apps/api/fs';
 import { quickChat } from './quickChat';
+import { cursorForTrajectories, freshTrajectories } from './evolutionCursor';
 import { invalidateMemoryIndex, loadMemoryIndex } from './findRelevantMemories';
 import { agentLog } from './logger';
-import { cursorForTrajectories, freshTrajectories } from './evolutionCursor';
+import type { AgentSkillManifest } from './skillLoader';
+import {
+  detectNegativeFeedback,
+  mergeAutoSkillUsage,
+  normalizeAutoSkillVisibility,
+  planSkillConsolidation,
+  replaceObsoleteModelNames,
+  resolveAutoSkillLifecycle,
+  summarizeTrajectoryValue,
+  SerialTaskQueue,
+  SuccessfulRunThrottle,
+  type AutoSkillDraft,
+  type ConsolidationCandidate,
+  type TrajectoryToolTrace,
+  validateAutoSkillDraft,
+} from './evolutionPolicy';
 
 const EVOLUTION_DIR = '.kunpeng/evolution';
 const TRAJ_FILE = `${EVOLUTION_DIR}/trajectories.jsonl`;
 const STATE_FILE = `${EVOLUTION_DIR}/state.json`;
+const ARCHIVE_DIR = `${EVOLUTION_DIR}/archive/skills`;
 const SKILLS_DIR = '.kunpeng/skills';
+const QUARANTINE_DIR = `${SKILLS_DIR}/quarantine`;
 const MEMORY_DIR = '.kunpeng/memory';
-
 const TRAJECTORY_MAX = 800;
 const TRAJECTORY_KEEP = 600;
 const REFLECT_MIN_NEW = 12;
 const REFLECT_BATCH = 40;
 const REFLECT_MIN_INTERVAL_MS = 30 * 60 * 1000;
+const CONSOLIDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MAX_AUTO_SKILLS = 8;
+const MODEL_REPLACEMENTS: Record<string, string> = {
+  'kimi-k3-1m': 'k3[1m]',
+  'kimi-k3': 'k3',
+  'glm-4.5': 'glm-5.1',
+};
+
 let trajectoryWriteQueue: Promise<void> = Promise.resolve();
+const reflectionQueue = new SerialTaskQueue();
+let catalogToolNames = new Set<string>();
+let catalogModelNames = new Set<string>();
 
 export interface TrajectoryRecord {
   ts: number;
-  /** 用户请求（截断） */
   req: string;
-  /** 工具调用次数 by name */
   tools: Record<string, number>;
-  /** 工具失败次数 by name */
   fail: Record<string, number>;
+  traces?: TrajectoryToolTrace[];
+  negative?: boolean;
   secs: number;
   status: 'done' | 'failed' | 'aborted';
 }
 
 interface EvolutionState {
-  /** 已处理到的轨迹行号 */
   offset: number;
   reflections: number;
   lastRunAt: number;
-  /** Stable cursor added in 2.8.x; offset remains for old state compatibility. */
+  lastConsolidatedAt?: number;
   cursorTs?: number;
   cursorCountAtTs?: number;
 }
-
-const DEFAULT_STATE: EvolutionState = { offset: 0, reflections: 0, lastRunAt: 0 };
-
-function slugify(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-}
-
-// ── 轨迹记录 ──────────────────────────────────────────────────────────────
-
-/** 追加一条执行轨迹（读改写，文件很小；超长时裁掉最旧的）。失败静默。 */
-export async function recordTrajectory(rec: TrajectoryRecord): Promise<void> {
-  const write = trajectoryWriteQueue.then(async () => {
-    try {
-      await createDir(EVOLUTION_DIR, { dir: BaseDirectory.Home, recursive: true }).catch(() => {});
-      let existing = '';
-      try {
-        existing = await readTextFile(TRAJ_FILE, { dir: BaseDirectory.Home });
-      } catch { /* first run */ }
-      const lines = existing ? existing.split('\n').filter(Boolean) : [];
-      lines.push(JSON.stringify(rec));
-      const trimmed = lines.length > TRAJECTORY_MAX ? lines.slice(-TRAJECTORY_KEEP) : lines;
-      await writeTextFile(TRAJ_FILE, trimmed.join('\n') + '\n', { dir: BaseDirectory.Home });
-    } catch (err) {
-      agentLog.debug('Evolution', 'recordTrajectory skipped', err);
-    }
-  });
-  trajectoryWriteQueue = write.catch(() => {});
-  await write;
-}
-
-async function loadTrajectories(): Promise<TrajectoryRecord[]> {
-  try {
-    const raw = await readTextFile(TRAJ_FILE, { dir: BaseDirectory.Home });
-    return raw
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        try { return JSON.parse(line) as TrajectoryRecord; } catch { return null; }
-      })
-      .filter((r): r is TrajectoryRecord => r !== null);
-  } catch {
-    return [];
-  }
-}
-
-async function loadState(): Promise<EvolutionState> {
-  try {
-    const raw = await readTextFile(STATE_FILE, { dir: BaseDirectory.Home });
-    const parsed = JSON.parse(raw) as Partial<EvolutionState>;
-    return { ...DEFAULT_STATE, ...parsed };
-  } catch {
-    return { ...DEFAULT_STATE };
-  }
-}
-
-async function saveState(state: EvolutionState): Promise<void> {
-  await createDir(EVOLUTION_DIR, { dir: BaseDirectory.Home, recursive: true }).catch(() => {});
-  await writeTextFile(STATE_FILE, JSON.stringify(state, null, 2), { dir: BaseDirectory.Home });
-}
-
-// ── 自省引擎 ──────────────────────────────────────────────────────────────
-
-let reflectRunning = false;
 
 interface ReflectedMemory {
   name: string;
@@ -139,188 +84,425 @@ interface ReflectedMemory {
   body: string;
 }
 
-interface ReflectedSkill {
+interface AutoSkillMetadata {
   name: string;
   displayName: string;
   description: string;
   triggers: string[];
   promptTemplate: string;
+  tools: string[];
+  models: string[];
+  createdAt: number;
+  references: number;
+  lastReferencedAt?: number;
+  referencedRunIds: string[];
+  promoted: boolean;
 }
 
-const REFLECT_SYSTEM = `你是鲲鹏 agent 的自进化自省引擎。输入是该 agent 最近的执行轨迹（JSONL，每行：req=用户请求, tools=各工具调用次数, fail=各工具失败次数, secs=耗时秒, status=done/failed/aborted）。
-任务：从轨迹中提炼可复用经验，让 agent 以后做得更好。只输出严格 JSON（不要 markdown 围栏、不要任何其他文字）：
-{"memories":[{"name":"kebab-case","description":"一句话（召回匹配用，写具体）","memory_type":"feedback|project|user","body":"完整自足的经验正文，写明以后应该怎么做"}],"skills":[{"name":"kebab-case","displayName":"中文名","description":"一句话","triggers":["关键词"],"promptTemplate":"可照做的操作步骤指南"}]}
-规则：
-- 只提炼反复出现（≥2 次）或造成明确失败的 pattern；单次偶发不要提炼
-- fail 集中的工具/参数组合 → feedback 记忆：以后如何避免、正确的替代做法
-- status=aborted 集中的模式 → feedback：用户可能对什么不满
-- 反复成功的多工具组合流程 → skill：写出编号步骤、关键参数、注意事项
-- 没有值得提炼的内容就返回 {"memories":[],"skills":[]}
-- memories 最多 3 条、skills 最多 1 个；不得与「已有记忆/技能」列表重名
-- body 和 promptTemplate 要完整自足，禁止"如上所述"式指代`;
+interface AutoSkillRecord {
+  dirName: string;
+  metadata: AutoSkillMetadata;
+  markdown: string;
+}
 
-function extractJson(text: string): { memories?: unknown; skills?: unknown } | null {
+const DEFAULT_STATE: EvolutionState = { offset: 0, reflections: 0, lastRunAt: 0 };
+
+export function configureEvolutionCatalog(input: {
+  toolNames: Iterable<string>;
+  modelNames: Iterable<string>;
+}): void {
+  catalogToolNames = new Set(input.toolNames);
+  catalogModelNames = new Set(input.modelNames);
+}
+
+function slugify(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+}
+
+function safeJson<T>(raw: string): T | null {
+  try { return JSON.parse(raw) as T; } catch { return null; }
+}
+
+function extractJson(text: string): Record<string, unknown> | null {
   let cleaned = text.trim();
   const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence) cleaned = fence[1].trim();
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
-  if (start < 0 || end <= start) return null;
-  try {
-    return JSON.parse(cleaned.slice(start, end + 1));
-  } catch {
-    return null;
-  }
+  return start >= 0 && end > start ? safeJson<Record<string, unknown>>(cleaned.slice(start, end + 1)) : null;
 }
 
-async function listAutoSkillDirs(): Promise<string[]> {
+async function readHome(path: string): Promise<string | null> {
+  try { return await readTextFile(path, { dir: BaseDirectory.Home }); } catch { return null; }
+}
+
+async function writeHome(path: string, content: string): Promise<void> {
+  await writeTextFile(path, content, { dir: BaseDirectory.Home });
+}
+
+export async function recordTrajectory(rec: TrajectoryRecord): Promise<void> {
+  const compact: TrajectoryRecord = {
+    ...rec,
+    req: summarizeTrajectoryValue(rec.req, 200),
+    traces: rec.traces?.slice(-40).map((trace) => ({
+      ...trace,
+      params: summarizeTrajectoryValue(trace.params, 200),
+      ...(trace.error ? { error: summarizeTrajectoryValue(trace.error, 200) } : {}),
+    })),
+  };
+  const write = trajectoryWriteQueue.then(async () => {
+    try {
+      await createDir(EVOLUTION_DIR, { dir: BaseDirectory.Home, recursive: true }).catch(() => {});
+      const existing = await readHome(TRAJ_FILE);
+      const lines = existing ? existing.split('\n').filter(Boolean) : [];
+      lines.push(JSON.stringify(compact));
+      const trimmed = lines.length > TRAJECTORY_MAX ? lines.slice(-TRAJECTORY_KEEP) : lines;
+      await writeHome(TRAJ_FILE, `${trimmed.join('\n')}\n`);
+    } catch (error) {
+      agentLog.debug('Evolution', `recordTrajectory skipped: ${summarizeTrajectoryValue(error instanceof Error ? error.message : error)}`);
+    }
+  });
+  trajectoryWriteQueue = write.catch(() => {});
+  await write;
+}
+
+async function loadTrajectories(): Promise<TrajectoryRecord[]> {
+  const raw = await readHome(TRAJ_FILE);
+  if (!raw) return [];
+  return raw.split('\n').filter(Boolean).map((line) => safeJson<TrajectoryRecord>(line)).filter((item): item is TrajectoryRecord => Boolean(item));
+}
+
+async function loadState(): Promise<EvolutionState> {
+  const raw = await readHome(STATE_FILE);
+  return raw ? { ...DEFAULT_STATE, ...(safeJson<Partial<EvolutionState>>(raw) ?? {}) } : { ...DEFAULT_STATE };
+}
+
+async function saveState(state: EvolutionState): Promise<void> {
+  await createDir(EVOLUTION_DIR, { dir: BaseDirectory.Home, recursive: true }).catch(() => {});
+  await writeHome(STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+async function listTopLevelSkillDirs(): Promise<string[]> {
   try {
     const entries = await readDir(SKILLS_DIR, { dir: BaseDirectory.Home });
-    return entries.map((e) => e.name).filter((n): n is string => Boolean(n));
-  } catch {
-    return [];
+    return entries.map((entry) => entry.name).filter((name): name is string => Boolean(name));
+  } catch { return []; }
+}
+
+async function readExistingSkillSummaries(): Promise<Array<{ name: string; promptTemplate?: string }>> {
+  const dirs = await listTopLevelSkillDirs();
+  const rows = await Promise.all(dirs.map(async (dirName) => {
+    const markdown = await readHome(`${SKILLS_DIR}/${dirName}/SKILL.md`);
+    if (!markdown) return null;
+    const name = markdown.match(/^name:\s*["']?([^\n"']+)/m)?.[1]?.trim() || dirName;
+    const body = markdown.replace(/^---[\s\S]*?---\s*/m, '').trim();
+    return { name, promptTemplate: body.slice(0, 4000) };
+  }));
+  return rows.filter((row): row is { name: string; promptTemplate: string } => Boolean(row));
+}
+
+async function readAutoSkillRecord(dirName: string): Promise<AutoSkillRecord | null> {
+  if (!dirName.startsWith('auto-')) return null;
+  const [metadataRaw, markdown] = await Promise.all([
+    readHome(`${SKILLS_DIR}/${dirName}/evolution.json`),
+    readHome(`${SKILLS_DIR}/${dirName}/SKILL.md`),
+  ]);
+  if (!metadataRaw || !markdown) return null;
+  const metadata = safeJson<AutoSkillMetadata>(metadataRaw);
+  return metadata ? { dirName, metadata, markdown } : null;
+}
+
+async function listAutoSkills(): Promise<AutoSkillRecord[]> {
+  const dirs = await listTopLevelSkillDirs();
+  const records = await Promise.all(dirs.map(readAutoSkillRecord));
+  return records.filter((record): record is AutoSkillRecord => Boolean(record));
+}
+
+async function writeAutoMetadata(record: AutoSkillRecord): Promise<void> {
+  await writeHome(`${SKILLS_DIR}/${record.dirName}/evolution.json`, JSON.stringify(record.metadata, null, 2));
+}
+
+async function archiveAutoSkill(record: AutoSkillRecord, reason: string): Promise<void> {
+  const destination = `${ARCHIVE_DIR}/${record.dirName}-${Date.now()}`;
+  await createDir(destination, { dir: BaseDirectory.Home, recursive: true });
+  await copyFile(`${SKILLS_DIR}/${record.dirName}/SKILL.md`, `${destination}/SKILL.md`, { dir: BaseDirectory.Home }).catch(() => {});
+  await writeHome(`${destination}/evolution.json`, JSON.stringify({ ...record.metadata, archivedAt: Date.now(), reason }, null, 2));
+  const manifest = await readHome(`${SKILLS_DIR}/${record.dirName}/skill.json`);
+  if (manifest) await writeHome(`${destination}/skill.json`, manifest);
+  await removeDir(`${SKILLS_DIR}/${record.dirName}`, { dir: BaseDirectory.Home, recursive: true });
+}
+
+async function promoteAutoSkill(record: AutoSkillRecord): Promise<void> {
+  if (record.metadata.promoted) return;
+  const id = `auto-${slugify(record.metadata.name)}`;
+  await writeHome(`${SKILLS_DIR}/${record.dirName}/skill.json`, JSON.stringify({
+    id,
+    name: record.metadata.displayName,
+    description: record.metadata.description,
+    version: '1.0.0',
+    category: 'auto',
+    visibility: 'library',
+    hasPanel: false,
+    promptTemplate: `[自进化技能] 请读取 ~/.kunpeng/skills/${record.dirName}/SKILL.md，并严格按其中步骤执行。\n\n{{userContent}}`,
+  }, null, 2));
+  record.metadata.promoted = true;
+  await writeAutoMetadata(record);
+}
+
+async function quarantineDraft(draft: AutoSkillDraft, reasons: string[]): Promise<void> {
+  const dirName = `${Date.now()}-${slugify(draft.name || 'invalid-skill') || 'invalid-skill'}`;
+  const dir = `${QUARANTINE_DIR}/${dirName}`;
+  await createDir(dir, { dir: BaseDirectory.Home, recursive: true });
+  await writeHome(`${dir}/candidate.json`, JSON.stringify({
+    draft: { ...draft, promptTemplate: summarizeTrajectoryValue(draft.promptTemplate, 200) },
+    reasons,
+    quarantinedAt: Date.now(),
+  }, null, 2));
+}
+
+async function persistAutoSkillDraft(draft: AutoSkillDraft): Promise<boolean> {
+  const existingSkills = await readExistingSkillSummaries();
+  const result = validateAutoSkillDraft(draft, {
+    toolNames: catalogToolNames,
+    modelNames: catalogModelNames,
+    existingSkills,
+  });
+  if (!result.ok || !result.markdown) {
+    await quarantineDraft(draft, result.reasons);
+    return false;
+  }
+  const now = Date.now();
+  const dirName = `auto-${now}-${slugify(draft.name)}`;
+  const metadata: AutoSkillMetadata = {
+    name: draft.name,
+    displayName: draft.displayName,
+    description: draft.description,
+    triggers: [...draft.triggers],
+    promptTemplate: draft.promptTemplate,
+    tools: [...(draft.tools ?? [])],
+    models: [...(draft.models ?? [])],
+    createdAt: now,
+    references: 0,
+    referencedRunIds: [],
+    promoted: false,
+  };
+  await createDir(`${SKILLS_DIR}/${dirName}`, { dir: BaseDirectory.Home, recursive: true });
+  await Promise.all([
+    writeHome(`${SKILLS_DIR}/${dirName}/SKILL.md`, result.markdown),
+    writeHome(`${SKILLS_DIR}/${dirName}/evolution.json`, JSON.stringify(metadata, null, 2)),
+  ]);
+  return true;
+}
+
+const REFLECT_SYSTEM = `你是鲲鹏 Agent 的自进化自省引擎。输入是压缩、脱敏后的执行轨迹。只输出严格 JSON：
+{"memories":[{"name":"kebab-case","description":"一句话","memory_type":"feedback|project|user","body":"完整经验"}],"skills":[{"name":"kebab-case","displayName":"中文名","description":"一句话","triggers":["关键词"],"promptTemplate":"至少三步的完整操作指南","tools":["实际工具名"],"models":["实际模型 ID"]}]}
+只提炼反复出现或造成明确失败的模式。技能必须声明用到的工具和模型；不要捏造列表外名称。最多 3 条记忆、1 个技能。没有可靠经验就返回空数组。`;
+
+const NEGATIVE_REFLECT_SYSTEM = `用户刚刚明确否定或中止了任务。聚焦三件事：哪一步做错、以后正确做法、是否需要形成反馈记忆或可复用技能。不得推测用户未表达的偏好。`;
+
+function normalizeMemories(value: unknown): ReflectedMemory[] {
+  return (Array.isArray(value) ? value : []).slice(0, 3).map((item) => {
+    const raw = item as Partial<ReflectedMemory>;
+    return {
+      name: slugify(String(raw.name || '')),
+      description: String(raw.description || '').replace(/\s+/g, ' ').trim().slice(0, 240),
+      memory_type: ['feedback', 'project', 'user'].includes(String(raw.memory_type)) ? String(raw.memory_type) : 'feedback',
+      body: String(raw.body || '').trim().slice(0, 2000),
+    };
+  }).filter((item) => item.name && item.description && item.body);
+}
+
+function normalizeSkills(value: unknown): AutoSkillDraft[] {
+  return (Array.isArray(value) ? value : []).slice(0, 1).map((item) => {
+    const raw = item as Partial<AutoSkillDraft>;
+    return {
+      name: slugify(String(raw.name || '')),
+      displayName: String(raw.displayName || raw.name || '').trim().slice(0, 60),
+      description: String(raw.description || '').replace(/\s+/g, ' ').trim().slice(0, 240),
+      triggers: (Array.isArray(raw.triggers) ? raw.triggers : []).map(String).map((v) => v.trim()).filter(Boolean).slice(0, 8),
+      promptTemplate: String(raw.promptTemplate || '').trim().slice(0, 4000),
+      tools: (Array.isArray(raw.tools) ? raw.tools : []).map(String).map((v) => v.trim()).filter(Boolean).slice(0, 20),
+      models: (Array.isArray(raw.models) ? raw.models : []).map(String).map((v) => v.trim()).filter(Boolean).slice(0, 12),
+    };
+  }).filter((item) => item.name && item.description && item.promptTemplate);
+}
+
+async function persistReflection(parsed: Record<string, unknown>): Promise<{ memories: number; skills: number }> {
+  const existingMemoryNames = new Set((await loadMemoryIndex()).map((memory) => memory.name));
+  let memoriesWritten = 0;
+  for (const memory of normalizeMemories(parsed.memories)) {
+    if (existingMemoryNames.has(memory.name)) continue;
+    await createDir(MEMORY_DIR, { dir: BaseDirectory.Home, recursive: true }).catch(() => {});
+    await writeHome(`${MEMORY_DIR}/${memory.name}.md`, `---\nname: ${memory.name}\ndescription: ${memory.description}\ntype: ${memory.memory_type}\n---\n\n${memory.body}\n`);
+    existingMemoryNames.add(memory.name);
+    memoriesWritten += 1;
+  }
+  if (memoriesWritten) invalidateMemoryIndex();
+  let skillsWritten = 0;
+  for (const skill of normalizeSkills(parsed.skills)) {
+    if (await persistAutoSkillDraft(skill)) skillsWritten += 1;
+  }
+  return { memories: memoriesWritten, skills: skillsWritten };
+}
+
+function compactTrajectoryBatch(batch: TrajectoryRecord[]): string {
+  return batch.map((item) => JSON.stringify({
+    req: item.req,
+    tools: item.tools,
+    fail: item.fail,
+    traces: item.traces,
+    secs: item.secs,
+    status: item.status,
+    negative: item.negative,
+  })).join('\n');
+}
+
+async function reflectBatch(batch: TrajectoryRecord[], focus: string): Promise<{ memories: number; skills: number } | null> {
+  const answer = await quickChat([
+    { role: 'system', content: `${REFLECT_SYSTEM}\n${focus}` },
+    { role: 'user', content: `允许的工具：${[...catalogToolNames].join(', ') || '无'}\n允许的模型：${[...catalogModelNames].join(', ') || '无'}\n\n轨迹：\n${compactTrajectoryBatch(batch)}` },
+  ], { maxTokens: 4000, continueOnTruncation: true });
+  const parsed = extractJson(answer);
+  return parsed ? persistReflection(parsed) : null;
+}
+
+const negativeReflectionThrottle = new SuccessfulRunThrottle();
+const NEGATIVE_REFLECT_MIN_INTERVAL_MS = 10 * 60 * 1000;
+
+export async function reflectNegativeTrajectory(record: TrajectoryRecord): Promise<void> {
+  if (!record.negative && !detectNegativeFeedback(record.req, record.status)) return;
+  // 同时只允许一个负反馈反思；只有成功写出结果后才进入冷却期。
+  // 网络/解析失败会释放闸门，下一条真实反馈可以立即重试。
+  const now = Date.now();
+  if (!negativeReflectionThrottle.tryStart(now, NEGATIVE_REFLECT_MIN_INTERVAL_MS)) return;
+  let succeeded = false;
+  try {
+    const result = await reflectionQueue.enqueue(async () => reflectBatch([record], NEGATIVE_REFLECT_SYSTEM));
+    succeeded = Boolean(result);
+  } catch (error) {
+    agentLog.debug('Evolution', `negative reflection skipped: ${summarizeTrajectoryValue(error instanceof Error ? error.message : error)}`);
+  } finally {
+    negativeReflectionThrottle.finish(succeeded, Date.now());
   }
 }
 
-/**
- * 跑一次自省。返回给用户可读的总结；force=false 且样本不足时返回 null。
- * 抛错仅发生在 quickChat 全面失败（由 /evolve 呈现）；写盘错误静默跳过单项。
- */
 export async function runEvolutionReflect(force: boolean): Promise<string | null> {
-  if (reflectRunning) return force ? '上一次自省还在进行中，稍后再试。' : null;
-  reflectRunning = true;
-  try {
+  if (reflectionQueue.busy && !force) return null;
+  return reflectionQueue.enqueue(async () => {
+   try {
     const [trajectories, state] = await Promise.all([loadTrajectories(), loadState()]);
     const fresh = freshTrajectories(trajectories, state);
     if (!force && fresh.length < REFLECT_MIN_NEW) return null;
-    if (force && fresh.length === 0 && trajectories.length === 0) {
-      return '还没有可分析的执行轨迹，先用 agent 做几件事再来。';
-    }
-    const batchSource = fresh.length > 0 ? fresh : trajectories;
-    const batch = batchSource.slice(-REFLECT_BATCH);
-    if (batch.length === 0) return null;
-
-    const [memoryIndex, skillDirs] = await Promise.all([loadMemoryIndex(), listAutoSkillDirs()]);
-    const existingNames = [
-      ...memoryIndex.map((m) => m.name),
-      ...skillDirs,
-    ].join(', ');
-
-    const trajectoryText = batch
-      .map((t) => JSON.stringify({ req: t.req, tools: t.tools, fail: t.fail, secs: t.secs, status: t.status }))
-      .join('\n');
-    const answer = await quickChat(
-      [
-        { role: 'system', content: REFLECT_SYSTEM },
-        {
-          role: 'user',
-          content: `已有记忆/技能名（禁止重复）：${existingNames || '（空）'}\n\n最近 ${batch.length} 条执行轨迹：\n${trajectoryText}`,
-        },
-      ],
-      { maxTokens: 4000, continueOnTruncation: true },
-    );
-
-    const parsed = extractJson(answer);
-    if (!parsed) {
-      agentLog.warn('Evolution', 'reflection returned unparseable output');
-      if (force) return '自省结果无法解析（模型没按 JSON 返回），本次未写入任何内容。';
-      return null;
-    }
-
-    // ── 校验 + 落盘记忆 ──
-    const existingMemoryNames = new Set(memoryIndex.map((m) => m.name));
-    const memories = (Array.isArray(parsed.memories) ? parsed.memories : [])
-      .slice(0, 3)
-      .map((m): ReflectedMemory | null => {
-        const r = m as Partial<ReflectedMemory>;
-        const name = slugify(String(r.name || ''));
-        const description = String(r.description || '').replace(/\s+/g, ' ').trim();
-        const body = String(r.body || '').trim().slice(0, 2000);
-        const type = ['user', 'project', 'feedback', 'reference'].includes(String(r.memory_type))
-          ? String(r.memory_type)
-          : 'project';
-        if (!name || !description || !body || existingMemoryNames.has(name)) return null;
-        return { name, description, memory_type: type, body };
-      })
-      .filter((m): m is ReflectedMemory => m !== null);
-
-    let memoriesWritten = 0;
-    for (const m of memories) {
-      try {
-        const content = `---\nname: ${m.name}\ndescription: ${m.description}\ntype: ${m.memory_type}\n---\n\n${m.body}\n`;
-        await createDir(MEMORY_DIR, { dir: BaseDirectory.Home, recursive: true }).catch(() => {});
-        await writeTextFile(`${MEMORY_DIR}/${m.name}.md`, content, { dir: BaseDirectory.Home });
-        existingMemoryNames.add(m.name);
-        memoriesWritten += 1;
-      } catch (err) {
-        agentLog.debug('Evolution', `memory write skipped: ${m.name}`, err);
-      }
-    }
-    if (memoriesWritten > 0) invalidateMemoryIndex();
-
-    // ── 校验 + 落盘技能 ──
-    const existingSkillDirs = new Set(skillDirs);
-    const skills = (Array.isArray(parsed.skills) ? parsed.skills : [])
-      .slice(0, 1)
-      .map((s): ReflectedSkill | null => {
-        const r = s as Partial<ReflectedSkill>;
-        const name = slugify(String(r.name || ''));
-        const displayName = String(r.displayName || name).trim().slice(0, 30);
-        const description = String(r.description || '').replace(/\s+/g, ' ').trim().slice(0, 200);
-        const promptTemplate = String(r.promptTemplate || '').trim().slice(0, 4000);
-        const triggers = (Array.isArray(r.triggers) ? r.triggers : [])
-          .map((t) => String(t).trim()).filter(Boolean).slice(0, 6);
-        if (!name || !description || !promptTemplate) return null;
-        if (existingSkillDirs.has(`auto-${name}`) || existingSkillDirs.has(name)) return null;
-        return { name, displayName, description, triggers, promptTemplate };
-      })
-      .filter((s): s is ReflectedSkill => s !== null);
-
-    let skillsWritten = 0;
-    for (const s of skills) {
-      try {
-        const dirName = `auto-${Date.now()}-${s.name}`;
-        const skillMd = `---\nname: auto-${s.name}\ndisplayName: ${s.displayName}\ndescription: [自进化] ${s.description}\ntriggers: ${['auto-' + s.name, ...s.triggers].join(', ')}\ncategory: auto\n---\n\n${s.promptTemplate}\n`;
-        await createDir(`${SKILLS_DIR}/${dirName}`, { dir: BaseDirectory.Home, recursive: true });
-        await writeTextFile(`${SKILLS_DIR}/${dirName}/SKILL.md`, skillMd, { dir: BaseDirectory.Home });
-        existingSkillDirs.add(dirName);
-        skillsWritten += 1;
-      } catch (err) {
-        agentLog.debug('Evolution', `skill write skipped: ${s.name}`, err);
-      }
-    }
-
-    // ── 修剪：auto 技能总量封顶，最旧的归档删除 ──
-    const autoDirs = (await listAutoSkillDirs()).filter((d) => d.startsWith('auto-')).sort();
-    for (const doomed of autoDirs.slice(0, Math.max(0, autoDirs.length - MAX_AUTO_SKILLS))) {
-      await removeDir(`${SKILLS_DIR}/${doomed}`, { dir: BaseDirectory.Home, recursive: true }).catch(() => {});
-    }
-
+    const batch = (fresh.length ? fresh : trajectories).slice(-REFLECT_BATCH);
+    if (!batch.length) return force ? '还没有可分析的执行轨迹。' : null;
+    const written = await reflectBatch(batch, '从多条轨迹中提炼稳定模式。');
+    if (!written) return force ? '自省结果无法解析，本次未写入。' : null;
     await saveState({
+      ...state,
       offset: trajectories.length,
       reflections: state.reflections + 1,
       lastRunAt: Date.now(),
       ...cursorForTrajectories(trajectories),
     });
-
-    const summary = `自省完成（第 ${state.reflections + 1} 次）：分析了 ${batch.length} 条轨迹，提炼 ${memoriesWritten} 条记忆、${skillsWritten} 个技能草稿${skillsWritten > 0 ? '（auto- 前缀，重启后生效）' : ''}。`;
+    const summary = `自省完成：分析 ${batch.length} 条轨迹，新增 ${written.memories} 条记忆、${written.skills} 个候选技能。`;
     agentLog.info('Evolution', summary);
     return force ? summary : null;
-  } catch (err) {
-    agentLog.warn('Evolution', 'reflection failed', err);
-    if (force) throw err;
+  } catch (error) {
+    agentLog.warn('Evolution', `reflection failed: ${summarizeTrajectoryValue(error instanceof Error ? error.message : error)}`);
+    if (force) throw error;
     return null;
-  } finally {
-    reflectRunning = false;
+   }
+  });
+}
+
+function skillMatchesQuery(skill: AgentSkillManifest, query: string): boolean {
+  const normalized = query.toLowerCase();
+  const needles = [skill.name, skill.displayName, ...skill.triggers].filter(Boolean).map((value) => String(value).toLowerCase());
+  return needles.some((needle) => needle.length >= 2 && normalized.includes(needle));
+}
+
+/** Count prompt-level references once per run; the second proven use promotes the skill. */
+export async function recordAutoSkillReferences(skills: AgentSkillManifest[], query: string, runId: string): Promise<void> {
+  if (!runId || !query.trim()) return;
+  const matches = skills.filter((skill) => skill.skillPath.split('/').pop()?.startsWith('auto-') && skillMatchesQuery(skill, query));
+  for (const skill of matches) {
+    const dirName = skill.skillPath.split('/').pop() || '';
+    const record = await readAutoSkillRecord(dirName);
+    if (!record || record.metadata.referencedRunIds.includes(runId)) continue;
+    record.metadata.references += 1;
+    record.metadata.lastReferencedAt = Date.now();
+    record.metadata.referencedRunIds = [...record.metadata.referencedRunIds.slice(-19), runId];
+    await writeAutoMetadata(record);
+    if (resolveAutoSkillLifecycle(record.metadata, Date.now()) === 'promote') await promoteAutoSkill(record);
   }
 }
 
-/** 后台触发：样本量够 + 间隔够才跑，任何失败静默。 */
+export async function consolidateAutoSkills(now = Date.now()): Promise<void> {
+  let records = await listAutoSkills();
+  for (const record of records) {
+    const nextMarkdown = normalizeAutoSkillVisibility(
+      replaceObsoleteModelNames(record.markdown, MODEL_REPLACEMENTS),
+    );
+    const nextPrompt = replaceObsoleteModelNames(record.metadata.promptTemplate, MODEL_REPLACEMENTS);
+    const nextModels = record.metadata.models.map((model) => MODEL_REPLACEMENTS[model] ?? model);
+    if (nextMarkdown !== record.markdown) await writeHome(`${SKILLS_DIR}/${record.dirName}/SKILL.md`, nextMarkdown);
+    const manifestPath = `${SKILLS_DIR}/${record.dirName}/skill.json`;
+    const manifestRaw = await readHome(manifestPath);
+    const manifest = manifestRaw ? safeJson<Record<string, unknown>>(manifestRaw) : null;
+    if (manifest?.visibility === 'internal') {
+      await writeHome(manifestPath, JSON.stringify({ ...manifest, visibility: 'library' }, null, 2));
+    }
+    if (nextPrompt !== record.metadata.promptTemplate || nextModels.some((model, index) => model !== record.metadata.models[index])) {
+      record.metadata.promptTemplate = nextPrompt;
+      record.metadata.models = nextModels;
+      await writeAutoMetadata(record);
+    }
+  }
+  records = await listAutoSkills();
+  const candidates: ConsolidationCandidate[] = records.map((record) => ({
+    dirName: record.dirName,
+    name: record.metadata.name,
+    promptTemplate: record.metadata.promptTemplate,
+    references: record.metadata.references,
+    createdAt: record.metadata.createdAt,
+  }));
+  const plan = planSkillConsolidation(candidates);
+  const byDir = new Map(records.map((record) => [record.dirName, record]));
+  for (const { keep: keepDir, absorb: absorbDir } of plan.merge) {
+    const keep = byDir.get(keepDir);
+    const absorb = byDir.get(absorbDir);
+    if (!keep || !absorb) continue;
+    const keepWasPromoted = keep.metadata.promoted;
+    const merged = mergeAutoSkillUsage(keep.metadata, absorb.metadata);
+    Object.assign(keep.metadata, merged);
+    if (!keepWasPromoted && merged.promoted) keep.metadata.promoted = false;
+    await writeAutoMetadata(keep);
+    if (merged.promoted || resolveAutoSkillLifecycle(keep.metadata, now) === 'promote') await promoteAutoSkill(keep);
+    await archiveAutoSkill(absorb, 'duplicate-merged');
+  }
+  records = (await listAutoSkills()).sort((a, b) => b.metadata.references - a.metadata.references || b.metadata.createdAt - a.metadata.createdAt);
+  for (const record of records) {
+    if (resolveAutoSkillLifecycle(record.metadata, now) === 'archive') await archiveAutoSkill(record, 'unused-30-days');
+  }
+  // Keep the most-referenced, newest skills in the active catalog. Anything
+  // beyond the cap is archived from the low-value tail.
+  records = (await listAutoSkills()).sort((a, b) =>
+    b.metadata.references - a.metadata.references
+      || b.metadata.createdAt - a.metadata.createdAt);
+  for (const record of records.slice(MAX_AUTO_SKILLS)) await archiveAutoSkill(record, 'catalog-limit');
+}
+
 export async function maybeEvolve(): Promise<void> {
   try {
-    const [trajectories, state] = await Promise.all([loadTrajectories(), loadState()]);
+    const [trajectories, initialState] = await Promise.all([loadTrajectories(), loadState()]);
+    let state = initialState;
+    if (Date.now() - (state.lastConsolidatedAt ?? 0) >= CONSOLIDATE_INTERVAL_MS) {
+      await consolidateAutoSkills();
+      state = { ...state, lastConsolidatedAt: Date.now() };
+      await saveState(state);
+    }
     if (freshTrajectories(trajectories, state).length < REFLECT_MIN_NEW) return;
     if (Date.now() - state.lastRunAt < REFLECT_MIN_INTERVAL_MS) return;
     await runEvolutionReflect(false);
-  } catch { /* background evolution is best-effort */ }
+  } catch (error) { agentLog.debug('Evolution', `background evolution skipped: ${summarizeTrajectoryValue(error instanceof Error ? error.message : error)}`); }
 }

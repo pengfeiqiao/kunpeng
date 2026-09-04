@@ -2,7 +2,7 @@
 export { GLMClient, type GLMClientConfig } from './glmClient';
 export { AgentCoordinator, repairToolPairingSnapshot, type CoordinatorConfig } from './coordinator';
 export { ToolRegistry, createDefaultRegistry } from './toolRegistry';
-export { SkillLoader, type AgentSkillManifest } from './skillLoader';
+export { SkillLoader, getSharedSkillLoader, type AgentSkillManifest, type SkillLoaderAdapter } from './skillLoader';
 export { buildSystemPrompt } from './systemPrompt';
 export { executeCommand } from './commands/index';
 export { createBackgroundTaskTool } from './tools/backgroundTaskTool';

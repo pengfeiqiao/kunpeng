@@ -105,6 +105,7 @@ test('skill catalog in system prompt is byte-stable across queries', () => {
   assert.doesNotMatch(q1, /本轮相关/);
   // View-scoped internal skills still apply per view.
   assert.doesNotMatch(q1, /CANVAS_FULL_RULE/);
+  assert.match(q1, /ANCHOR_FULL_RULE/);
   const canvas = buildSkillDescriptionText(SKILLS, { activeView: 'canvas' });
   assert.match(canvas, /CANVAS_FULL_RULE/);
 });
@@ -113,9 +114,9 @@ test('skill relevance notice carries query-matched skills and keyword-scoped int
   const notice = buildSkillRelevanceNotice(SKILLS, { activeView: 'chat', query: '帮我做电影分镜' });
   assert.ok(notice);
   assert.match(notice!, /电影分镜/);
-  // Keyword-scoped internal skill (workshop-scoped, matched by 分镜 keyword) is
-  // delivered transiently instead of polluting the system prompt.
-  assert.match(notice!, /ANCHOR_FULL_RULE/);
+  // scene-image-anchor is now a shared chat/canvas/workshop rule and already
+  // lives in the stable catalog, so the transient notice need not duplicate it.
+  assert.doesNotMatch(notice!, /ANCHOR_FULL_RULE/);
 
   const calm = buildSkillRelevanceNotice(SKILLS, { activeView: 'chat', query: '随便聊聊' });
   assert.equal(calm, null);

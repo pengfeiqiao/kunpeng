@@ -11,6 +11,7 @@ import { buildSystemPrompt, type OutputStyle } from './systemPrompt';
 import { agentLog } from './logger';
 import { createAbortController, createChildAbortController } from './abortController';
 import { chatWithFallback, streamWithFallback, type RouteStrategy } from './providers/router';
+import type { QuerySource } from './providers/types';
 import { firePreToolUse, firePostToolUse } from './hooks';
 import { findRelevantMemories, loadMemoryBodies } from './findRelevantMemories';
 import { shouldAutoCompact, recordAutoCompactAttempt, getEffectiveContextWindowSize } from './autoCompact';
@@ -18,6 +19,7 @@ import { getProvider } from './providers/registry';
 import { sanitizeProgressText } from './toolSummary';
 import { buildTemporalTurnContext, isTimeSensitiveQuery } from './temporalContext';
 import { terminalToolResults } from './completionGuard';
+import { TransientNoticeQueue } from './transientNoticeQueue';
 import {
   buildDoubaoSpeechRoutingNotice,
   isConflictingDoubaoSpeechGenerationTool,
@@ -59,6 +61,12 @@ export interface CoordinatorConfig {
    * risk of failure, not worth routing for now).
    */
   routeStrategy?: RouteStrategy;
+  /** Background delegates use the conservative background retry policy. */
+  requestSource?: QuerySource;
+  /** Paid-call ledger namespace shared by a parent run and all children. */
+  idempotencyRunId?: string;
+  /** Explicit recursion guard carried by every tool call. */
+  subagentDepth?: 0 | 1;
   /** Tier 4: response tone/style override. Defaults to 'default' (no extra). */
   outputStyle?: OutputStyle;
   /** 生图 API 上下文（注入 system prompt） */
@@ -153,11 +161,7 @@ export class AgentCoordinator {
   // Transient per-run skill-relevance notice (query-dependent, so it must
   // NOT live in the system prompt — same attachment pattern as memory).
   private transientSkillNotice: AgentMessage | null = null;
-  /**
-   * One-shot transient notices (e.g. turn-budget warning). Included in the
-   * next outbound request only, then cleared — never persisted into history.
-   */
-  private transientOnce: AgentMessage[] = [];
+  private transientNotices = new TransientNoticeQueue();
   private pendingGuidance: Array<{ text: string; mediaBlocks: AgentUserContentBlock[] }> = [];
 
   /**
@@ -229,6 +233,16 @@ export class AgentCoordinator {
       `收到你的补充${preview ? `：“${preview}${cleaned.length > 72 ? '…' : ''}”` : ''}。我会先让当前操作安全结束，再把它并入下一步判断；现有进度不会重启。`,
     );
     return true;
+  }
+
+  /** Add request-scoped context without persisting it into conversation history. */
+  queueTransientNotice(text: string): void {
+    this.transientNotices.addOnce(text);
+  }
+
+  /** Add context to every model request in this run without persisting it. */
+  queueRunNotice(text: string): void {
+    this.transientNotices.addRun(text);
   }
 
   private flushPendingGuidance(): number {
@@ -466,6 +480,7 @@ export class AgentCoordinator {
     userInput: string,
     callbacks: CoordinatorCallbacks,
     mediaBlocks: AgentUserContentBlock[] = [],
+    runId?: string,
   ): Promise<void> {
     if (this.isRunning) {
       callbacks.onError(new Error('Coordinator is already running'));
@@ -501,7 +516,7 @@ export class AgentCoordinator {
           : userInput,
       });
       const speechRoutingNotice = buildDoubaoSpeechRoutingNotice(userInput);
-      if (speechRoutingNotice) this.transientOnce.push({ role: 'user', content: speechRoutingNotice });
+      if (speechRoutingNotice) this.transientNotices.addOnce(speechRoutingNotice);
 
       // Tier 2.3: pick 3-4 memories relevant to this user turn and inject
       // them as a transient addendum on the outbound request only. They are
@@ -555,8 +570,8 @@ export class AgentCoordinator {
       let speechToolNudgeCount = 0;
       // Soft warning threshold: nudge the model to converge at ~70% of the
       // turn budget instead of hitting the hard maxTurns cutoff mid-task.
-      const budgetWarnTurn = Math.floor(this.config.maxTurns * 0.7);
-      for (let turn = 0; turn < this.config.maxTurns; turn++) {
+      let budgetWarned = false;
+      for (let turn = 0; turn < (callbacks.getMaxTurns?.() ?? this.config.maxTurns); turn++) {
         // Check if user aborted before each turn (including after tool execution)
         if (this.abortController?.signal.aborted) {
           throw new DOMException('Aborted', 'AbortError');
@@ -564,12 +579,14 @@ export class AgentCoordinator {
         this.flushPendingGuidance();
         // A tool may have switched workspaces during the previous turn.
         this.refreshScopedSkills(userInput);
-        agentLog.info('Coordinator', `Turn ${turn + 1}/${this.config.maxTurns}`);
-        if (turn === budgetWarnTurn && budgetWarnTurn > 0) {
-          this.transientOnce.push({
-            role: 'user',
-            content: `[系统提醒 — 仅供你参考，无需回应此消息] 本次任务的工具轮次已用约 70%（${turn + 1}/${this.config.maxTurns}）。请收敛后续操作：优先完成最关键的剩余步骤，避免开启新的大范围操作，尽快给出最终答复。`,
-          });
+        const currentMaxTurns = callbacks.getMaxTurns?.() ?? this.config.maxTurns;
+        const budgetWarnTurn = Math.floor(currentMaxTurns * 0.7);
+        agentLog.info('Coordinator', `Turn ${turn + 1}/${currentMaxTurns}`);
+        if (!budgetWarned && turn >= budgetWarnTurn && budgetWarnTurn > 0) {
+          budgetWarned = true;
+          this.transientNotices.addOnce(
+            `[系统提醒 — 仅供你参考，无需回应此消息] 本次任务的工具轮次已用约 70%（${turn + 1}/${currentMaxTurns}）。请收敛后续操作：优先完成最关键的剩余步骤，避免开启新的大范围操作，尽快给出最终答复。`,
+          );
         }
         // Stream response from GLM-5
         const response = await this.streamToCompletion(callbacks);
@@ -783,6 +800,11 @@ export class AgentCoordinator {
             p.call.function.name,
             p.params,
             this.abortController?.signal,
+            {
+              runId,
+              idempotencyRunId: this.config.idempotencyRunId,
+              subagentDepth: this.config.subagentDepth ?? 0,
+            },
           );
           callbacks.onToolEnd(p.call.function.name, result);
           await firePostToolUse({
@@ -935,6 +957,7 @@ export class AgentCoordinator {
       this.currentCallbacks = null;
       this.transientMemory = null;
       this.transientTemporalContext = null;
+      this.transientNotices.endRun();
       this.pendingGuidance = [];
     }
   }
@@ -1043,10 +1066,8 @@ export class AgentCoordinator {
       this.transientTemporalContext,
       this.transientMemory,
       this.transientSkillNotice,
-      ...this.transientOnce,
+      ...this.transientNotices.takeForRequest(),
     ].filter((message): message is AgentMessage => message !== null);
-    // One-shot notices are consumed by this request only.
-    this.transientOnce = [];
     if (transientAddenda.length > 0) {
       const lastUserIdx = (() => {
         for (let i = this.messages.length - 1; i >= 0; i--) {
@@ -1082,7 +1103,7 @@ export class AgentCoordinator {
             tools: this.config.toolRegistry.getDefinitions(),
           },
           {
-            source: 'foreground',
+            source: this.config.requestSource ?? 'foreground',
             signal: this.abortController?.signal,
             onProviderFallback: ({ from, to, reason }) => {
               this.currentCallbacks?.onProgressText?.(
@@ -1290,5 +1311,36 @@ export class AgentCoordinator {
   /** 获取工具注册表 */
   getToolRegistry(): ToolRegistry {
     return this.config.toolRegistry;
+  }
+
+  /** Create a history-isolated child that inherits the parent's route and workspace. */
+  createSubagentCoordinator(
+    registry: ToolRegistry,
+    parentAbortController: AbortController,
+    idempotencyRunId: string,
+    maxTurns = 20,
+  ): AgentCoordinator {
+    return new AgentCoordinator({
+      glmClient: this.config.glmClient,
+      toolRegistry: registry,
+      cwd: this.config.cwd,
+      os: this.config.os,
+      shell: this.config.shell,
+      maxTurns,
+      skillDescriptions: this.config.skillDescriptions,
+      skillDescriptionResolver: this.config.skillDescriptionResolver,
+      skillNoticeResolver: this.config.skillNoticeResolver,
+      workspace: this.config.workspace,
+      customRules: this.config.customRules,
+      parentAbortController,
+      routeStrategy: this.config.routeStrategy,
+      requestSource: 'background',
+      idempotencyRunId,
+      subagentDepth: 1,
+      outputStyle: this.config.outputStyle,
+      imageApiContext: this.config.imageApiContext,
+      runninghubContext: this.config.runninghubContext,
+      aigcMemoryContext: this.config.aigcMemoryContext,
+    });
   }
 }

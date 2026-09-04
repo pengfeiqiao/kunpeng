@@ -14,7 +14,7 @@ import { resolveStepNoteTargetRunId } from './runTargeting';
 export type RunStepStatus = 'pending' | 'active' | 'done' | 'failed' | 'skipped';
 export type RunStatus = 'running' | 'done' | 'failed' | 'aborted';
 export type RunToolStatus = 'running' | 'done' | 'failed';
-export type SubAgentStatus = 'running' | 'completed' | 'failed';
+export type SubAgentStatus = 'running' | 'completed' | 'failed' | 'timeout' | 'aborted';
 export type SubTaskKind = 'context' | 'generation' | 'review';
 
 export interface RunToolCall {
@@ -40,6 +40,7 @@ export interface RunSubAgent {
   endedAt?: number;
   outputSummary?: string;
   error?: string;
+  progress: string[];
 }
 
 export interface RunStep {
@@ -94,8 +95,9 @@ interface RunStepState {
   ensureSystemStep: (title: string, detail?: string, runId?: string) => string | null;
   startTool: (name: string, params: Record<string, unknown>, runId?: string) => string | null;
   finishTool: (toolId: string | null, success: boolean, result?: { output?: string; error?: string }, runId?: string) => void;
-  startSubAgent: (args: { taskId?: string; task: string; async?: boolean; kind?: SubTaskKind }) => string | null;
-  finishSubAgent: (idOrTaskId: string, status: Exclude<SubAgentStatus, 'running'>, output?: string, error?: string) => void;
+  startSubAgent: (args: { taskId?: string; task: string; async?: boolean; kind?: SubTaskKind }, runId?: string) => string | null;
+  appendSubAgentProgress: (idOrTaskId: string, text: string, runId?: string) => void;
+  finishSubAgent: (idOrTaskId: string, status: Exclude<SubAgentStatus, 'running'>, output?: string, error?: string, runId?: string) => void;
   appendStepNote: (detail: string, toolName?: string) => void;
   clearSession: (sessionId: string) => void;
 }
@@ -237,6 +239,7 @@ function compactPersistedRuns(state: PersistedRunStepState): PersistedRunStepSta
         subAgents: step.subAgents.slice(-8).map((subAgent) => ({
           ...subAgent,
           task: subAgent.task.slice(0, 800),
+          progress: (subAgent.progress ?? []).slice(-8).map((item) => item.slice(0, 320)),
           outputSummary: subAgent.outputSummary?.slice(0, 400),
           error: subAgent.error?.slice(0, 400),
         })),
@@ -562,7 +565,7 @@ export const useRunStepStore = create<RunStepState>()(persist((set, get) => ({
     }), runId));
   },
 
-  startSubAgent: ({ taskId, task, async, kind }) => {
+  startSubAgent: ({ taskId, task, async, kind }, runId) => {
     const id = taskId || makeId('subagent');
     const subTaskKind = kind ?? inferSubTaskKind(task);
     set((state) => updateCurrentRun(state, (run) => {
@@ -589,14 +592,31 @@ export const useRunStepStore = create<RunStepState>()(persist((set, get) => ({
         mode: async ? 'async' : 'sync',
         status: 'running',
         startedAt: Date.now(),
+        progress: [],
       };
       steps[idx] = { ...steps[idx], subAgents: [...steps[idx].subAgents, sub] };
       return { ...run, steps };
-    }));
-    return get().currentRunId ? id : null;
+    }, runId));
+    return (runId ?? get().currentRunId) ? id : null;
   },
 
-  finishSubAgent: (idOrTaskId, status, output, error) =>
+  appendSubAgentProgress: (idOrTaskId, text, runId) => {
+    const clean = text.replace(/\s+/g, ' ').trim();
+    if (!clean) return;
+    set((state) => updateCurrentRun(state, (run) => ({
+      ...run,
+      steps: run.steps.map((step) => ({
+        ...step,
+        subAgents: step.subAgents.map((sub) =>
+          sub.id === idOrTaskId || sub.taskId === idOrTaskId
+            ? { ...sub, progress: [...(sub.progress ?? []), clean].slice(-8) }
+            : sub,
+        ),
+      })),
+    }), runId));
+  },
+
+  finishSubAgent: (idOrTaskId, status, output, error, runId) =>
     set((state) => updateCurrentRun(state, (run) => ({
       ...run,
       steps: run.steps.map((step) => ({
@@ -613,7 +633,7 @@ export const useRunStepStore = create<RunStepState>()(persist((set, get) => ({
             : sub,
         ),
       })),
-    }))),
+    }), runId)),
 
   appendStepNote: (detail, toolName) =>
     set((state) => {

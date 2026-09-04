@@ -9,13 +9,13 @@ export interface PromptSkill {
   invokable?: boolean;
 }
 
-const SCOPED_INTERNAL_SKILLS: Record<string, { views: string[]; keywords: string[] }> = {
+export const SCOPED_INTERNAL_SKILLS: Record<string, { views: string[]; keywords: string[] }> = {
   'canvas-project-manager': {
     views: ['canvas'],
     keywords: ['画布', '节点', '连线', 'canvas'],
   },
   'scene-image-anchor': {
-    views: ['workshop'],
+    views: ['chat', 'canvas', 'workshop'],
     keywords: ['分镜', '故事板', '生图', '资产图', '角色一致', '场景一致', 'storyboard'],
   },
 };

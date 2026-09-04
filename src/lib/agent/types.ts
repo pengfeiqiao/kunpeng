@@ -38,6 +38,38 @@ export interface ToolResult {
   terminalMessage?: string;
 }
 
+export type SubAgentTerminalStatus = 'completed' | 'failed' | 'timeout' | 'aborted';
+
+export interface AgentDelegateRequest {
+  task: string;
+  context?: string;
+  toolGroups?: string[];
+  timeoutSec?: number;
+}
+
+export interface AgentDelegateResult {
+  status: SubAgentTerminalStatus;
+  runId: string;
+  conclusion: string;
+  artifacts: string[];
+  error?: string;
+}
+
+export type SubAgentEvent =
+  | { type: 'start'; id: string; runId: string; task: string }
+  | { type: 'progress'; id: string; runId: string; text: string }
+  | { type: 'tool_start'; id: string; runId: string; toolName: string }
+  | { type: 'tool_end'; id: string; runId: string; toolName: string; success: boolean }
+  | { type: 'terminal'; id: string; runId: string; status: SubAgentTerminalStatus; conclusion?: string; error?: string };
+
+export interface ToolExecutionContext {
+  runId?: string;
+  /** Parent run namespace used by paid-call idempotency across delegates. */
+  idempotencyRunId?: string;
+  subagentDepth?: number;
+  delegate?: (request: AgentDelegateRequest, signal?: AbortSignal) => Promise<AgentDelegateResult>;
+}
+
 /** Tool 风险级别 */
 export type ToolRisk = 'safe' | 'ask' | 'deny';
 
@@ -59,7 +91,7 @@ export interface Tool {
   /** 动态风险检查（基于实际参数），优先级高于静态 risk */
   checkRisk?(params: Record<string, unknown>): RiskCheckResult;
   /** signal 可选：长任务工具（如 bash）用它在 abort 时杀掉底层进程 */
-  execute(params: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult>;
+  execute(params: Record<string, unknown>, signal?: AbortSignal, context?: ToolExecutionContext): Promise<ToolResult>;
 }
 
 /** GLM API tool_call 格式 */
@@ -152,7 +184,7 @@ export interface CoordinatorCallbacks {
   /** 工具需要确认时调用，返回 true 表示允许执行 */
   onToolConfirm?: (name: string, params: Record<string, unknown>, reason?: string) => Promise<boolean>;
   /** 子任务文本增量（用于显示任务进度） */
-  onSubAgentDelta?: (text: string) => void;
+  onSubAgentDelta?: (text: string, event?: SubAgentEvent) => void;
   /** 上下文压缩开始时调用（用于 UI 反馈） */
   onCompacting?: () => void;
   /** Native ACP context-window updates used by the Harness route. */
@@ -164,6 +196,8 @@ export interface CoordinatorCallbacks {
    * 触发一次，避免死循环。
    */
   shouldContinue?: () => string | null;
+  /** 当前 run 的动态轮次预算；仅未完成 todo 等明确状态可扩展默认预算。 */
+  getMaxTurns?: () => number;
 }
 
 /** 工具执行状态 (用于 UI) */

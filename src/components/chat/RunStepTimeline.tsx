@@ -64,16 +64,29 @@ function ToolEvent({ tool, compact = false }: { tool: RunToolCall; compact?: boo
 
 function SubAgentEvent({ sub, compact = false }: { sub: RunSubAgent; compact?: boolean }) {
   const kindLabel = sub.kind === 'context' ? '整理上下文' : sub.kind === 'review' ? '检查修正' : '生成草案';
-  const label = sub.status === 'running' ? `正在${kindLabel}` : sub.status === 'failed' ? `${kindLabel}失败` : `已${kindLabel}`;
+  const label = sub.status === 'running'
+    ? `正在${kindLabel}`
+    : sub.status === 'failed'
+      ? `${kindLabel}失败`
+      : sub.status === 'timeout'
+        ? `${kindLabel}超时`
+        : sub.status === 'aborted'
+          ? `${kindLabel}已中止`
+          : `已${kindLabel}`;
+  const failed = sub.status === 'failed' || sub.status === 'timeout';
   return (
     <div className={`${compact ? 'gap-2 py-1 text-[12px] leading-[18px]' : 'gap-2.5 py-1.5 text-[13px] leading-5'} flex min-w-0 items-start`}>
-      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center ${sub.status === 'failed' ? 'text-red-500' : 'text-[var(--run-text-muted)]'}`}>
-        {statusIcon(sub.status === 'completed' ? 'done' : sub.status)}
+      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center ${failed ? 'text-red-500' : 'text-[var(--run-text-muted)]'}`}>
+        {statusIcon(sub.status === 'completed' ? 'done' : failed ? 'failed' : sub.status === 'aborted' ? 'pending' : 'running')}
       </span>
       <span className="min-w-0 flex-1">
         <span className="font-medium text-[var(--run-text-secondary)]">{label}</span>
         <span className="ml-2 break-words text-[var(--run-text-muted)] [overflow-wrap:anywhere]">{sub.title}</span>
-        {sub.status === 'failed' && sub.error && <span className="mt-0.5 block break-words text-red-500 [overflow-wrap:anywhere]">{compactToolError(sub.error)}</span>}
+        {sub.progress?.slice(-3).map((item, index) => (
+          <span key={`${sub.id}-progress-${index}`} className="mt-0.5 block break-words text-[var(--run-text-muted)] [overflow-wrap:anywhere]">{item}</span>
+        ))}
+        {sub.status === 'completed' && sub.outputSummary && <span className="mt-0.5 block break-words text-[var(--run-text-secondary)] [overflow-wrap:anywhere]">{sub.outputSummary}</span>}
+        {failed && sub.error && <span className="mt-0.5 block break-words text-red-500 [overflow-wrap:anywhere]">{compactToolError(sub.error)}</span>}
       </span>
     </div>
   );
