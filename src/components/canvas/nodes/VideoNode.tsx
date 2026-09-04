@@ -14,7 +14,7 @@ import NodeParamBadge from './NodeParamBadge';
 import ToolbarDropdown from '../ToolbarDropdown';
 import NodeToolbarPortal from '../NodeToolbarPortal';
 import { extendVideo, lipSyncViaAgent } from '@/lib/canvas/videoTools';
-import { increaseFps, separateAudio, sendToEditor, sendToAgent } from '@/lib/canvas/videoToolActions';
+import { increaseFps, separateAudio, sendToEditor, sendToAgent, upscaleVideo } from '@/lib/canvas/videoToolActions';
 import { useJustCompleted } from './ImageNode';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { useVideoThumb } from '@/lib/canvas/videoThumbs';
@@ -255,6 +255,10 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeData>) {
               icon={Film}
               label="更多"
               items={[
+                { id: 'up720', icon: Sparkles, label: '超分 720p', hint: 'AI 视频超分，默认档位最省钱', onClick: () => void upscaleVideo(id, '720p') },
+                { id: 'up1080', icon: Sparkles, label: '超分 1080p', hint: 'AI 视频超分至 1080p', onClick: () => void upscaleVideo(id, '1080p') },
+                { id: 'up2k', icon: Sparkles, label: '超分 2K', hint: 'AI 视频超分至 2K，价格较高', onClick: () => void upscaleVideo(id, '2K') },
+                { id: 'up4k', icon: Sparkles, label: '超分 4K', hint: 'AI 视频超分至 4K，价格较高', onClick: () => void upscaleVideo(id, '4K') },
                 { id: 'fps', icon: Sparkles, label: '帧率增强', hint: 'AI 插帧提升流畅度', onClick: () => void increaseFps(id) },
                 { id: 'ext5', icon: Film, label: '延长 +5 秒', hint: 'Seedance 续写后续剧情', onClick: () => void extendVideo(id, 5) },
                 { id: 'ext10', icon: Film, label: '延长 +10 秒', hint: 'Seedance 续写后续剧情', onClick: () => void extendVideo(id, 10) },

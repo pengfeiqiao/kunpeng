@@ -67,6 +67,60 @@ export async function increaseFps(nodeId: string): Promise<void> {
   }
 }
 
+// AI 应用通道的分辨率枚举与标准模型不同（无 2K，4K 小写），容灾时映射。
+const APP_RESOLUTION_MAP: Record<string, string> = { '720p': '720p', '1080p': '1080p', '2K': '4k', '4K': '4k' };
+
+/** 提升分辨率（标准模型 rhart-video/video-upscaler 主通道，失败容灾 AI 应用） */
+export async function upscaleVideo(nodeId: string, targetResolution = '720p'): Promise<void> {
+  const { url, description } = getNodeVideo(nodeId);
+  if (!url) return;
+  const base = description?.slice(0, 20) || '';
+  const newId = spawnDerived(nodeId, 'video', `${base} 超分 ${targetResolution}`);
+  const store = useCanvasStore.getState();
+
+  let result = await runGeneration({
+    engineId: 'video-upscaler',
+    prompt: 'upscale video',
+    videoUrls: [url],
+    params: { targetResolution },
+    nodeId: newId,
+  });
+
+  // 容灾：只有确定未提交/供应商明确失败时才换通道——提交状态不明就重提
+  // 可能两边都扣费（billingSafety 纪律）。快速通道没有 2K 档，2K 映射为 4k。
+  const cancelled = (result.error ?? '') === '已取消';
+  const fallbackEligible = !result.success
+    && !cancelled
+    && !result.backgroundPending
+    && !result.submissionUncertain
+    && (!result.providerTaskId || result.providerFailed === true);
+  let fallbackNote = '';
+  if (fallbackEligible) {
+    const appResolution = APP_RESOLUTION_MAP[targetResolution] ?? '1080p';
+    fallbackNote = appResolution !== targetResolution ? `（快速通道无 ${targetResolution} 档，已按 ${appResolution} 提交）` : '（已切换快速通道）';
+    result = await runGeneration({
+      engineId: 'video-upscaler-app',
+      prompt: 'upscale video',
+      videoUrls: [url],
+      params: { targetResolution: appResolution, targetFps: '30' },
+      nodeId: newId,
+    });
+  }
+
+  if (result.success && result.resultPaths[0]) {
+    store.updateNode(newId, {
+      isGenerating: false,
+      justCompletedAt: Date.now(),
+      generatedVideoUrl: result.resultUrls[0],
+      localPath: result.resultPaths[0],
+      mediaRole: 'output',
+      ...(fallbackNote ? { description: `${base} 超分 ${targetResolution}${fallbackNote}` } : {}),
+    });
+  } else {
+    store.updateNode(newId, { isGenerating: false, description: `提升分辨率失败: ${result.error?.slice(0, 60) ?? ''}` });
+  }
+}
+
 /** 音频分离（rhart-audio/extract-vocal → AudioNode；失败退本地 ffmpeg 抽音轨） */
 export async function separateAudio(nodeId: string): Promise<void> {
   const { url, path, description } = getNodeVideo(nodeId);

@@ -284,6 +284,42 @@ export const VIDEO_TOOL_ENGINES: RhtvCanvasEngine[] = [
     videoParam: { key: 'videoUrl', multiple: false },
     params: [],
   },
+  {
+    // 标准模型通道（2026-09 实测：360p→1080p 约 5.5 分钟 ¥3.15/15s）。
+    // 旧 appConfig 版本随海外节点退役，国内站标准端点仍在线。
+    id: 'video-upscaler',
+    label: '提升分辨率',
+    kind: 'video',
+    endpoint: 'rhart-video/video-upscaler',
+    mode: 'multimodal-video',
+    videoParam: { key: 'videoUrl', multiple: false },
+    fixedParams: { targetResolution: '720p' },
+    params: [
+      { key: 'targetResolution', label: '分辨率', type: 'list', default: '720p', options: ['720p', '1080p', '2K', '4K'] },
+    ],
+  },
+  {
+    // AI 应用通道（2026-09 实测：360p→1080p 约 75 秒 ¥10.5/15s，快但贵），
+    // 作为标准模型失败时的容灾。超分+插帧一体（targetFps）。
+    id: 'video-upscaler-app',
+    label: '提升分辨率（快速通道）',
+    kind: 'video',
+    endpoint: 'rhart-video/video-upscaler',
+    mode: 'multimodal-video',
+    videoParam: { key: 'videoUrl', multiple: false },
+    appConfig: {
+      webappId: '2061298406567538690',
+      nodes: [
+        { nodeId: '6', fieldName: 'file', source: 'video' },
+        { nodeId: '15', fieldName: 'targetResolution', source: 'param', paramKey: 'targetResolution' },
+        { nodeId: '15', fieldName: 'targetFps', source: 'param', paramKey: 'targetFps' },
+      ],
+    },
+    params: [
+      { key: 'targetResolution', label: '分辨率', type: 'list', default: '720p', options: ['720p', '1080p', '4k'] },
+      { key: 'targetFps', label: '帧率', type: 'list', default: '30', options: ['30', '60'] },
+    ],
+  },
 ];
 
 // ── 音频引擎（minimax TTS / minimax 纯音乐 / 人声分离）─────────────────────
