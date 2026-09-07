@@ -119,9 +119,8 @@ test('component identity remounts dialogs for project, object, output type and d
     '@/lib/workspace/submissions': { pendingWorkspaceSubmission: () => null },
     '@/lib/workspace/services': { workspacePriceKey: () => 'quote' },
     '@tauri-apps/api/dialog': { open: async () => null },
-    '@/components/canvas/ArtifactPickerPanel': { default: 'artifact-picker' },
+    '@/lib/artifacts': { listArtifacts: async () => [] },
     '@/lib/workspace/mediaTools': { workspaceMediaTools: () => [], workspaceMediaToolDraft: () => null },
-    '@/components/canvas/AssetLibraryPanel': { default: 'asset-library' },
     './GenerationComposer': { default: 'composer' }, './MediaInspector': { default: 'inspector' },
   });
   const key = (value) => elements(run.render({ data: { fixture: value }, engines: [], onViewState() {} }))

@@ -10,8 +10,7 @@ import { pendingWorkspaceSubmission } from '@/lib/workspace/submissions';
 import { selectWorkspaceObject, workspaceSelection } from '@/lib/workspace/contentModel';
 import GenerationComposer, { type WorkspaceEngineChoice } from './GenerationComposer';
 import MediaInspector from './MediaInspector';
-import ArtifactPickerPanel from '@/components/canvas/ArtifactPickerPanel';
-import AssetLibraryPanel from '@/components/canvas/AssetLibraryPanel';
+import { listArtifacts, type ArtifactEntry } from '@/lib/artifacts';
 import { workspacePriceKey, type WorkspacePrice } from '@/lib/workspace/services';
 import type { MediaFileRecord } from '@/lib/projectObjects/types';
 import type { StylePreset } from '@/lib/styleLibrary';
@@ -58,7 +57,20 @@ export default function WorkspaceMediaPanel(props: Props) {
   const operations = useRef(new Map<string, AbortController>());
   const mounted = useRef(true);
   const [referenceTarget, setReferenceTarget] = useState<WorkspaceDraft | null>(null);
-  const [pickerSource, setPickerSource] = useState<'artifacts' | 'assets' | null>(null);
+  const [pickerSource, setPickerSource] = useState<'project' | 'assets' | 'artifacts'>('project');
+  const [artifacts, setArtifacts] = useState<ArtifactEntry[]>([]);
+  const [artifactsLoading, setArtifactsLoading] = useState(false);
+  const [artifactCount, setArtifactCount] = useState(60);
+  useEffect(() => {
+    if (pickerSource !== 'artifacts' || !referenceTarget) return;
+    let cancelled = false;
+    setArtifactsLoading(true);
+    listArtifacts()
+      .then((list) => { if (!cancelled) setArtifacts(list.filter((entry) => ['image', 'video', 'audio'].includes(entry.type))); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setArtifactsLoading(false); });
+    return () => { cancelled = true; };
+  }, [pickerSource, referenceTarget]);
   useEffect(() => { mounted.current = true; return () => {
     mounted.current = false;
     operations.current.forEach((controller) => controller.abort()); operations.current.clear();
@@ -83,7 +95,7 @@ export default function WorkspaceMediaPanel(props: Props) {
     if (target.references.some((item) => item.id === ref.id || item.path === ref.path)) return;
     save(changeWorkspaceReferences(target, [...target.references, ref]));
     setReferenceTarget(null);
-    setPickerSource(null);
+    setPickerSource('project');
   };
   const pickLocalReferences = async (target: WorkspaceDraft) => {
     const chosen = await openDialog({ multiple: true, filters: [{ name: '媒体文件', extensions: LOCAL_MEDIA_EXTENSIONS }] });
@@ -150,6 +162,23 @@ export default function WorkspaceMediaPanel(props: Props) {
   };
   const candidates = props.data.projectObjects?.media.filter((item) => !item.archived && item.purpose !== 'historical'
     && item.source !== 'legacy-storyboard' && ['image', 'video', 'audio'].includes(item.mediaType) && item.path) ?? [];
+  // 参考选择器三来源：项目素材（本项目生成/收集的媒体）、项目资产（角色/场景/道具等元素资产）、产物库（全局产物）
+  const assetOwners = new Map((props.data.projectObjects?.objects ?? [])
+    .filter((item) => !item.archived && ['character', 'scene', 'prop', 'scene-asset'].includes(item.kind))
+    .map((item) => [item.id, item.label ?? item.id]));
+  const pickerItems: Array<{ id: string; path: string; label: string; mediaType: string; ownerObjectId?: string; versionObjectId?: string }> =
+    pickerSource === 'assets'
+      // 只显示定版（current-version）资产图，候选版本不进入参考选择
+      ? (props.data.projectObjects?.media ?? [])
+          .filter((item) => item.ownerObjectId && assetOwners.has(item.ownerObjectId) && !item.archived
+            && item.purpose === 'current-version' && ['image', 'video', 'audio'].includes(item.mediaType) && item.path)
+          .map((item) => ({ id: item.id, path: item.path, mediaType: item.mediaType,
+            label: `${assetOwners.get(item.ownerObjectId!) ?? '项目资产'}${item.label && item.label !== assetOwners.get(item.ownerObjectId!) ? ` · ${item.label}` : ''}` }))
+      : pickerSource === 'artifacts'
+        ? artifacts.slice(0, artifactCount).map((entry) => ({ id: `artifact:${entry.path}`, path: entry.path, mediaType: entry.type,
+          label: entry.prompt || entry.path.split(/[\\/]/).pop() || '产物' }))
+        : candidates.map((item) => ({ id: item.id, path: item.path, mediaType: item.mediaType,
+          label: item.label ?? item.path.split(/[\\/]/).pop() ?? '素材', ownerObjectId: item.ownerObjectId, versionObjectId: item.versionObjectId }));
   return <div className="workspace-media-panel">
     <div className="workspace-media-actions">
     {selected.kind === 'shot' && <div className="workspace-output-tabs" role="group" aria-label="镜头媒体类型">
@@ -220,37 +249,29 @@ export default function WorkspaceMediaPanel(props: Props) {
           });
         }} /> : undefined} />
     </div>
-    {referenceTarget && referenceTarget.objectId === selected.id && referenceTarget.outputType === outputType && <div className="workspace-picker-backdrop" onClick={() => { setReferenceTarget(null); setPickerSource(null); }}>
+    {referenceTarget && referenceTarget.objectId === selected.id && referenceTarget.outputType === outputType && <div className="workspace-picker-backdrop" onClick={() => { setReferenceTarget(null); setPickerSource('project'); }}>
       <section className="workspace-reference-picker" role="dialog" aria-label="选择本次参考素材" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-      <header><h2>添加参考素材</h2><button className="workspace-icon" aria-label="关闭参考选择" onClick={() => { setReferenceTarget(null); setPickerSource(null); }}><X size={16} /></button></header>
+      <header><h2>添加参考素材</h2><button className="workspace-icon" aria-label="关闭参考选择" onClick={() => { setReferenceTarget(null); setPickerSource('project'); }}><X size={16} /></button></header>
       <div className="workspace-reference-sources" role="group" aria-label="参考来源">
+        <button aria-pressed={pickerSource === 'project'} onClick={() => setPickerSource('project')}><ImageIcon size={13} />项目素材</button>
+        <button aria-pressed={pickerSource === 'assets'} onClick={() => setPickerSource('assets')}><Library size={13} />项目资产</button>
+        <button aria-pressed={pickerSource === 'artifacts'} onClick={() => setPickerSource('artifacts')}><Package size={13} />产物库</button>
         <button onClick={() => void pickLocalReferences(referenceTarget)}><FolderOpen size={13} />本地文件</button>
-        <button onClick={() => setPickerSource('artifacts')}><Package size={13} />产物库</button>
-        <button onClick={() => setPickerSource('assets')}><Library size={13} />资产库</button>
       </div>
-      <p className="workspace-reference-picker-label">项目素材</p>
-      <div className="workspace-picker-grid">{candidates.map((item) => <button key={item.id} disabled={referenceTarget.references.some((ref) => ref.id === item.id || ref.path === item.path)}
-        title={item.label ?? item.path.split(/[\\/]/).pop()}
+      <div className="workspace-picker-grid">{pickerItems.map((item) => <button key={item.id} disabled={referenceTarget.references.some((ref) => ref.id === item.id || ref.path === item.path)}
+        title={item.label}
         onClick={() => {
-          const ref: WorkspaceReference = { id: item.id, type: item.mediaType as WorkspaceReference['type'], path: item.path,
-            label: item.label ?? item.path.split(/[\\/]/).pop() ?? '素材', objectId: item.ownerObjectId, versionId: item.versionObjectId };
-          addReference(referenceTarget, ref);
+          addReference(referenceTarget, { id: item.id, type: item.mediaType as WorkspaceReference['type'], path: item.path,
+            label: item.label, objectId: item.ownerObjectId, versionId: item.versionObjectId });
         }}>
         {item.mediaType === 'image' ? <img src={props.mediaSrc(item.path)} alt="" loading="lazy" /> : <span className="workspace-picker-kind">{item.mediaType === 'video' ? '视频' : '音频'}</span>}
-        <span>{item.label ?? '未命名素材'}</span>
+        <span>{item.label}</span>
       </button>)}</div>
-      {!candidates.length && <p className="workspace-picker-empty">项目中暂无可用素材，可从本地文件、产物库或资产库添加</p>}
+      {pickerSource === 'artifacts' && artifactsLoading && <p className="workspace-picker-empty">正在读取产物库…</p>}
+      {!artifactsLoading && !pickerItems.length && <p className="workspace-picker-empty">{
+        pickerSource === 'assets' ? '项目还没有定版的角色/场景/道具资产，可先在项目元素中生成并采用定版'
+          : pickerSource === 'artifacts' ? '产物库暂无产物' : '项目中暂无可用素材，可从项目资产、产物库或本地文件添加'}</p>}
+      {pickerSource === 'artifacts' && artifactCount < artifacts.length && <p className="workspace-picker-empty"><button onClick={() => setArtifactCount((count) => count + 60)}>显示更多（还有 {artifacts.length - artifactCount} 项）</button></p>}
     </section></div>}
-    {pickerSource === 'artifacts' && referenceTarget && <div className="canvas-dark workspace-picker-overlay"><ArtifactPickerPanel open inline onClose={() => setPickerSource(null)} onPick={(entry) => {
-      if (!['image', 'video', 'audio'].includes(entry.type)) return;
-      addReference(referenceTarget, { id: `artifact:${entry.path}`, type: entry.type as WorkspaceReference['type'], path: entry.path,
-        label: entry.path.split(/[\\/]/).pop() ?? '产物' });
-    }} /></div>}
-    {pickerSource === 'assets' && referenceTarget && <div className="canvas-dark workspace-picker-overlay"><AssetLibraryPanel open selected={new Set()} onClose={() => setPickerSource(null)} onToggleAsset={(asset) => {
-      if (!('images' in asset)) return;
-      const path = asset.images[0] ?? asset.audioPath;
-      if (!path) return;
-      addReference(referenceTarget, { id: `asset:${asset.id}`, type: asset.images.length ? 'image' : 'audio', path, label: asset.name });
-    }} /></div>}
   </div>;
 }

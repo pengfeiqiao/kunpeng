@@ -107,9 +107,10 @@ export default function GenerationComposer(props: Props) {
   return <section className="workspace-composer workspace-prompt-experience" aria-label="生成提示词编辑器">
     <header className="workspace-composer-heading">
       <h2>{draft.outputType === 'video' ? '视频提示词' : draft.outputType === 'image' ? '图片提示词' : '音频提示词'}</h2>
-      <label className="workspace-optimize"><Wand2 size={14} /><select aria-label="优化提示词" value="" disabled={busy} onChange={(event) => props.onOptimize(event.target.value as 'legacy' | 'universal')}>
+      {/* 经典版/新版优化只适用于视频提示词；图片由风格库点选后自动改写，不单列优化入口 */}
+      {draft.outputType === 'video' && <label className="workspace-optimize"><Wand2 size={14} /><select aria-label="优化提示词" value="" disabled={busy} onChange={(event) => props.onOptimize(event.target.value as 'legacy' | 'universal')}>
         <option value="" disabled>优化提示词</option><option value="legacy">按经典版优化</option><option value="universal">按新版优化</option>
-      </select></label>
+      </select></label>}
       <span className="workspace-muted" role="status">{saving ? '保存中' : '草稿'}</span>
       {props.onApplyStyle && <button className="workspace-icon" title={draft.styleName ? `风格库 · ${draft.styleName}` : '风格库'} aria-label="风格库" disabled={busy} onClick={() => setStyleOpen(true)}><Palette size={16} /></button>}
       <button ref={editorTrigger} className="workspace-icon" title="展开大编辑器" aria-label="展开大编辑器" aria-haspopup="dialog" onClick={() => {

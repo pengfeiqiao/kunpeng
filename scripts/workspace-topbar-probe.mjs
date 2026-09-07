@@ -21,18 +21,23 @@ import ProjectWorkspaceLayout from './src/components/workspace/ProjectWorkspaceL
 import ProjectContentList from './src/components/workspace/ProjectContentList';
 import { emptyWorkshopData } from './src/lib/workshop/types';
 import { migrateWorkshopProjectObjects } from './src/lib/projectObjects/migrate';
+import { registerCanvasGeneration } from './src/lib/projectObjects/selectors';
+import { selectProjectVersionCommand } from './src/lib/projectObjects/projectCommands';
 import { workspaceSelection, selectWorkspaceObject } from './src/lib/workspace/contentModel';
 const engines = [{ engine: { id: 'mock-image', label: '测试图片模型', kind: 'image', endpoint: 'mock', mode: 'image-to-image', imageParam: { key: 'images', multiple: true }, params: [
   { key:'aspectRatio', label:'比例', type:'list', options:['16:9','9:16'], default:'16:9' }
 ] } }];
-const seed = migrateWorkshopProjectObjects({ ...emptyWorkshopData('offline-workspace'), imageModel: 'mock-image',
+let seed = migrateWorkshopProjectObjects({ ...emptyWorkshopData('offline-workspace'), imageModel: 'mock-image',
   characters: [{ id:'driver', name:'司机', appearance:'', personality:'', assetImagePath:'/driver.jpg' }],
   scenes: [{ id:'road', name:'雨夜公路', description:'', assetImagePath:'/road.jpg' }],
   shots: [
     { id:'a', shotNo:'01', description:'司机察觉异响', characterIds:['driver'], sceneId:'road', imagePrompt:'A 原始提示词', durationSec:8 },
     { id:'b', shotNo:'02', description:'转头看向右侧', characterIds:['driver'], sceneId:'road', imagePrompt:'B 原始提示词', durationSec:5 }
-  ], projectViewState: { workspaceObjectId:'shot:a', workspaceOutputType:'image', workspaceComposerOpen:false }
+  ], projectViewState: { workspaceObjectId:'shot:a', workspaceOutputType:'image', workspaceComposerOpen:true }
 }, 1);
+// 注册一条已采用图片版本，让舞台渲染真实媒体（工具条/更多工具依赖 media 存在）
+const reg = registerCanvasGeneration(seed, {nodeId:'', taskId:'fixture-existing', paths:['/existing.jpg'], mediaType:'image', ownerObjectId:'shot:a', engineId:'mock-image', prompt:'历史提示词'}, 2);
+seed = selectProjectVersionCommand({workshop:reg.data,canvas:{nodes:[],edges:[]}}, 'shot:a', reg.versionIds[0], 3).workshop;
 function Fixture() {
   const [data, setData] = useState(seed);
   const [surface, setSurface] = useState('media');
@@ -132,6 +137,31 @@ try {
     await page.screenshot({ path: path.join(evidence, `topbar-probe-${s.w}-${s.view}-${s.menu ? 'menu' : 'plain'}.png`) });
   }
   console.log(JSON.stringify(findings, null, 1));
+  // 舞台"更多工具"菜单实测：在真实工作台上下文中打开并测量几何（矮视口 + 提示词编辑器打开，压缩舞台高度）
+  await page.setViewport({ width: 1440, height: 760 });
+  await page.evaluate(() => { window.probeSet.setSurface('media'); window.probeSet.setView('list'); window.probeSet.setAssistantState('expanded'); window.probeSet.setMenuOpen(false); });
+  await new Promise(r => setTimeout(r, 300));
+  await page.evaluate(() => { const heads = [...document.querySelectorAll('.workspace-group-heading[aria-expanded="false"]')]; heads.forEach((el) => el.click()); });
+  await new Promise(r => setTimeout(r, 200));
+  await page.click('[aria-label="更多工具"]');
+  await page.waitForSelector('.workspace-stage-tools-menu');
+  const toolsReport = await page.evaluate(() => {
+    const r = (sel) => { const el = document.querySelector(sel); if (!el) return null; const b = el.getBoundingClientRect();
+      return { left: Math.round(b.left), right: Math.round(b.right), top: Math.round(b.top), bottom: Math.round(b.bottom) }; };
+    const menu = document.querySelector('.workspace-stage-tools-menu');
+    return {
+      vw: innerWidth,
+      pill: r('.workspace-stage-tools'), menu: r('.workspace-stage-tools-menu'),
+      stage: r('.workspace-media-stage'), column: r('.workspace-inspector-column'), panel: r('.workspace-media-panel'),
+      menuItems: [...menu.querySelectorAll('[role=menuitem]')].map((el) => {
+        const b = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        return { text: el.textContent, right: Math.round(b.right), ok: hit === el || el.contains(hit), hit: hit ? String(hit.className).slice(0, 40) : 'none' };
+      }),
+    };
+  });
+  console.log('TOOLS-MENU ' + JSON.stringify(toolsReport, null, 1));
+  await page.screenshot({ path: path.join(evidence, 'topbar-probe-stage-tools-menu.png') });
   if (errors.length) console.log('PAGE ERRORS:', errors);
 } finally {
   await browser?.close();

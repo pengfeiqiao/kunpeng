@@ -370,11 +370,8 @@ function App() {
             !unifiedActiveId ? (
               <ProjectListView />
             ) : (
-            <>
-              {workspaceReady && <button className="shrink-0 border-b border-zinc-700 bg-zinc-900 px-4 py-2 text-left text-xs text-zinc-200"
-                onClick={() => setLegacyWorkspaceId(null)}>返回工作台（新版）</button>}
-              <WorkshopView onSendMessage={sendMessage} onAbort={abort} />
-            </>
+            <WorkshopView onSendMessage={sendMessage} onAbort={abort}
+              onExitLegacy={workspaceReady ? () => setLegacyWorkspaceId(null) : undefined} />
             )
           ) : activeView === 'copywriting' ? (
             <CopywritingView onSendMessage={sendMessage} onAbort={abort} />

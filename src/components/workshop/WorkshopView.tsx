@@ -30,9 +30,11 @@ import UndoToast from './UndoToast';
 interface Props {
   onSendMessage: (content: string, filePaths?: string[]) => Promise<void> | void;
   onAbort: () => void;
+  /** 旧版逃逸舱：提供时在顶栏显示"返回新版工作台"按钮 */
+  onExitLegacy?: () => void;
 }
 
-export default function WorkshopView({ onSendMessage, onAbort }: Props) {
+export default function WorkshopView({ onSendMessage, onAbort, onExitLegacy }: Props) {
   const project = useWorkshopStore((s) => s.project);
   // 只订阅 currentStep：store 任何写入都会换 data 引用，整订 data 会让整个工坊壳层每次重写
   const currentStep = useWorkshopStore((s) => s.data?.currentStep);
@@ -80,7 +82,7 @@ export default function WorkshopView({ onSendMessage, onAbort }: Props) {
     <div className="flex-1 flex flex-col min-h-0 canvas-dark relative" style={{ background: 'var(--canvas-bg)' }}>
       {project && currentStep ? (
         <>
-          <TopBar />
+          <TopBar onExitLegacy={onExitLegacy} />
           <div className="flex-1 flex min-h-0 relative">
             <StepNav />
             <div ref={contentRef} className="flex-1 min-w-0 overflow-y-auto relative">
@@ -104,7 +106,7 @@ export default function WorkshopView({ onSendMessage, onAbort }: Props) {
   );
 }
 
-function TopBar() {
+function TopBar({ onExitLegacy }: { onExitLegacy?: () => void }) {
   const project = useWorkshopStore((s) => s.project);
   // steps / currentStep 都是稳定引用或标量：步骤状态或当前步骤不变时 TopBar 不重渲染
   const steps = useWorkshopStore((s) => s.data?.steps);
@@ -146,6 +148,16 @@ function TopBar() {
         <span className="text-[11px] text-[var(--canvas-text-3)]">{doneCount}/6 步完成</span>
       </div>
       <div className="flex-1" />
+      {onExitLegacy && (
+        <button
+          onClick={onExitLegacy}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] transition-opacity hover:opacity-90"
+          style={{ background: 'var(--canvas-accent)', color: '#fff' }}
+          title="返回新版项目工作台"
+        >
+          返回新版工作台
+        </button>
+      )}
       <button
         onClick={() => dispatchWorkshopPrompt(buildExportPrompt(currentStep))}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] text-[var(--canvas-text-2)] border border-[var(--canvas-node-border)] hover:text-[var(--canvas-text-1)] hover:border-[var(--canvas-node-border-selected)] transition-colors"
