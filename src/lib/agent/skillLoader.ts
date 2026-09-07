@@ -358,7 +358,7 @@ export class SkillLoader {
   }
 
   /** 获取技能描述文本 (用于系统提示词) */
-  getDescriptionText(options: { activeView?: string; query?: string } = {}): string {
+  getDescriptionText(options: { activeView?: string; query?: string; projectId?: string } = {}): string {
     return buildSkillDescriptionText(this.skills, options);
   }
 

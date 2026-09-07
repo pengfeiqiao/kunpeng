@@ -17,6 +17,7 @@ import FloatingMenu from './FloatingMenu';
 import NodePalette from './NodePalette';
 import CanvasToolbar from './CanvasToolbar';
 import NodeInfoBar from './NodeInfoBar';
+import SharedDraftNotice from './SharedDraftNotice';
 import TaskQueuePanel from './TaskQueuePanel';
 import { useDirectorStore } from '@/stores/directorStore';
 import type { DirectorOrigin } from '@/lib/director/types';
@@ -47,6 +48,7 @@ import { useCanvasShortcuts } from '@/hooks/useCanvasShortcuts';
 import AiBoxOverlay, { type AiBoxRect } from '@/components/shared/AiBoxOverlay';
 import { appWindow } from '@tauri-apps/api/window';
 import { CANVAS_MEDIA_EXTENSIONS, createMediaNodesFromPaths } from '@/lib/canvas/mediaImport';
+import ProjectDeleteUndoToast from './ProjectDeleteUndoToast';
 
 const nodeTypes = { text: TextNode, image: ImageNode, video: VideoNode, audio: AudioNode, group: GroupNode, panorama: PanoramaNode };
 const edgeTypes = { custom: CustomEdge };
@@ -55,11 +57,13 @@ const proOptions = { hideAttribution: true };
 const BG = CANVAS_THEME.bg;
 
 interface CanvasViewProps {
+  embedded?: boolean;
+  onSelectNode?: (nodeId: string | null) => void;
   onSendMessage: (content: string, filePaths?: string[]) => void;
   onAbort: () => void;
 }
 
-function CanvasViewInner({ onSendMessage, onAbort }: CanvasViewProps) {
+function CanvasViewInner({ onSendMessage, onAbort, embedded = false, onSelectNode }: CanvasViewProps) {
   const nodes = useCanvasStore((s) => s.nodes);
   const edges = useCanvasStore((s) => s.edges);
   const onNodesChange = useCanvasStore((s) => s.onNodesChange);
@@ -462,12 +466,14 @@ function CanvasViewInner({ onSendMessage, onAbort }: CanvasViewProps) {
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id);
-  }, [setSelectedNodeId]);
+    onSelectNode?.(node.id);
+  }, [setSelectedNodeId, onSelectNode]);
 
   const onPaneClick = useCallback((e: React.MouseEvent) => {
     if (e.detail === 2) { onPaneDoubleClick(e); return; }
     setSelectedNodeId(null);
-  }, [setSelectedNodeId, onPaneDoubleClick]);
+    onSelectNode?.(null);
+  }, [setSelectedNodeId, onPaneDoubleClick, onSelectNode]);
 
   const handleConnect = useCallback((connection: Connection) => {
     connectionMadeRef.current = true;
@@ -656,10 +662,12 @@ function CanvasViewInner({ onSendMessage, onAbort }: CanvasViewProps) {
       />
       <CanvasToolbar />
       <NodeInfoBar />
+      <SharedDraftNotice />
       <TaskQueuePanel />
-      <ProjectSwitcher />
+      {!embedded && <ProjectSwitcher />}
       <SelectionToolbar />
       <NodeAgentTransferEffect />
+      <ProjectDeleteUndoToast />
       <AiBoxOverlay active={altHeld} containerRef={reactFlowWrapper} onSubmit={handleAiBox} onCancel={() => setAltHeld(false)} />
 
       {externalDragging && (
@@ -686,12 +694,12 @@ function CanvasViewInner({ onSendMessage, onAbort }: CanvasViewProps) {
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center">
             <div className="text-[var(--canvas-text-2)] text-sm mb-1">画布为空</div>
-            <div className="text-[var(--canvas-text-3)] text-xs">从左侧面板添加节点，或使用右下角气泡让鲲鹏帮你创建流水线</div>
+            {!embedded && <div className="text-[var(--canvas-text-3)] text-xs">从左侧面板添加节点，或使用右下角气泡让鲲鹏帮你创建流水线</div>}
           </div>
         </div>
       )}
 
-      <CanvasChatBubble onSendMessage={onSendMessage} onAbort={onAbort} />
+      {!embedded && <CanvasChatBubble onSendMessage={onSendMessage} onAbort={onAbort} />}
     </div>
   );
 }

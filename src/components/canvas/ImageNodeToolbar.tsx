@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Maximize2, Copy, Upload, Download, Trash2, Camera, Grid3X3, Shuffle,
   Clapperboard, Wand2, MoreHorizontal, GitBranch, Clock, Layers, Lightbulb, ScanFace, ArrowLeftToLine,
-  User, Mountain, Package, Palette, X, FolderOpen, Crop, RotateCcw, Bot,
+  User, Mountain, Package, Palette, X, FolderOpen, Crop, Bot,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useCanvasStore } from '@/stores/canvasStore';
@@ -37,7 +37,6 @@ import { useWorkshopStore } from '@/stores/workshopStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
 import type { WorkshopAssetKind } from '@/lib/workshop/types';
-import StoryboardCanvasActions from './StoryboardCanvasActions';
 import { openCanvasNodeInAgent } from '@/lib/canvas/nodeAgent';
 import { normalizeMidjourneyVersion } from '@/lib/midjourney/prompt';
 
@@ -53,7 +52,6 @@ export default function ImageNodeToolbar({ nodeId, imageUrl }: ImageNodeToolbarP
   const [showCrop, setShowCrop] = useState(false);
   const [maskMode, setMaskMode] = useState<MaskToolMode | null>(null);
   const [showWorkshopPicker, setShowWorkshopPicker] = useState(false);
-  const [showStoryboardWriteback, setShowStoryboardWriteback] = useState(false);
 
   const handleFullscreen = useCallback(() => setShowFullscreen(true), []);
 
@@ -371,7 +369,6 @@ export default function ImageNodeToolbar({ nodeId, imageUrl }: ImageNodeToolbarP
           <ToolBtn onClick={() => void handleOpenFolder()} title="在 Finder 中定位文件" label="打开"><FolderOpen size={18} strokeWidth={2} /></ToolBtn>
           <ToolBtn onClick={handleDuplicate} title="创建当前节点的副本（⌘D）" label="副本"><Copy size={18} strokeWidth={2} /></ToolBtn>
           <ToolBtn onClick={() => void handleSendToWorkshop()} title="作为角色、场景、道具或色卡候选图传回工坊" label="传回工坊"><ArrowLeftToLine size={18} strokeWidth={2} /></ToolBtn>
-          <ToolBtn onClick={() => setShowStoryboardWriteback(true)} title="回传到指定工坊镜头的故事板分镜" label="回传分镜"><RotateCcw size={18} strokeWidth={2} /></ToolBtn>
           <ToolBtn onClick={() => openCanvasNodeInAgent(nodeId)} title="把当前图片节点交给 Agent 操作" label="Agent"><Bot size={18} strokeWidth={2} /></ToolBtn>
           <ToolBtn onClick={() => void handleGeneratePalette()} title="基于当前图片生成色卡" label="色卡"><Palette size={18} strokeWidth={2} /></ToolBtn>
           <Sep />
@@ -379,7 +376,7 @@ export default function ImageNodeToolbar({ nodeId, imageUrl }: ImageNodeToolbarP
           <ToolbarDropdown icon={Wand2} label="AI 工具" items={aiToolItems} />
           <ToolbarDropdown icon={MoreHorizontal} label="更多" items={moreItems} />
           <Sep />
-          <ToolBtn onClick={handleDelete} title="删除节点" label="删除" danger><Trash2 size={18} strokeWidth={2} /></ToolBtn>
+          <ToolBtn onClick={handleDelete} title="从画布移除" label="移除" danger><Trash2 size={18} strokeWidth={2} /></ToolBtn>
         </motion.div>
       </NodeToolbarPortal>
 
@@ -393,13 +390,6 @@ export default function ImageNodeToolbar({ nodeId, imageUrl }: ImageNodeToolbarP
       {showCrop && <ImageCropEditor sourceNodeId={nodeId} imageUrl={imageUrl} onClose={() => setShowCrop(false)} />}
       {maskMode && <MaskPaintEditor sourceNodeId={nodeId} imageUrl={imageUrl} mode={maskMode} onClose={() => setMaskMode(null)} />}
       {showWorkshopPicker && <WorkshopAssetPicker nodeId={nodeId} imageUrl={imageUrl} onClose={() => setShowWorkshopPicker(false)} />}
-      {showStoryboardWriteback && (
-        <StoryboardCanvasActions
-          mode="writeback"
-          nodeIds={[nodeId]}
-          onClose={() => setShowStoryboardWriteback(false)}
-        />
-      )}
     </>
   );
 }

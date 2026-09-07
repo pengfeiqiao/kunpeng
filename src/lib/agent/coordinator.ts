@@ -20,6 +20,7 @@ import { sanitizeProgressText } from './toolSummary';
 import { buildTemporalTurnContext, isTimeSensitiveQuery } from './temporalContext';
 import { terminalToolResults } from './completionGuard';
 import { TransientNoticeQueue } from './transientNoticeQueue';
+import { shouldOfferToolConfirmation } from '../projectObjects/generationDraft';
 import {
   buildDoubaoSpeechRoutingNotice,
   isConflictingDoubaoSpeechGenerationTool,
@@ -739,19 +740,21 @@ export class AgentCoordinator {
             continue;
           }
 
-          if (risk === 'ask' && callbacks.onToolConfirm) {
+          if (shouldOfferToolConfirmation(call.function.name, risk) && callbacks.onToolConfirm) {
             const allowed = await callbacks.onToolConfirm(
               call.function.name,
               params,
               riskReason,
+              this.abortController?.signal,
             );
-            if (!allowed) {
+            if (!allowed || this.abortController?.signal.aborted) {
               agentLog.info('Coordinator', `Tool ${call.function.name} rejected by user`);
               prepared.push({ call, params, skip: `[rejected] 用户拒绝执行此操作。请询问用户是否有其他方案。` });
               continue;
             }
           }
 
+          call.function.arguments = JSON.stringify(params);
           prepared.push({ call, params });
         }
 

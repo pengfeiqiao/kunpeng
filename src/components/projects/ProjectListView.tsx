@@ -4,10 +4,10 @@
  * 主区 = AIGC 项目（工坊+画布+剪辑+对话一体），点开走 openUnified；
  * 折叠区 = 未关联工坊的自由画布项目（原画布项目列表）。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ChevronDown, ChevronRight, Clapperboard, Clock, Download, FolderOpen, Loader2,
-  Pencil, Plus, Trash2, Upload,
+  ArrowRight, ChevronDown, ChevronRight, Clapperboard, Clock, Download, FileText,
+  FolderOpen, Loader2, Paperclip, Pencil, Plus, Trash2, Upload, X,
 } from 'lucide-react';
 import { open as openDialog, message as tauriMessage } from '@tauri-apps/api/dialog';
 import { useProjectStore, type Project } from '@/stores/projectStore';
@@ -15,10 +15,24 @@ import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useWorkshopStore } from '@/stores/workshopStore';
 import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
+import { projectAssistantQueue } from '@/stores/projectAssistantQueueStore';
+import { enqueueProjectIntake, findProjectIntakeHandoff } from '@/lib/projects/projectIntakeHandoff';
+import { finishProjectCreation, InvalidPendingProjectCreation, openPendingProjectCreation, PENDING_PROJECT_CREATION_KEY, ProjectCreationInterrupted, readPendingProjectCreation,
+  type PendingProjectCreation } from '@/lib/projects/projectCreation';
+import { prepareNewProjectSession } from '@/lib/projectSessions';
 import { listProjects, deleteProject as deleteAigcProject, writeProject, type AigcProject } from '@/lib/aigc/projectStore';
 import { confirm as tauriConfirm } from '@tauri-apps/api/dialog';
 import { readTextFile, exists, BaseDirectory } from '@tauri-apps/api/fs';
 import { exportProject, importProject } from '@/lib/projectArchive';
+import {
+  classifyProjectAttachment,
+  deriveProjectName,
+  inferProjectIntakeMode,
+  projectSpecPatchFromIntake,
+  type ProjectAutomationPreference,
+  type ProjectIntakeAttachment,
+  type ProjectIntakeRecord,
+} from '@/lib/projects/projectIntake';
 
 function timeAgo(ts: number): string {
   const d = Date.now() - ts;
@@ -32,10 +46,14 @@ export default function ProjectListView() {
   const [aigcProjects, setAigcProjects] = useState<AigcProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
   const [importing, setImporting] = useState(false);
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [exportingCanvasId, setExportingCanvasId] = useState<string | null>(null);
   const [showFree, setShowFree] = useState(false);
+  const [brief, setBrief] = useState('');
+  const [automation, setAutomation] = useState<ProjectAutomationPreference>('stage-confirm');
+  const [attachments, setAttachments] = useState<ProjectIntakeAttachment[]>([]);
   const canvasProjects = useProjectStore((s) => s.projects);
   const initialize = useProjectStore((s) => s.initialize);
   const setActiveView = useChatStore((s) => s.setActiveView);
@@ -53,21 +71,122 @@ export default function ProjectListView() {
     void refresh();
   }, [initialize, refresh]);
 
-  const handleCreate = async () => {
-    if (creating) return;
+  const handleCreate = async (fromIntake = false) => {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     setCreating(true);
+    let pending: PendingProjectCreation | undefined;
+    let handedOff = false;
     try {
-      await createAndOpen(`短剧项目 ${new Date().getMonth() + 1}-${new Date().getDate()}`);
-      const id = useWorkshopStore.getState().project?.id;
-      if (id) {
-        await openUnified(id);
-        setActiveView('workshop');
+      // Recovery is offered only by this explicit click, never by hydration or mount.
+      try { pending = readPendingProjectCreation(localStorage); }
+      catch (error) {
+        if (!(error instanceof InvalidPendingProjectCreation)) throw error;
+        const clear = await tauriConfirm('待继续记录已损坏，无法安全恢复。是否清理这条恢复记录？不会删除任何项目、创意文件或对话，也不会发送请求。清理后可再次点击新建项目。',
+          { title: '恢复记录无法读取', okLabel: '清理记录', cancelLabel: '保留记录' });
+        if (clear) localStorage.removeItem(PENDING_PROJECT_CREATION_KEY);
+        return;
       }
+      if (pending) {
+        if (pending.intake && findProjectIntakeHandoff(projectAssistantQueue, pending.projectId, pending.intake)) {
+          handedOff = true;
+          localStorage.removeItem(PENDING_PROJECT_CREATION_KEY);
+          await tauriMessage('该创意已有队列记录。请在原项目会话核对进度；本次没有重复发送。', { title: '请求已交接' });
+          return;
+        }
+        const resume = await tauriConfirm(`项目「${pending.name}」已创建，创意尚未发送。是否继续原项目？不会另建项目。`,
+          { title: '继续未发送的创意', okLabel: '继续原项目', cancelLabel: '暂不继续' });
+        if (!resume) return;
+        if (useUnifiedProjectStore.getState().opening) throw new Error('正在切换项目，请完成后手动继续。');
+        const ws = useWorkshopStore.getState();
+        if (ws.project?.id !== pending.projectId || ws.data?.projectId !== pending.projectId) {
+          const projectId = pending.projectId;
+          await openPendingProjectCreation(projectId, {
+            read: () => { const current = useWorkshopStore.getState(); return { projectId: current.project?.id, dataProjectId: current.data?.projectId }; },
+            subscribe: (listener) => useWorkshopStore.subscribe(listener),
+            open: () => ws.openProject(projectId),
+          });
+        }
+      } else {
+        if (useUnifiedProjectStore.getState().opening) throw new Error('正在切换项目，请完成后再新建。');
+        const intake: ProjectIntakeRecord | undefined = fromIntake ? {
+          brief: brief.trim(), mode: inferProjectIntakeMode(brief, attachments), automation,
+          attachments: structuredClone(attachments), createdAt: Date.now(),
+        } : undefined;
+        const name = deriveProjectName(intake?.brief ?? '');
+        try {
+          const projectId = await createAndOpen(name);
+          pending = { projectId, name, intake };
+        } catch (error) {
+          if (error instanceof ProjectCreationInterrupted) {
+            pending = { projectId: error.projectId, name, intake };
+            localStorage.setItem(PENDING_PROJECT_CREATION_KEY, JSON.stringify(pending));
+          }
+          throw error;
+        }
+        localStorage.setItem(PENDING_PROJECT_CREATION_KEY, JSON.stringify(pending));
+      }
+      const target = pending;
+      await finishProjectCreation(target, {
+        read: () => { const ws = useWorkshopStore.getState(); return { projectId: ws.project?.id, dataProjectId: ws.data?.projectId, intake: ws.data?.projectIntake }; },
+        subscribe: (listener) => useWorkshopStore.subscribe(listener),
+        writeIntake: (intake, assertCurrent) => {
+          const ws = useWorkshopStore.getState();
+          assertCurrent();
+          ws.setProjectIntake(intake);
+          assertCurrent();
+          ws.updateProjectSpec(projectSpecPatchFromIntake(intake));
+          assertCurrent();
+        },
+        commit: () => useWorkshopStore.getState().commitNow({ requireSuccess: true }),
+        prepareAndOpen: (assertCurrent) => prepareNewProjectSession(target.projectId, target.name, assertCurrent, async () => {
+          assertCurrent();
+          if (useUnifiedProjectStore.getState().opening) throw new Error('正在切换项目，创意尚未发送。');
+          await openUnified(target.projectId);
+          assertCurrent();
+          if (useUnifiedProjectStore.getState().activeId !== target.projectId) throw new Error('项目未就绪，创意尚未发送。');
+        }),
+        enqueue: (sessionId, intake) => {
+          const chat = useChatStore.getState();
+          if (chat.currentSessionId !== sessionId || chat.sessions.find((item) => item.id === sessionId)?.projectId !== target.projectId) {
+            throw new Error('项目会话已变化，创意尚未发送。');
+          }
+          useWorkshopStore.getState().updateProjectViewState({ agentDrawerState: 'expanded', workspaceSurface: 'media', workspaceMediaView: 'list' });
+          enqueueProjectIntake(projectAssistantQueue, target.projectId, sessionId, intake);
+          handedOff = true;
+        },
+        show: () => setActiveView('workshop'),
+      });
+      localStorage.removeItem(PENDING_PROJECT_CREATION_KEY);
     } catch (err) {
-      await tauriMessage(`新建项目失败：${err instanceof Error ? err.message : String(err)}`, { title: '新建项目失败' });
+      const detail = err instanceof Error ? err.message : String(err);
+      await tauriMessage(handedOff ? '请求已交接，请在项目会话核对进度，不要重复提交。'
+        : pending ? `${detail}\n创意尚未发送。再次点击建立项目或新建项目，可选择继续原项目。`
+          : `新建项目未完成：${detail}`, { title: handedOff ? '请求已交接' : '创意尚未发送' });
     } finally {
+      creatingRef.current = false;
       setCreating(false);
     }
+  };
+
+  const handleAttach = async () => {
+    const selected = await openDialog({
+      multiple: true,
+      filters: [{
+        name: '项目素材',
+        extensions: [
+          'md', 'txt', 'doc', 'docx', 'pdf', 'rtf',
+          'png', 'jpg', 'jpeg', 'webp', 'heic', 'heif',
+          'mp4', 'mov', 'm4v', 'webm', 'mp3', 'wav', 'm4a', 'aac',
+        ],
+      }],
+    });
+    const paths = typeof selected === 'string' ? [selected] : selected ?? [];
+    setAttachments((current) => {
+      const byPath = new Map(current.map((item) => [item.path, item]));
+      for (const path of paths) byPath.set(path, { path, kind: classifyProjectAttachment(path) });
+      return [...byPath.values()];
+    });
   };
 
   const handleOpen = async (p: AigcProject) => {
@@ -235,7 +354,7 @@ export default function ProjectListView() {
               {importing ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}导入工程
             </button>
             <button
-              onClick={() => void handleCreate()}
+              onClick={() => void handleCreate(false)}
               disabled={creating}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-900 text-white text-[13px] font-medium transition-colors disabled:opacity-50"
             >
@@ -244,13 +363,88 @@ export default function ProjectListView() {
           </div>
         </div>
 
+        <section className="mb-7 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+          <div className="px-5 pt-4 pb-3">
+            <label htmlFor="project-intake" className="block text-[15px] font-semibold text-stone-800">
+              告诉鲲鹏，你想做什么片子
+            </label>
+            <textarea
+              id="project-intake"
+              value={brief}
+              onChange={(event) => setBrief(event.target.value)}
+              placeholder="一句创意、现成剧本、散落素材，或一条想拆解复刻的参考片"
+              rows={3}
+              className="mt-2 w-full resize-none border-0 bg-transparent p-0 text-[14px] leading-6 text-stone-700 outline-none placeholder:text-stone-300"
+            />
+            {attachments.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {attachments.map((item) => (
+                  <span key={item.path} className="inline-flex max-w-[260px] items-center gap-1.5 rounded-md bg-stone-100 px-2 py-1 text-[11px] text-stone-600">
+                    <FileText size={12} />
+                    <span className="truncate">{item.path.split(/[\\/]/).pop()}</span>
+                    <button
+                      onClick={() => setAttachments((items) => items.filter((entry) => entry.path !== item.path))}
+                      className="rounded p-0.5 hover:bg-stone-200"
+                      title="移除素材"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => void handleAttach()}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12px] text-stone-600 hover:bg-stone-100"
+              >
+                <Paperclip size={14} />添加素材
+              </button>
+              <span className="text-[11px] text-stone-400">
+                {({
+                  idea: '从创意开始',
+                  script: '按剧本推进',
+                  materials: '先整理素材',
+                  'reference-video': '先拉片再复刻',
+                } as const)[inferProjectIntakeMode(brief, attachments)]}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 items-center rounded-md bg-stone-100 p-0.5" aria-label="项目推进方式">
+                <button
+                  onClick={() => setAutomation('stage-confirm')}
+                  className={`h-7 rounded px-2.5 text-[11px] transition-colors ${automation === 'stage-confirm' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500'}`}
+                >
+                  逐步确认
+                </button>
+                <button
+                  onClick={() => setAutomation('continuous')}
+                  className={`h-7 rounded px-2.5 text-[11px] transition-colors ${automation === 'continuous' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500'}`}
+                >
+                  连续推进
+                </button>
+              </div>
+              <button
+                onClick={() => void handleCreate(true)}
+                disabled={creating || (!brief.trim() && attachments.length === 0)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-stone-800 px-3 text-[12px] font-medium text-white hover:bg-stone-900 disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                {creating ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+                建立项目
+              </button>
+            </div>
+          </div>
+        </section>
+
         {loading ? (
           <div className="text-center py-20 text-stone-300 text-sm">
             <Loader2 size={16} className="animate-spin inline mr-2" />加载中…
           </div>
         ) : sorted.length === 0 ? (
           <button
-            onClick={() => void handleCreate()}
+            onClick={() => void handleCreate(false)}
             className="w-full py-20 rounded-2xl border-2 border-dashed border-stone-200 text-stone-400 hover:border-stone-300 hover:text-stone-500 transition-colors"
           >
             <Plus size={22} className="mx-auto mb-2" />

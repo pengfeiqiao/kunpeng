@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { BookOpen, Check, ChevronDown, Circle, FilePenLine, Globe2, Loader2, Search, Sparkles, Terminal, Video, Wrench, X } from 'lucide-react';
 import { useChatStore } from '@/stores/chatStore';
-import { useRunStepStore, type RunProgressUpdate, type RunStep, type RunSubAgent, type RunToolCall } from '@/stores/runStepStore';
+import { useRunStepStore, type RunProgressUpdate, type RunSession, type RunStep, type RunSubAgent, type RunToolCall } from '@/stores/runStepStore';
 import {
   buildTimelinePresentationItems,
   compactToolError,
@@ -140,6 +140,8 @@ function ProgressEvent({ update, compact = false }: { update: RunProgressUpdate;
 }
 
 interface RunStepTimelineProps {
+  embedded?: boolean;
+  preview?: ReactNode;
   compact?: boolean;
   showHeader?: boolean;
   className?: string;
@@ -147,7 +149,64 @@ interface RunStepTimelineProps {
   tone?: 'default' | 'dark' | 'light';
 }
 
-export default function RunStepTimeline({ compact = false, showHeader = true, className = '', runId, tone = 'default' }: RunStepTimelineProps) {
+type EmbeddedStatus = 'running' | 'done' | 'failed' | 'waiting' | 'skipped' | 'stopped';
+const embeddedStatusLabels: Record<EmbeddedStatus, string> = {
+  running: '执行中', done: '已完成', failed: '未完成', waiting: '等待执行', skipped: '已跳过', stopped: '已停止',
+};
+
+export function embeddedStepStatus(step: RunStep): EmbeddedStatus {
+  if (step.status === 'failed' || step.toolCalls.some((tool) => tool.status === 'failed')
+    || step.subAgents.some((sub) => sub.status === 'failed' || sub.status === 'timeout')) return 'failed';
+  if (step.status === 'skipped') return 'skipped';
+  if (step.subAgents.some((sub) => sub.status === 'aborted')) return 'stopped';
+  if (step.status === 'active' || step.toolCalls.some((tool) => tool.status === 'running')
+    || step.subAgents.some((sub) => sub.status === 'running')) return 'running';
+  return step.status === 'done' ? 'done' : 'waiting';
+}
+
+export function embeddedRunStatus(run: RunSession): EmbeddedStatus {
+  const states = run.steps.map(embeddedStepStatus);
+  if (run.status === 'aborted') return 'stopped';
+  if (run.status === 'failed') return 'failed';
+  const hasFailure = states.includes('failed') || run.progressUpdates.some((update) => update.kind === 'error' || update.status === 'failed');
+  if (run.status === 'running') return states.includes('running') || hasFailure ? 'running' : 'waiting';
+  if (hasFailure || states.some((state) => state === 'waiting' || state === 'running' || state === 'stopped')) return 'failed';
+  return 'done';
+}
+
+function EmbeddedStatusIcon({ status }: { status: EmbeddedStatus }) {
+  return statusIcon(status === 'running' ? 'running' : status === 'done' ? 'done' : status === 'failed' ? 'failed' : 'pending', 13);
+}
+
+function EmbeddedToolEvent({ tool }: { tool: RunToolCall }) {
+  const display = tool.display ?? createLegacyToolPresentation(tool.name, tool.summary);
+  if (tool.name === 'skill_invoke' && (!tool.display?.detail || tool.display.detail === '查看技能目录')) return null;
+  return <li className="workspace-assistant-step-record" data-status={tool.status}>
+    <EmbeddedStatusIcon status={tool.status} />
+    <div><span>{labelToolPresentation(display, tool.status)}</span>
+      {display.detail && <details><summary>{tool.name === 'skill_invoke' ? '技能详情' : '操作详情'}</summary><pre>{display.detail}</pre></details>}
+      {tool.status === 'failed' && tool.resultSummary && <p role="status">{compactToolError(tool.resultSummary)}</p>}
+    </div>
+  </li>;
+}
+
+function EmbeddedStepEvent({ step }: { step: RunStep }) {
+  const status = embeddedStepStatus(step);
+  const title = step.source === 'tool' && step.toolCalls.length === 1 && step.toolCalls[0].name === 'skill_invoke'
+    && !step.toolCalls[0].display?.detail ? '工具记录' : step.title;
+  return <li className="workspace-assistant-step" data-status={status}>
+    <EmbeddedStatusIcon status={status} />
+    <details><summary><span>{title}</span><small>{embeddedStatusLabels[status]}</small><ChevronDown size={12} /></summary>
+      {step.detail && <p>{step.detail}</p>}
+      <ol className="workspace-assistant-step-records">
+        {step.toolCalls.map((tool) => <EmbeddedToolEvent key={tool.id} tool={tool} />)}
+        {step.subAgents.map((sub) => <li key={sub.id}><SubAgentEvent sub={sub} compact /></li>)}
+      </ol>
+    </details>
+  </li>;
+}
+
+export default function RunStepTimeline({ compact = false, showHeader = true, className = '', runId, tone = 'default', embedded = false, preview }: RunStepTimelineProps) {
   const sessionId = useChatStore((state) => state.currentSessionId);
   const run = useRunStepStore((state) => {
     if (runId) return state.runsById[runId] ?? null;
@@ -157,7 +216,7 @@ export default function RunStepTimeline({ compact = false, showHeader = true, cl
     return preferred ? state.runsById[preferred] : null;
   });
   const events = useMemo(() => run ? buildTimelinePresentationItems(run) : [], [run]);
-  if (!run || events.length === 0) return null;
+  if (!run || (!embedded && events.length === 0)) return null;
 
   const done = run.steps.filter((step) => step.status === 'done').length;
   const toneStyle = {
@@ -166,6 +225,29 @@ export default function RunStepTimeline({ compact = false, showHeader = true, cl
     '--run-text-muted': tone === 'dark' ? '#888888' : tone === 'light' ? '#7A8290' : 'rgb(var(--c-text-muted))',
     '--run-code-bg': tone === 'dark' ? 'rgba(255,255,255,0.055)' : tone === 'light' ? 'rgba(15,23,42,0.045)' : 'rgb(var(--c-card) / 0.6)',
   } as CSSProperties;
+
+  if (embedded) {
+    const status = embeddedRunStatus(run);
+    const hasFailure = run.steps.some((step) => embeddedStepStatus(step) === 'failed')
+      || run.progressUpdates.some((update) => update.kind === 'error' || update.status === 'failed');
+    const label = status === 'done' ? '执行结束' : status === 'waiting' ? '等待执行回执'
+      : status === 'running' && hasFailure ? '执行中 · 有失败记录' : embeddedStatusLabels[status];
+    return <div style={toneStyle} className={`workspace-assistant-run ${className}`}>
+      <details className="workspace-assistant-stage" data-status={status}><summary>
+        <span className="workspace-assistant-stage-heading"><EmbeddedStatusIcon status={status} />
+          <span>执行记录</span><strong role="status">{label}</strong><ChevronDown size={13} />
+        </span>
+        {preview}
+      </summary>
+        <ol className="workspace-assistant-step-line">{events.map((event) => event.kind === 'step'
+          ? <EmbeddedStepEvent key={event.id} step={event.value} />
+          : <li key={event.id} className="workspace-assistant-step-note" data-status={event.value.status}>
+            <span>{event.value.text}</span>
+          </li>)}</ol>
+        {events.length === 0 && <p className="workspace-assistant-no-events">暂无步骤回执</p>}
+      </details>
+    </div>;
+  }
 
   return (
     <div className={`${compact ? 'min-w-0' : 'mx-auto max-w-3xl'} ${className}`} style={toneStyle}>

@@ -11,8 +11,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X, Square, Loader2, MessageSquare, ArrowUp, ChevronDown,
-  ShieldCheck, Zap, Paperclip, ImageIcon,
+  X, Square, Loader2, MessageSquare, ArrowUp, ChevronDown, EyeOff,
+  ShieldCheck, Zap, Paperclip, ImageIcon, Pencil, Trash2, RotateCcw, ListStart,
 } from 'lucide-react';
 import { open as tauriOpen } from '@tauri-apps/api/dialog';
 import { useChatStore } from '@/stores';
@@ -33,6 +33,13 @@ import ContextUsagePill from './ContextUsagePill';
 import { splitStreamingParts } from '@/lib/chat/streamingParts';
 import { tailWindow } from '@/lib/performance/tailWindow';
 import type { Message } from '@/types';
+import { useWorkshopStore } from '@/stores/workshopStore';
+import type { ProjectViewState } from '@/lib/projectObjects/types';
+import type { ProjectConversationReference } from '@/lib/projectObjects/types';
+import ProjectChangeReview from './ProjectChangeReview';
+import { PROJECT_REFERENCE_MIME, projectTransferReferences, resolveReferenceTransfer } from '@/lib/projectObjects/referenceTransfer';
+import { mergeProjectConversationReferences } from '@/lib/projectObjects/conversationRefs';
+import WorkspaceAssistantMessage from '../workspace/WorkspaceAssistantMessage';
 
 const EASE = [0.32, 0.72, 0, 1] as const;
 
@@ -201,12 +208,14 @@ const DrawerEventList = memo(function DrawerEventList({
   decisionVariant,
   variant,
   theme,
+  embedded = false,
 }: {
   events: DrawerEvent[];
   stripPrefixRe: RegExp;
   decisionVariant: 'drawer-light' | 'drawer-dark';
   variant: 'light' | 'dark';
   theme: DrawerTheme;
+  embedded?: boolean;
 }) {
   return (
     <>
@@ -220,12 +229,14 @@ const DrawerEventList = memo(function DrawerEventList({
         ) : event.message.role === 'user' ? (
           <div key={event.message.id || index} className="flex justify-end">
             <div
-              className="max-w-[85%] px-3 py-2 text-[12px] leading-relaxed whitespace-pre-wrap"
-              style={{ background: theme.userBubbleBg, color: theme.userBubbleText, borderRadius: '14px 14px 4px 14px' }}
+              className={embedded ? 'workspace-assistant-user' : 'max-w-[85%] px-3 py-2 text-[12px] leading-relaxed whitespace-pre-wrap'}
+              style={{ background: theme.userBubbleBg, color: theme.userBubbleText, borderRadius: embedded ? 8 : '14px 14px 4px 14px' }}
             >
               {stripHarnessPrefix(event.message.content).replace(stripPrefixRe, '')}
             </div>
           </div>
+        ) : embedded ? (
+          <WorkspaceAssistantMessage key={event.message.id || index} message={event.message} tone={variant} />
         ) : (
           <div key={event.message.id || index} className="flex justify-start">
             <div
@@ -246,13 +257,16 @@ const DrawerStreamingContent = memo(function DrawerStreamingContent({
   variant,
   theme,
   onVisualUpdate,
+  embedded = false,
 }: {
   open: boolean;
   variant: 'light' | 'dark';
   theme: DrawerTheme;
   onVisualUpdate: () => void;
+  embedded?: boolean;
 }) {
   const snapshot = useThrottledStreamingSnapshot(open);
+  const [thinkingOpen, setThinkingOpen] = useState(false);
   const isStreaming = snapshot.phase !== 'idle';
   const phaseLabel = streamingPhaseLabel(snapshot.phase);
   const { stable, tail } = useMemo(
@@ -271,6 +285,18 @@ const DrawerStreamingContent = memo(function DrawerStreamingContent({
 
   if (!isStreaming) return null;
 
+  if (embedded) return <article className="workspace-assistant-message workspace-assistant-stream" data-tone={variant}>
+    {snapshot.content ? <div className="workspace-assistant-prose">
+      {stable && <MemoMarkdown content={stable} tone={variant} />}
+      <span className="whitespace-pre-wrap">{tail}</span>
+      <span className="workspace-assistant-cursor" aria-hidden="true" />
+    </div> : <p className="workspace-assistant-stream-status" role="status"><Loader2 size={12} className="animate-spin" />{phaseLabel || '正在工作'}</p>}
+    <RunStepTimeline compact embedded showHeader={false} tone={variant} />
+    {snapshot.thinking && <details className="workspace-assistant-working-details" onToggle={(event) => setThinkingOpen(event.currentTarget.open)}>
+      <summary>执行记录详情</summary>{thinkingOpen && <pre>{snapshot.thinking}</pre>}
+    </details>}
+  </article>;
+
   return (
     <>
       <div className="min-w-0 max-w-full overflow-hidden rounded-lg border px-2.5 py-2" style={{ borderColor: theme.headerBorder, background: 'rgba(255,255,255,0.018)' }}>
@@ -278,7 +304,7 @@ const DrawerStreamingContent = memo(function DrawerStreamingContent({
           <Loader2 size={11} className="animate-spin" />
           <span>{phaseLabel || '正在工作'}</span>
         </div>
-        <RunStepTimeline compact showHeader={false} className="min-w-0 max-w-full" tone={variant} />
+        <RunStepTimeline compact embedded={embedded} showHeader={false} className="min-w-0 max-w-full" tone={variant} />
       </div>
       {snapshot.content && (
         <div className="flex justify-start">
@@ -292,7 +318,7 @@ const DrawerStreamingContent = memo(function DrawerStreamingContent({
           </div>
         </div>
       )}
-      {snapshot.phase === 'thinking' && visibleThinkingContent && (
+      {!embedded && snapshot.phase === 'thinking' && visibleThinkingContent && (
         <div
           className="mx-0.5 max-h-28 max-w-full overflow-y-auto whitespace-pre-wrap break-words rounded-lg border px-2.5 py-2 text-[11px] leading-[18px] [overflow-wrap:anywhere]"
           style={{ background: theme.thinkingBg, borderColor: theme.headerBorder, color: theme.text3 }}
@@ -300,11 +326,18 @@ const DrawerStreamingContent = memo(function DrawerStreamingContent({
           {visibleThinkingContent}
         </div>
       )}
+      {embedded && snapshot.thinking && <details className="text-[11px]" onToggle={(event) => setThinkingOpen(event.currentTarget.open)}><summary>执行记录</summary>{thinkingOpen && <pre className="max-h-52 overflow-auto">{snapshot.thinking}</pre>}</details>}
     </>
   );
 });
 
 export interface AgentDrawerProps {
+  /** ProjectWorkspace owns placement and visibility; keep the conversation DOM mounted. */
+  embedded?: boolean;
+  workspaceComposer?: { key: string; text: string; files: string[]; onChange: (text: string, files: string[]) => void };
+  workspaceMessageIds?: Set<string>;
+  workspaceStreamingVisible?: boolean;
+  onWorkspaceReference?: (reference: ProjectConversationReference) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** 头部标题（默认 鲲鹏） */
@@ -337,9 +370,12 @@ export interface AgentDrawerProps {
   /** 画布/工坊/剪辑的模型覆盖选择；未传时不显示。 */
   modelScope?: AgentWorkspaceScope;
   /** 派单队列（工坊 AI 派单）；未传或为空时不显示队列条。 */
-  queueItems?: { id: string; label: string; status: 'queued' | 'running' }[];
-  /** 取消排队项（仅 queued 可取消；running 项由 onAbort 负责） */
-  onCancelQueueItem?: (id: string) => void;
+  queueItems?: { id: string; label: string; prompt: string; targetLabel?: string; status: 'queued' | 'running' | 'failed' | 'uncertain'; error?: string }[];
+  /** 队列编辑仅作用于尚未执行的消息；运行中任务仍由 onAbort 负责。 */
+  onDeleteQueueItem?: (id: string) => void;
+  onEditQueueItem?: (id: string, prompt: string) => void;
+  onRetryQueueItem?: (id: string) => void;
+  onSendQueueItemNow?: (id: string) => void;
   /** 当前交给 Agent 的工作对象，例如画布节点。 */
   contextBanner?: React.ReactNode;
   /** 工作对象稳定键；切换对象时驱动轻量转入动画。 */
@@ -350,17 +386,60 @@ export default function AgentDrawer({
   open, onOpenChange, title = '鲲鹏', stripPrefixRe, greeting, suggestions,
   onSend, onAbort, badgeCount, onPickFiles, mention, placeholder,
   variant = 'dark', extraActions, draft, onDraftConsumed, launcherBottom = 16,
-  modelScope, queueItems, onCancelQueueItem, contextBanner, contextBannerKey,
+  modelScope, queueItems, onDeleteQueueItem, onEditQueueItem, onRetryQueueItem,
+  onSendQueueItemNow, contextBanner, contextBannerKey, embedded = false,
+  workspaceComposer, workspaceMessageIds, workspaceStreamingVisible,
+  onWorkspaceReference,
 }: AgentDrawerProps) {
   const t = variant === 'light' ? THEME_LIGHT : THEME_DARK;
-  const [input, setInput] = useState('');
-  const [files, setFiles] = useState<string[]>([]);
+  const projectId = useWorkshopStore((state) => state.data?.projectId);
+  const persistedDrawerState = useWorkshopStore((state) => state.data?.projectViewState?.agentDrawerState);
+  const updateProjectViewState = useWorkshopStore((state) => state.updateProjectViewState);
+  const effectiveDrawerState: NonNullable<ProjectViewState['agentDrawerState']> = projectId
+    ? (persistedDrawerState ?? (open ? 'expanded' : 'collapsed'))
+    : (open ? 'expanded' : 'collapsed');
+  const drawerOpen = embedded || effectiveDrawerState === 'expanded';
+  const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
+  const [editingQueuePrompt, setEditingQueuePrompt] = useState('');
+  const [localInput, setLocalInput] = useState('');
+  const [localFiles, setLocalFiles] = useState<string[]>([]);
+  const composer = embedded ? workspaceComposer : undefined;
+  const composerRef = useRef(composer); composerRef.current = composer;
+  const input = composer?.text ?? localInput;
+  const files = composer?.files ?? localFiles;
+  const setInput = (value: string) => {
+    if (!composer) { setLocalInput(value); return; }
+    const next = { ...composer, ...composerRef.current, text: value };
+    composerRef.current = next; composer.onChange(next.text, next.files);
+  };
+  const setFiles = (value: string[] | ((previous: string[]) => string[])) => {
+    if (!composer) { setLocalFiles(value); return; }
+    const current = composerRef.current ?? composer;
+    const next = { ...current, files: typeof value === 'function' ? value(current.files) : value };
+    composerRef.current = next; composer.onChange(next.text, next.files);
+  };
   const [artifactPickerOpen, setArtifactPickerOpen] = useState(false);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(60);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const stickToBottomRef = useRef(true);
+
+  const setDrawerState = useCallback((next: NonNullable<ProjectViewState['agentDrawerState']>) => {
+    if (projectId) updateProjectViewState({ agentDrawerState: next });
+    onOpenChange(next === 'expanded');
+  }, [onOpenChange, projectId, updateProjectViewState]);
+
+  // Existing wrappers still open the drawer with their local boolean. Mirror an
+  // explicit open request into the project preference without changing callers.
+  const previousOpenRef = useRef(open);
+  useEffect(() => {
+    const wasOpen = previousOpenRef.current;
+    previousOpenRef.current = open;
+    if (!embedded && projectId && open && !wasOpen && persistedDrawerState !== 'expanded') {
+      updateProjectViewState({ agentDrawerState: 'expanded' });
+    }
+  }, [embedded, open, persistedDrawerState, projectId, updateProjectViewState]);
 
   useEffect(() => {
     if (!draft) return;
@@ -391,20 +470,20 @@ export default function AgentDrawer({
   }, [isStreaming, playNotification]);
 
   const scheduleScrollToBottom = useCallback((force = false) => {
-    if (!open || (!force && !stickToBottomRef.current) || scrollFrameRef.current !== null) return;
+    if (!drawerOpen || (!force && !stickToBottomRef.current) || scrollFrameRef.current !== null) return;
     scrollFrameRef.current = requestAnimationFrame(() => {
       scrollFrameRef.current = null;
       const list = listRef.current;
       if (list) list.scrollTop = list.scrollHeight;
     });
-  }, [open]);
+  }, [drawerOpen]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!drawerOpen) return;
     stickToBottomRef.current = true;
     const timer = setTimeout(() => scheduleScrollToBottom(true), 300);
     return () => clearTimeout(timer);
-  }, [open, currentSessionId, scheduleScrollToBottom]);
+  }, [drawerOpen, currentSessionId, scheduleScrollToBottom]);
 
   useEffect(() => {
     scheduleScrollToBottom();
@@ -416,10 +495,10 @@ export default function AgentDrawer({
 
   // 动画结束后再聚焦（提前聚焦的 scroll-to-focus 会拽飞行中的面板）
   useEffect(() => {
-    if (!open) return;
+    if (!drawerOpen) return;
     const t = setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 320);
     return () => clearTimeout(t);
-  }, [open]);
+  }, [drawerOpen]);
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -430,8 +509,10 @@ export default function AgentDrawer({
   };
 
   const handleAttach = async () => {
+    const originKey = composerRef.current?.key;
     if (onPickFiles) {
       const picked = await onPickFiles();
+      if (embedded && composerRef.current?.key !== originKey) return;
       if (picked && picked.length > 0) setFiles((prev) => [...prev, ...picked]);
       return;
     }
@@ -439,6 +520,7 @@ export default function AgentDrawer({
       multiple: true,
       filters: [{ name: '支持的文件', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'mov', 'webm', 'mp3', 'wav', 'md', 'txt', 'pdf', 'doc', 'docx', 'csv', 'json', 'srt'] }],
     });
+    if (embedded && composerRef.current?.key !== originKey) return;
     if (picked) {
       const paths = Array.isArray(picked) ? picked : [picked];
       if (paths.length > 0) setFiles((prev) => [...prev, ...paths]);
@@ -521,8 +603,9 @@ export default function AgentDrawer({
     if (k === 'v') {
       e.preventDefault();
       e.stopPropagation();
+      const originKey = composerRef.current?.key;
       void readClipboardText().then((text) => {
-        if (text) replaceTextareaSelection(el, text);
+        if (text && (!embedded || composerRef.current?.key === originKey)) replaceTextareaSelection(el, text);
       });
       return;
     }
@@ -533,8 +616,9 @@ export default function AgentDrawer({
 
   const phaseLabel = streamingPhaseLabel(streamingPhase);
   const chat = useMemo(
-    () => messages.filter((message) => message.role === 'user' || message.role === 'assistant'),
-    [messages],
+    () => messages.filter((message) => (message.role === 'user' || message.role === 'assistant')
+      && (!embedded || !workspaceMessageIds || workspaceMessageIds.has(message.id))),
+    [messages, embedded, workspaceMessageIds],
   );
   const historyWindow = useMemo(
     () => tailWindow(chat, visibleHistoryCount),
@@ -567,14 +651,14 @@ export default function AgentDrawer({
     <>
       {/* 收起态：右缘轻量入口 */}
       <AnimatePresence>
-        {!open && variant === 'dark' && (
+        {!embedded && effectiveDrawerState === 'collapsed' && variant === 'dark' && (
           <div className="absolute right-3 z-40" style={{ bottom: launcherBottom }}>
             <motion.button
               initial={{ x: 16, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 16, opacity: 0 }}
               transition={{ type: 'tween', duration: 0.2, ease: EASE }}
-              onClick={() => onOpenChange(true)}
+              onClick={() => setDrawerState('expanded')}
               className="relative flex h-9 w-9 items-center justify-center rounded-full border transition-colors hover:bg-white/[0.08]"
               style={{
                 background: 'rgba(18,18,20,0.88)',
@@ -595,9 +679,9 @@ export default function AgentDrawer({
       </AnimatePresence>
 
       {/* 收起态 light variant：参与 flex 布局的窄图标栏 */}
-      {!open && variant === 'light' && (
+      {!embedded && effectiveDrawerState === 'collapsed' && variant === 'light' && (
         <button
-          onClick={() => onOpenChange(true)}
+          onClick={() => setDrawerState('expanded')}
           className="relative shrink-0 flex items-center justify-center cursor-pointer transition-colors"
           style={{
             width: 34,
@@ -619,24 +703,41 @@ export default function AgentDrawer({
 
       {/* 抽屉本体 */}
       <AnimatePresence>
-        {open && (
+        {drawerOpen && (
           <motion.div
-            initial={{ x: 388 }}
+            onDragOver={(event) => {
+              if (event.dataTransfer.types.includes(PROJECT_REFERENCE_MIME)) {
+                event.preventDefault(); event.dataTransfer.dropEffect = 'copy';
+              }
+            }}
+            onDrop={(event) => {
+              if (!event.dataTransfer.types.includes(PROJECT_REFERENCE_MIME)) return;
+              event.preventDefault(); event.stopPropagation();
+              const data = useWorkshopStore.getState().data;
+              if (!data) return;
+              const reference = resolveReferenceTransfer(event.dataTransfer.getData(PROJECT_REFERENCE_MIME), data.projectId, projectTransferReferences(data));
+              if (reference) {
+                if (embedded && onWorkspaceReference) onWorkspaceReference(reference);
+                else updateProjectViewState({ conversationReferences: mergeProjectConversationReferences(data.projectViewState?.conversationReferences, [reference]) });
+              }
+            }}
+            initial={embedded ? false : { x: 388 }}
             animate={{ x: 0 }}
-            exit={{ x: 388 }}
+            exit={{ x: embedded ? 0 : 388 }}
             transition={{ type: 'tween', duration: 0.28, ease: EASE }}
-            className="absolute top-0 bottom-0 right-0 w-[380px] flex flex-col z-40"
+            className={embedded ? 'workspace-embedded-agent relative flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden' : 'absolute top-0 bottom-0 right-0 w-[380px] flex flex-col z-40'}
+            data-tone={embedded ? variant : undefined}
             style={{
               background: t.panelBg,
               backdropFilter: variant === 'light' ? 'blur(24px) saturate(1.3)' : undefined,
               WebkitBackdropFilter: variant === 'light' ? 'blur(24px) saturate(1.3)' : undefined,
-              borderLeft: `1px solid ${t.panelBorder}`,
-              boxShadow: t.panelShadow,
-              willChange: 'transform',
+              borderLeft: embedded ? undefined : `1px solid ${t.panelBorder}`,
+              boxShadow: embedded ? undefined : t.panelShadow,
+              willChange: embedded ? undefined : 'transform',
             }}
           >
             {/* 头部 */}
-            <div className="flex items-center justify-between px-4 shrink-0" style={{ height: 46, borderBottom: `1px solid ${t.headerBorder}` }}>
+            {!embedded && <div className="flex items-center justify-between px-4 shrink-0" style={{ height: 46, borderBottom: `1px solid ${t.headerBorder}` }}>
               <div className="flex items-center gap-2">
                 {variant === 'dark' && (
                   <span className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: t.iconBadgeBg }}>
@@ -656,16 +757,24 @@ export default function AgentDrawer({
               <div className="flex items-center gap-0.5">
                 <ContextUsagePill tone={variant} />
                 <ProjectSessionSwitcher />
-                <button onClick={() => onOpenChange(false)} className="p-1.5 rounded-md transition-colors" style={{ color: t.text2 }}
+                <button onClick={() => setDrawerState('hidden')} className="p-1.5 rounded-md transition-colors" style={{ color: t.text2 }}
                   onMouseEnter={e => { e.currentTarget.style.color = t.text1; e.currentTarget.style.background = t.controlHoverBg; }}
                   onMouseLeave={e => { e.currentTarget.style.color = t.text2; e.currentTarget.style.background = 'transparent'; }}
+                  title="隐藏助手"
+                >
+                  <EyeOff size={14} />
+                </button>
+                <button onClick={() => setDrawerState('collapsed')} className="p-1.5 rounded-md transition-colors" style={{ color: t.text2 }}
+                  onMouseEnter={e => { e.currentTarget.style.color = t.text1; e.currentTarget.style.background = t.controlHoverBg; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = t.text2; e.currentTarget.style.background = 'transparent'; }}
+                  title="收起助手"
                 >
                   <X size={14} />
                 </button>
               </div>
-            </div>
+            </div>}
 
-            <AnimatePresence initial={false} mode="wait">
+            {embedded ? (contextBanner && <div className="shrink-0 px-3 py-2" style={{ borderBottom: `1px solid ${t.headerBorder}` }}>{contextBanner}</div>) : <AnimatePresence initial={false} mode="wait">
               {contextBanner && (
                 <motion.div
                   key={contextBannerKey || 'agent-context'}
@@ -679,35 +788,81 @@ export default function AgentDrawer({
                   {contextBanner}
                 </motion.div>
               )}
-            </AnimatePresence>
+            </AnimatePresence>}
 
-            {/* 派单队列条：执行中项 + 排队项（仅 queued 可取消） */}
+            {!embedded && <ProjectChangeReview variant={variant} />}
+
+            {/* 派单队列：失败项保留，用户可修改后重试；“优先处理”只调整顺序，不打断当前任务。 */}
             {queueItems && queueItems.length > 0 && (
-              <div className="px-4 py-2 shrink-0 space-y-1" style={{ borderBottom: `1px solid ${t.headerBorder}` }}>
+              <div className={`px-4 py-2 shrink-0 space-y-1.5 ${embedded ? 'workspace-assistant-queue' : ''}`} style={{ borderBottom: `1px solid ${t.headerBorder}` }}>
                 {queueItems.map((item) => (
-                  <div key={item.id} className="flex items-center gap-1.5 text-[11px] leading-4 min-w-0">
-                    {item.status === 'running' ? (
-                      <Loader2 size={10} className="animate-spin shrink-0" style={{ color: t.text2 }} />
+                  <div key={item.id} className="rounded-md px-2 py-1.5" style={{ background: item.status === 'failed' ? 'rgba(239,68,68,0.08)' : t.controlHoverBg }}>
+                    {editingQueueId === item.id ? (
+                      <div className="space-y-1.5">
+                        <textarea
+                          value={editingQueuePrompt}
+                          onChange={(event) => setEditingQueuePrompt(event.target.value)}
+                          rows={3}
+                          autoFocus
+                          className="w-full resize-none rounded-md border px-2 py-1.5 text-[11px] leading-4 outline-none"
+                          style={{ background: t.inputCardBg, borderColor: t.headerBorder, color: t.text1 }}
+                        />
+                        <div className="flex justify-end gap-1.5">
+                          <button onClick={() => setEditingQueueId(null)} className="rounded px-2 py-1 text-[10px]" style={{ color: t.text2 }}>取消</button>
+                          <button
+                            onClick={() => {
+                              onEditQueueItem?.(item.id, editingQueuePrompt);
+                              setEditingQueueId(null);
+                            }}
+                            disabled={!editingQueuePrompt.trim()}
+                            className="rounded px-2 py-1 text-[10px] disabled:opacity-40"
+                            style={{ background: t.sendBg, color: t.sendText }}
+                          >
+                            保存并排队
+                          </button>
+                        </div>
+                      </div>
                     ) : (
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: t.text3 }} />
-                    )}
-                    <span className="truncate" style={{ color: item.status === 'running' ? t.text1 : t.text2 }}>
-                      {item.label}
-                    </span>
-                    <span className="shrink-0 text-[10px]" style={{ color: t.text3 }}>
-                      {item.status === 'running' ? '执行中' : '排队中'}
-                    </span>
-                    {item.status === 'queued' && onCancelQueueItem && (
-                      <button
-                        onClick={() => onCancelQueueItem(item.id)}
-                        className="ml-auto p-0.5 rounded shrink-0 transition-colors"
-                        style={{ color: t.text3 }}
-                        onMouseEnter={e => { e.currentTarget.style.color = t.text1; e.currentTarget.style.background = t.controlHoverBg; }}
-                        onMouseLeave={e => { e.currentTarget.style.color = t.text3; e.currentTarget.style.background = 'transparent'; }}
-                        title="取消排队"
-                      >
-                        <X size={10} />
-                      </button>
+                      <>
+                        <div className="flex items-center gap-1.5 text-[11px] leading-4 min-w-0">
+                          {item.status === 'running' ? (
+                            <Loader2 size={10} className="animate-spin shrink-0" style={{ color: t.text2 }} />
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: item.status === 'failed' ? '#ef4444' : t.text3 }} />
+                          )}
+                          <span className="truncate" style={{ color: item.status === 'failed' ? '#ef4444' : item.status === 'running' ? t.text1 : t.text2 }}>
+                            {item.label}
+                          </span>
+                          <span className="shrink-0 text-[10px]" style={{ color: item.status === 'failed' ? '#ef4444' : t.text3 }}>
+                            {item.status === 'running' ? '执行中' : item.status === 'uncertain' ? '待核实' : item.status === 'failed' ? '未发送' : '排队中'}
+                          </span>
+                          {item.status !== 'running' && (
+                            <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                              {item.status === 'failed' && onRetryQueueItem && (
+                                <button onClick={() => onRetryQueueItem(item.id)} className="p-1 rounded" style={{ color: t.text2 }} title="重试"><RotateCcw size={11} /></button>
+                              )}
+                              {item.status !== 'uncertain' && onSendQueueItemNow && (
+                                <button onClick={() => onSendQueueItemNow(item.id)} className="p-1 rounded" style={{ color: t.text2 }} title="排到下一项，不打断当前任务"><ListStart size={11} /></button>
+                              )}
+                              {item.status !== 'uncertain' && onEditQueueItem && (
+                                <button
+                                  onClick={() => { setEditingQueueId(item.id); setEditingQueuePrompt(item.prompt); }}
+                                  className="p-1 rounded"
+                                  style={{ color: t.text2 }}
+                                  title="编辑消息"
+                                ><Pencil size={11} /></button>
+                              )}
+                              {onDeleteQueueItem && (
+                                <button onClick={() => onDeleteQueueItem(item.id)} className="p-1 rounded" style={{ color: t.text2 }} title="删除消息"><Trash2 size={11} /></button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {embedded && item.targetLabel && <p className="mt-1 text-[10px]" style={{ color: t.text3 }}>{item.targetLabel}</p>}
+                        {(item.status === 'failed' || item.status === 'uncertain') && item.error && (
+                          <p className="mt-1 pl-3 text-[10px] leading-4 line-clamp-2" style={{ color: t.text3 }} title={item.error}>{item.error}</p>
+                        )}
+                      </>
                     )}
                   </div>
                 ))}
@@ -721,10 +876,14 @@ export default function AgentDrawer({
                 const element = event.currentTarget;
                 stickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48;
               }}
-              className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0"
+              className={embedded ? 'workspace-assistant-conversation flex-1 overflow-y-auto min-h-0' : 'flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0'}
             >
               {drawerEvents.length === 0 && !isStreaming && !relevantPendingDecision ? (
-                variant === 'light' ? (
+                embedded ? (
+                  <div className="workspace-assistant-empty">
+                    <p>还没有对话</p>
+                  </div>
+                ) : variant === 'light' ? (
                 <div className="h-full flex flex-col justify-center px-3 pb-10">
                   <p className="text-[13px] mb-1" style={{ color: t.text3 }}>{greeting.hello}</p>
                   <p className="text-[15px] font-medium mb-5" style={{ color: t.text1 }}>{greeting.title}</p>
@@ -788,13 +947,15 @@ export default function AgentDrawer({
                     decisionVariant={decisionVariant}
                     variant={variant}
                     theme={t}
+                    embedded={embedded}
                   />
-                  <DrawerStreamingContent
-                    open={open}
+                  {(!embedded || workspaceStreamingVisible !== false) && <DrawerStreamingContent
+                    open={drawerOpen}
                     variant={variant}
                     theme={t}
                     onVisualUpdate={scheduleScrollToBottom}
-                  />
+                    embedded={embedded}
+                  />}
                   {relevantPendingDecision && (
                     <AskUserDecisionCard
                       key={`decision-${relevantPendingDecision.id}`}
@@ -808,9 +969,9 @@ export default function AgentDrawer({
             </div>
 
             {/* 输入卡片 */}
-            <div className="px-3 pb-3 pt-1 shrink-0">
+            <div className={embedded ? 'workspace-assistant-composer shrink-0' : 'px-3 pb-3 pt-1 shrink-0'}>
               <div
-                className="rounded-2xl relative"
+                className={embedded ? 'workspace-assistant-input relative' : 'rounded-2xl relative'}
                 style={{ background: t.inputCardBg, border: `1px solid ${t.inputCardBorder}`, boxShadow: t.inputCardShadow }}
               >
                 {files.length > 0 && (
@@ -873,7 +1034,7 @@ export default function AgentDrawer({
                   </div>
                 )}
                 {/* 控件行 */}
-                <div className="flex items-center gap-1 px-2 pb-2 pt-0.5">
+                <div className={embedded ? 'workspace-assistant-input-tools' : 'flex items-center gap-1 px-2 pb-2 pt-0.5'}>
                   <button
                     onClick={() => void handleAttach()}
                     className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center transition-colors"
@@ -884,7 +1045,7 @@ export default function AgentDrawer({
                   >
                     <Paperclip size={14} />
                   </button>
-                  <button
+                  {!embedded && <button
                     onClick={() => setArtifactPickerOpen(true)}
                     className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center transition-colors"
                     style={{ color: t.text2 }}
@@ -893,8 +1054,8 @@ export default function AgentDrawer({
                     title="从产物库选取"
                   >
                     <ImageIcon size={14} />
-                  </button>
-                  <ConfirmModeSelect variant={variant} compact />
+                  </button>}
+                  {!embedded && <ConfirmModeSelect variant={variant} compact />}
                   {modelScope && (
                     <div className="min-w-0 w-[88px] max-w-[104px] shrink sm:w-[112px] sm:max-w-[112px]">
                       <WorkspaceAgentModelPicker

@@ -132,6 +132,24 @@ export const CANVAS_VIDEO_ENGINES: RhtvCanvasEngine[] = [
     ],
   },
   {
+    // 万相 3.0 高速版（wan3.0-video-prime）：能力对齐标准版，速度更快，单价不同
+    id: 'wan-3.0-prime',
+    label: '万相 3.0 Prime',
+    endpoint: 'alibaba/wan-3.0/reference-to-video',
+    kind: 'video',
+    mode: 'multimodal-video',
+    imageParam: { key: 'imageUrls', multiple: true },
+    audioParam: { key: 'audioUrls', multiple: true },
+    videoParam: { key: 'videoUrls', multiple: true },
+    params: [
+      { key: 'resolution', label: '分辨率', type: 'list', default: '720P', options: ['480P', '720P', '1080P'] },
+      { key: 'duration', label: '时长', type: 'list', default: '5',
+        options: ['-1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '12', '15', '20', '25', '30'] },
+      { key: 'ratio', label: '比例', type: 'list', default: 'adaptive',
+        options: ['adaptive', '16:9', '4:3', '1:1', '3:4', '9:16'] },
+    ],
+  },
+  {
     // MiniMax H3（hailuo-h3）：单端点多模态视频，t2v/i2v 同端点，
     // prompt 必填、图(≤9)/视频(≤3)/音频(≤3) 参考均可选；分辨率只有 2K。
     id: 'minimax-hailuo-h3',

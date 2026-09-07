@@ -27,6 +27,7 @@ import { loadMediaInput } from '@/lib/agent/mediaInput';
 import type { MgMotionRecipe } from '@/lib/omni/styles';
 import { mergeCanvasNodeGenerationParams } from '@/lib/canvas/generationParams';
 import { DREAMINA_SEEDANCE_25_ENGINE_ID } from '@/lib/dreamina/video';
+import { calibrateGenerationForEngine } from '@/lib/projectObjects/generationDraft';
 
 // UI short names are accepted as aliases and normalized before generation.
 const ENGINE_IDS = [
@@ -330,6 +331,7 @@ export const canvasGenerateTool: Tool = {
     // referenceImages）——否则用户连好参考图后让 agent 生成，会静默退化
     // 成文生图，出与参考无关的图并覆盖节点。
     let collectedNote = '';
+    let adjustmentNote = '';
     if (referenceUrls.length === 0 || audioUrls.length === 0 || videoUrls.length === 0) {
       const collected = collectNodeReferences(nodeId);
       if (engineKind === 'image' && referenceUrls.length === 0) {
@@ -354,6 +356,22 @@ export const canvasGenerateTool: Tool = {
         if (videoUrls.length > 0) {
           collectedNote = collectedNote || '（自动并入节点当前视频作为参考视频）';
         }
+      }
+    }
+
+    const engine = findCanvasEngine(engineId);
+    if (engine) {
+      const calibrated = calibrateGenerationForEngine(engine, overrides, {
+        images: referenceUrls,
+        videos: videoUrls,
+        audios: audioUrls,
+      });
+      overrides = calibrated.params as Record<string, string | number | boolean>;
+      referenceUrls = calibrated.references.images;
+      videoUrls = calibrated.references.videos;
+      audioUrls = calibrated.references.audios;
+      if (calibrated.adjustments.length > 0) {
+        adjustmentNote = `参数已按 ${engine.label} 自动校准：${calibrated.adjustments.join('；')}`;
       }
     }
 
@@ -384,6 +402,7 @@ export const canvasGenerateTool: Tool = {
       `生成成功${result.fallbackUsed ? '（已切换生图通道）' : ''}${collectedNote}`,
       `节点 ${nodeId} 已更新，主产物: ${result.resultPaths[0]}`,
     ];
+    if (adjustmentNote) lines.push(adjustmentNote);
     if (result.resultPaths.length > 1) {
       lines.push(`共 ${result.resultPaths.length} 个产物（其余: ${result.resultPaths.slice(1).join(', ')}）`);
     }

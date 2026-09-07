@@ -1,0 +1,29 @@
+.workspace-script-tools { --canvas-text-1: #e4e4e7; --canvas-text-2: #b5b5bc; --canvas-text-3: #98989f; --canvas-node-bg: #202023; --canvas-node-border: #37373c; --canvas-node-border-selected: #80b4a8; --canvas-accent: #80b4a8; display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; background: #19191b; color: #e4e4e7; font: 13px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color-scheme: dark; }
+.workspace-script-tools * { box-sizing: border-box; letter-spacing: 0; }
+.workspace-script-toolbar { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #303034; }
+.workspace-script-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 5px 9px; background: transparent; border: 1px solid transparent; border-radius: 5px; color: #b5b5bc; cursor: pointer; font: inherit; }
+.workspace-script-toolbar [role=tablist] { display: flex; flex-wrap: wrap; gap: 3px; }
+.workspace-script-toolbar button[aria-selected=true] { background: #2b2b2f; border-color: #414146; color: #ededf0; }
+.workspace-script-toolbar > span { margin-left: auto; font-size: 12px; color: #a8cabe; }
+.workspace-script-tools button:focus-visible, .workspace-script-tools input:focus-visible, .workspace-script-tools textarea:focus-visible { outline: 2px solid #80b4a8; outline-offset: 2px; }
+.workspace-script-tools button:disabled { opacity: .45; cursor: not-allowed; }
+.workspace-script-tools button:hover:not(:disabled) { filter: brightness(1.15); }
+.workspace-script-panel { flex: 1; min-height: 0; min-width: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #4a4a50 transparent; }
+.workspace-script-panel[hidden] { display: none; }
+.workspace-script-error { padding: 10px 18px; margin: 0; color: #efb0ad; overflow-wrap: anywhere; flex: none; }
+.workspace-script-step { padding: 18px; width: 100%; min-width: 0; }
+.workspace-script-step h2 { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+.workspace-script-step h3 { font-size: 13px; }
+.workspace-script-step :is(input, textarea) { min-width: 0; max-width: 100%; font-size: 13px; }
+.workspace-script-step :is(p, label) { overflow-wrap: anywhere; }
+.workspace-script-step .rounded-xl, .workspace-script-step .rounded-2xl { border-radius: 6px; }
+.workspace-script-sources > button:first-of-type { margin-top: 4px; padding: 22px 12px; }
+.workspace-script-sources > button:last-of-type { margin-top: 16px; padding: 9px 12px; color: #13251f; font-weight: 600; }
+.workspace-script-sources .relative > .flex { flex-wrap: wrap; gap: 8px; }
+.workspace-script-sources .relative > .flex > input { flex: 1 1 180px; }
+.workspace-script-breakdown > .flex { flex-wrap: wrap; gap: 10px; }
+.workspace-script-breakdown table { table-layout: fixed; min-width: 400px; }
+.workspace-script-breakdown section > .overflow-hidden { overflow-x: auto; }
+.workspace-script-breakdown section > .grid { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+.workspace-script-breakdown .mt-6 { margin-top: 18px; }
+@media (max-width: 600px) { .workspace-script-toolbar { padding: 10px 12px; gap: 6px; } .workspace-script-step { padding: 14px 12px; } .workspace-script-toolbar button { padding: 5px 7px; } }

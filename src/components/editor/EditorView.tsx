@@ -15,6 +15,7 @@ import { runSpeechAudit, isAuditRunning } from '@/lib/editor/speechAudit/engine'
 import { captureEditorSnapshot } from '@/lib/editor/editorHistory';
 import EditorTopBar from './EditorTopBar';
 import EditorToolbar from './EditorToolbar';
+import EditorEmbeddedTools from './EditorEmbeddedTools';
 import ShortcutPanel from './ShortcutPanel';
 import LeftPanel, { type LeftTab } from './LeftPanel';
 import PreviewPlayer from './PreviewPlayer';
@@ -28,6 +29,7 @@ import AiBoxOverlay, { type AiBoxRect } from '@/components/shared/AiBoxOverlay';
 interface EditorViewProps {
   onSendMessage: (content: string, filePaths?: string[]) => void;
   onAbort: () => void;
+  embedded?: boolean;
 }
 
 const LAYOUT_LIMITS = {
@@ -73,7 +75,7 @@ function ResizeHandle({
   );
 }
 
-export default function EditorView({ onSendMessage, onAbort }: EditorViewProps) {
+export default function EditorView({ onSendMessage, onAbort, embedded = false }: EditorViewProps) {
   const transcribing = useEditorStore((s) => s.transcribing);
   const workflowMode = useEditorStore((s) => s.workflowMode);
   const [leftTab, setLeftTab] = useState<LeftTab>('media');
@@ -256,12 +258,12 @@ export default function EditorView({ onSendMessage, onAbort }: EditorViewProps) 
 
   return (
     <div ref={editorRef} className="canvas-dark relative flex flex-col flex-1 min-h-0 overflow-hidden" style={{ background: 'var(--canvas-bg)' }}>
-      <EditorTopBar
+      {!embedded && <EditorTopBar
         onAutoSubtitle={() => void handleAutoSubtitle()}
         onSmartCut={() => void handleSmartCut()}
         onAiSmooth={handleAiSmooth}
         transcribing={transcribing}
-      />
+      />}
 
       <div className="flex-1 min-h-0 flex px-[3px] pt-[3px]">
         {/* 剪口播占位抽屉：弹出后成为一个模块，不再盖住预览和时间轴 */}
@@ -300,6 +302,8 @@ export default function EditorView({ onSendMessage, onAbort }: EditorViewProps) 
           </div>
 
           <ResizeHandle axis="y" onMouseDown={startResizeTimeline} title="拖动调整时间轴高度" />
+          {embedded && <EditorEmbeddedTools onAutoSubtitle={() => void handleAutoSubtitle()}
+            onSmartCut={() => void handleSmartCut()} onAiSmooth={handleAiSmooth} transcribing={transcribing} />}
           <EditorToolbar />
           <TimelineTracks height={timelineHeight} />
         </div>
@@ -308,7 +312,7 @@ export default function EditorView({ onSendMessage, onAbort }: EditorViewProps) 
       <ShortcutPanel />
       <PlanPanel />
       <AiBoxOverlay active={altHeld} containerRef={editorRef} onSubmit={handleAiBox} onCancel={() => setAltHeld(false)} />
-      <EditorChatPanel onSendMessage={onSendMessage} onAbort={onAbort} />
+      {!embedded && <EditorChatPanel onSendMessage={onSendMessage} onAbort={onAbort} />}
     </div>
   );
 }

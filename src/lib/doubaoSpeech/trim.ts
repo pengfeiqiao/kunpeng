@@ -1,6 +1,7 @@
 import type { GeneratedAudio } from '@/lib/workshop/types';
 import { readBinaryFile, writeBinaryFile, createDir, BaseDirectory } from '@tauri-apps/api/fs';
 import { homeDir } from '@tauri-apps/api/path';
+import { productionFileName } from '../workspace/productionSafety';
 
 function encodeWav(pcm: Float32Array[], sampleRate: number): Uint8Array {
   const numChannels = pcm.length;
@@ -44,6 +45,7 @@ export async function trimAudiosToFit(
   audios: GeneratedAudio[],
   maxTotalSec: number,
   projectId: string,
+  operationId: string = crypto.randomUUID(),
 ): Promise<GeneratedAudio[]> {
   const totalDuration = audios.reduce((s, a) => s + a.duration, 0);
   if (totalDuration <= maxTotalSec) return audios;
@@ -56,6 +58,7 @@ export async function trimAudiosToFit(
   const ctx = new AudioContext();
 
   const results: GeneratedAudio[] = [];
+  try {
   for (const audio of audios) {
     const targetDuration = audio.duration * ratio;
     const bytes = await readBinaryFile(audio.path);
@@ -70,7 +73,7 @@ export async function trimAudiosToFit(
 
     const wav = encodeWav(channels, decoded.sampleRate);
     const baseName = audio.path.split('/').pop()!.replace(/\.[^.]+$/, '');
-    const trimFileName = `${baseName}-trim.wav`;
+    const trimFileName = productionFileName(`${baseName}-trim`, `${operationId}-${results.length}`, 'wav');
     const trimRelPath = `${relDir}/${trimFileName}`;
     await writeBinaryFile(trimRelPath, wav, { dir: BaseDirectory.Home });
 
@@ -81,8 +84,10 @@ export async function trimAudiosToFit(
     });
   }
 
-  await ctx.close();
   return results;
+  } finally {
+    await ctx.close();
+  }
 }
 
 async function decodeAudio(path: string, ctx: AudioContext): Promise<AudioBuffer> {
@@ -137,7 +142,7 @@ export async function trimAudioPathsToFit(
 
       const wav = encodeWav(channels, buffer.sampleRate);
       const baseName = audio.path.split('/').pop()!.replace(/\.[^.]+$/, '');
-      const trimFileName = `${baseName}-seedance-trim-${Date.now()}-${i + 1}.wav`;
+      const trimFileName = productionFileName(`${baseName}-seedance-trim`, `${crypto.randomUUID()}-${i + 1}`, 'wav');
       const trimRelPath = `${relDir}/${trimFileName}`;
       await writeBinaryFile(trimRelPath, wav, { dir: BaseDirectory.Home });
       trimmedAudios.push({

@@ -1,0 +1,36 @@
+.workspace-content-tree .workspace-tree-section { border-bottom: 1px solid #2e2e31; }
+.workspace-content-tree .workspace-tree-heading { min-height: 44px; padding: 10px 14px; color: #e1e1e5; font-weight: 600; font-size: 13px; }
+.workspace-tree-heading > svg:first-child, .workspace-tree-toggle > svg { transition: transform 160ms ease; }
+.workspace-tree-heading[aria-expanded=true] > svg:first-child, .workspace-tree-toggle[aria-expanded=true] > svg { transform: rotate(90deg); }
+.workspace-content-tree .workspace-tree-heading small { font-size: 11px; font-weight: 400; color: #8f929a; }
+.workspace-content-tree .workspace-group-heading > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-content-tree .workspace-content-group { border-bottom: 0; padding: 0 8px 6px; }
+.workspace-content-tree .workspace-tree-subgroup { margin-left: 8px; border-left: 1px solid #303034; padding-left: 5px; }
+.workspace-tree-subgroup > .workspace-group-heading { color: #aaaeb7; padding: 8px 6px; font-size: 12px; font-weight: 500; }
+.workspace-content-tree .workspace-content-item-line { gap: 3px; padding: 5px 3px; position: relative; }
+.workspace-tree-toggle { display: grid; place-items: center; width: 18px; height: 28px; flex: none; border: 0; background: transparent; color: #8c939c; cursor: pointer; }
+.workspace-content-tree .workspace-content-open { gap: 7px; }
+.workspace-content-tree .workspace-content-open > img, .workspace-content-tree .workspace-content-placeholder { flex-basis: 42px; width: 42px; height: 32px; object-fit: contain; }
+.workspace-content-tree .workspace-content-copy > span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; line-height: 1.5; }
+.workspace-content-tree .workspace-content-copy small { display: block; font-size: 11px; font-weight: 400; color: #999da5; }
+.workspace-content-tree .workspace-content-details { margin-left: 21px; padding: 2px 8px 10px 0; }
+.workspace-content-tree .workspace-content-details p { line-height: 1.65; }
+.workspace-content-tree .workspace-content-item[data-batch-selected=true] { border-color: #6c9e91; background: #273530; }
+.workspace-content-tree .workspace-tree-excerpt-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12px; font-weight: 400; line-height: 1.65; }
+.workspace-content-tree .workspace-tree-excerpt-text[data-expanded=true] { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.workspace-content-tree .workspace-tree-excerpt-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; margin-bottom: 4px; }
+.workspace-tree-excerpt-toggle[aria-expanded=true] > svg { transform: rotate(180deg); }
+.workspace-content-tree .workspace-version-strip { flex-wrap: wrap; overflow: visible; gap: 6px; }
+.workspace-content-tree .workspace-version-strip button { flex: 0 0 calc((100% - 6px) / 2); width: calc((100% - 6px) / 2); max-width: 110px; }
+.workspace-content-tree .workspace-version-strip img, .workspace-content-tree .workspace-version-type { width: 100%; height: 64px; object-fit: contain; }
+.workspace-tree-script { margin: 0 14px 10px 29px; }
+.workspace-tree-script p { font-size: 12px; color: #999fa9; margin: 2px 0 8px; }
+.workspace-tree-script-open { display: flex; align-items: center; gap: 8px; width: 100%; background: transparent; border: 0; border-radius: 4px; color: #cbd0d7; padding: 8px 6px; cursor: pointer; font: inherit; font-size: 12px; text-align: left; }
+.workspace-tree-script-open span { flex: 1; }
+.workspace-tree-script-open:hover, .workspace-tree-script-open[aria-current=page] { background: #28302e; color: #98c7b9; }
+.workspace-tree-text-action { background: none; border: 0; color: #9fcbbd; font-size: 12px; padding: 4px 0; cursor: pointer; }
+.workspace-tree-empty { color: #898e98; margin: 2px 28px 14px; font-size: 12px; }
+.workspace-content-tree .workspace-content-item, .workspace-tree-script-open { transition: background-color 140ms ease, border-color 140ms ease; }
+.workspace-tree-reveal { animation: workspace-tree-enter 160ms ease-out; }
+@keyframes workspace-tree-enter { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .workspace-tree-reveal { animation: none; } .workspace-content-tree *, .workspace-tree-heading > svg:first-child, .workspace-tree-toggle > svg { transition: none; } }

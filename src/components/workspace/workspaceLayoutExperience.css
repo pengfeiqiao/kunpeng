@@ -1,0 +1,84 @@
+.workspace-layout-experience { font-size: 13px; background: #111214; }
+.workspace-layout-experience > .workspace-topbar { height: 50px; gap: 8px; padding: 0 12px; background: #202124; border-bottom: 1px solid #36383d; font-size: 12px; }
+.workspace-layout-experience > .workspace-topbar h1 { font-size: 14px; flex: 0 1 180px; min-width: 0; }
+.workspace-layout-experience > .workspace-topbar nav { flex-shrink: 0; }
+.workspace-layout-experience > .workspace-topbar > button { flex-shrink: 0; }
+.workspace-layout-experience > .workspace-topbar .workspace-spec-summary { flex: 0 1 170px; min-width: 0; }
+.workspace-layout-experience > .workspace-columns { margin: 8px; gap: 0; background: transparent; overflow: hidden; }
+.workspace-layout-experience > .workspace-columns > :is(.workspace-content-column, .workspace-inspector-column, .workspace-assistant-column, .workspace-collapsed-rail) { border: 1px solid #36383d; border-radius: 6px; background: #191a1c; }
+.workspace-layout-experience .workspace-assistant-heading,
+.workspace-layout-experience .workspace-overlay-heading { background: #242529; padding: 8px 10px; }
+.workspace-layout-experience .workspace-assistant-heading h2,
+.workspace-layout-experience .workspace-overlay-heading > span { font-size: 14px; }
+.workspace-layout-experience .workspace-column-resizer { position: relative; min-width: 0; width: 8px; height: 100%; cursor: col-resize; touch-action: none; user-select: none; outline: none; z-index: 2; }
+.workspace-layout-experience .workspace-column-resizer::after { content: ''; position: absolute; top: 8px; bottom: 8px; left: 2px; width: 4px; border-radius: 2px; background: #83b8ac; opacity: 0; transform: scaleX(.5); transition: opacity 160ms ease, transform 160ms ease; }
+.workspace-layout-experience .workspace-column-resizer:is(:hover, :focus-visible)::after,
+.workspace-layout-experience[data-resizing] .workspace-column-resizer::after { opacity: .8; transform: scaleX(1); }
+.workspace-layout-experience .workspace-column-resizer:focus-visible { outline: 1px solid #83b8ac; outline-offset: -1px; border-radius: 3px; }
+.workspace-layout-experience[data-resizing] { user-select: none; cursor: col-resize; }
+.workspace-layout-experience[data-resizing] > .workspace-columns > :is(.workspace-content-column, .workspace-inspector-column, .workspace-assistant-column) { pointer-events: none; }
+.workspace-layout-experience .workspace-new-material > [role=menu] { background: #25262a; border: 1px solid #45474d; border-radius: 6px; animation: workspace-layout-enter 160ms ease-out; }
+.workspace-layout-experience .workspace-assistant-large,
+.workspace-layout-experience.workspace-layout-compact .workspace-assistant-visible,
+.workspace-layout-experience .workspace-content-column.workspace-overlay-open { animation: workspace-layout-enter 160ms ease-out; }
+.workspace-layout-experience:is(.workspace-canvas-mode, .workspace-editor-mode, .workspace-layout-compact) .workspace-directory-toggle { display: grid; }
+.workspace-layout-experience:is(.workspace-canvas-mode, .workspace-editor-mode, .workspace-layout-compact) .workspace-content-column { display: none; position: absolute; z-index: 31; top: 58px; bottom: 8px; left: 8px; width: min(320px, 90%); box-shadow: 12px 0 30px #0006; }
+.workspace-layout-experience:is(.workspace-canvas-mode, .workspace-editor-mode, .workspace-layout-compact) .workspace-content-column.workspace-overlay-open { display: block; }
+.workspace-layout-experience.workspace-layout-compact .workspace-assistant-column { position: absolute; z-index: 32; top: 58px; bottom: 8px; right: 8px; width: min(360px, 100%); box-shadow: -12px 0 30px #0006; border-radius: 12px; }
+/* 画布/剪辑工作面（非紧凑）：助手恢复旧版悬浮式设计 —— 贴右缘全高浮层，380px，不占布局轨道 */
+.workspace-layout-experience:is(.workspace-canvas-mode, .workspace-editor-mode):not(.workspace-layout-compact) .workspace-assistant-column.workspace-assistant-visible:not(.workspace-assistant-large) {
+  position: absolute; z-index: 38; top: 0; bottom: 0; right: 0; width: min(380px, 92%);
+  border: none; border-radius: 0; border-left: 1px solid rgba(255,255,255,0.1); box-shadow: -16px 0 40px rgba(0,0,0,0.45);
+}
+.workspace-layout-experience.workspace-layout-compact .workspace-assistant-large { width: min(780px, 100%); }
+.workspace-layout-experience.workspace-layout-compact .workspace-spec-summary { display: none; }
+@supports ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
+  .workspace-layout-experience > .workspace-topbar,
+  .workspace-layout-experience .workspace-assistant-heading,
+  .workspace-layout-experience .workspace-overlay-heading,
+  .workspace-layout-experience .workspace-new-material > [role=menu] { background: #242529eb; -webkit-backdrop-filter: blur(8px) saturate(1.08); backdrop-filter: blur(8px) saturate(1.08); }
+}
+@keyframes workspace-layout-enter { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 600px) {
+  .workspace-layout-experience > .workspace-topbar { gap: 4px; padding: 0 6px; }
+  .workspace-layout-experience > .workspace-topbar h1 { max-width: 64px; }
+  .workspace-layout-experience > .workspace-topbar nav button { padding: 6px 5px; }
+  .workspace-layout-experience > .workspace-columns { margin: 8px; }
+}
+@media (max-width: 420px) {
+  .workspace-layout-experience > .workspace-topbar { height: auto; min-height: 50px; flex-wrap: wrap; gap: 2px; padding: 4px; }
+  .workspace-layout-experience > .workspace-topbar h1 { display: none; }
+  .workspace-layout-experience > .workspace-topbar nav { margin-left: 0; margin-right: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-layout-experience .workspace-column-resizer::after { transition: none; }
+  .workspace-layout-experience .workspace-new-material > [role=menu],
+  .workspace-layout-experience .workspace-assistant-large,
+  .workspace-layout-experience.workspace-layout-compact .workspace-assistant-visible,
+  .workspace-layout-experience .workspace-content-column.workspace-overlay-open { animation: none; }
+}
+
+/* ── 沉浸黑 + mac 毛玻璃视觉基调（克制三色：中性 / 白 / 警示红） ── */
+.workspace-layout-experience { background: #08080a; }
+.workspace-layout-experience > .workspace-topbar { position: relative; z-index: 40; background: #0b0b0e; border-bottom: 1px solid rgba(255,255,255,0.08); }
+/* 顶栏实底高层级：下方面板/浮层任何情况下不得盖住顶栏控件 */
+.workspace-layout-experience > .workspace-columns > :is(.workspace-content-column, .workspace-inspector-column, .workspace-assistant-column, .workspace-collapsed-rail) {
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; background: rgba(19,19,23,0.66);
+  -webkit-backdrop-filter: blur(18px) saturate(1.12); backdrop-filter: blur(18px) saturate(1.12);
+}
+.workspace-layout-experience .workspace-content-list, .workspace-layout-experience .workspace-composer,
+.workspace-layout-experience .workspace-inspector { background: transparent; }
+/* 图标精致化：更小更轻 */
+.workspace-icon { width: 26px; height: 26px; border-radius: 7px; color: #c9c9d1; }
+.workspace-icon svg { width: 15px; height: 15px; }
+.workspace-icon:hover { background: rgba(255,255,255,0.07); }
+/* 弹出层统一毛玻璃 */
+.workspace-layout-experience [role="menu"], .workspace-engine-popover, .workspace-reference-picker,
+.workspace-params-drawer, .workspace-classify-dialog, dialog.workspace-prompt-dialog {
+  background: rgba(24,24,29,0.78); -webkit-backdrop-filter: blur(20px) saturate(1.15); backdrop-filter: blur(20px) saturate(1.15);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+}
+/* 滚动条细暗 */
+.workspace-layout-experience ::-webkit-scrollbar { width: 6px; height: 6px; }
+.workspace-layout-experience ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 3px; }
+.workspace-layout-experience ::-webkit-scrollbar-track { background: transparent; }

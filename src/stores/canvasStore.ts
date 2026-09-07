@@ -10,6 +10,7 @@ import {
 } from '@/lib/canvas/referencePolicy';
 import { safeLocalStorage } from '@/lib/safeStorage';
 import { CoalescedIdleWork } from '@/lib/performance/coalescedIdleWork';
+import { isWorkspaceLayoutNode } from '@/lib/workspace/canvasLayout';
 
 // This adapter sits above JSON serialization: Zustand passes the structured
 // value here, and only a coalesced idle snapshot is stringified. The project
@@ -148,7 +149,7 @@ function applyCanvasConnection(
   connection: Connection & { data?: Record<string, unknown> },
 ): { nodes: Node[]; edges: Edge[] } {
   const nextEdges = addEdge(
-    { ...connection, id: `e-${nanoid(8)}`, type: 'custom' },
+    { ...connection, data: { relation: 'reference', ...connection.data }, id: `e-${nanoid(8)}`, type: 'custom' },
     edges,
   );
 
@@ -280,7 +281,7 @@ export const useCanvasStore = create<CanvasState>()(
           return { nodes: nextNodes, edges: nextEdges };
         }),
 
-      updateNode: (id, data) =>
+      updateNode: (id, data) => {
         set((s) => {
           let changed = false;
           const nodes = s.nodes.map((n) => {
@@ -313,7 +314,8 @@ export const useCanvasStore = create<CanvasState>()(
             return { ...n, data: merged };
           });
           return changed ? { nodes } : s;
-        }),
+        });
+      },
 
       updateNodeStyle: (id, style) =>
         set((s) => {
@@ -400,6 +402,10 @@ export const useCanvasStore = create<CanvasState>()(
         const { edges, nodes } = get();
         const edge = edges.find(e => e.id === edgeId);
         if (!edge) return;
+        if (isNonReferenceEdgeData(edge.data)) {
+          set({ edges: edges.filter((item) => item.id !== edgeId) });
+          return;
+        }
         // Remove reference images from target node that came from source node
         const sourceNode = nodes.find(n => n.id === edge.source);
         const targetNode = nodes.find(n => n.id === edge.target);
@@ -496,7 +502,7 @@ export const useCanvasStore = create<CanvasState>()(
       getSnapshot: () => {
         const { nodes, edges } = get();
         return {
-          nodes: nodes.map((n) => ({
+          nodes: nodes.filter((n) => !isWorkspaceLayoutNode(n)).map((n) => ({
             id: n.id,
             type: n.type || 'text',
             position: n.position,

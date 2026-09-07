@@ -154,7 +154,7 @@ function classifyTool(name: string): { action: string; icon: ToolIconKind; detai
     browser_control: { action: '操作浏览器', icon: 'browser', detailStyle: 'text' },
     image_recognition: { action: '分析图片', icon: 'generate', detailStyle: 'text' },
     ask_user_question: { action: '询问用户', icon: 'default', detailStyle: 'text' },
-    skill_invoke: { action: '调用技能', icon: 'default', detailStyle: 'code' },
+    skill_invoke: { action: '使用技能', icon: 'default', detailStyle: 'text' },
   };
   if (exact[name]) return exact[name];
   if (/image.*generate|generate.*image|canvas_generate|workshop_generate/.test(name)) {
@@ -192,6 +192,8 @@ export function createToolPresentation(name: string, params: Record<string, unkn
     detail = stringParam(params, ['url']);
   } else if (name === 'browser_control') {
     detail = [stringParam(params, ['action']), stringParam(params, ['url'])].filter(Boolean).join(' · ');
+  } else if (name === 'skill_invoke') {
+    detail = stringParam(params, ['skillId']) || '查看技能目录';
   } else if (/generate/.test(name)) {
     detail = generationDetail(params);
   } else if (name.startsWith('timeline_export_')) {

@@ -17,7 +17,7 @@ export interface PricePreview {
 const cache = new Map<string, { at: number; result: PricePreview }>();
 const CACHE_MS = 60_000;
 
-export async function previewPrice(endpoint: string, params: RhtvParams): Promise<PricePreview | null> {
+export async function previewPrice(endpoint: string, params: RhtvParams, signal?: AbortSignal): Promise<PricePreview | null> {
   const key = `${endpoint}:${JSON.stringify(params)}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.result;
@@ -30,14 +30,16 @@ export async function previewPrice(endpoint: string, params: RhtvParams): Promis
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
+      signal,
     });
     if (!resp.ok) return null;
     const data = (await resp.json()) as PricePreview & { errorCode?: string };
-    if (data.errorCode) return null;
+    if (data.errorCode || typeof data.estimatedPrice !== 'number' || !Number.isFinite(data.estimatedPrice)
+      || data.estimatedPrice < 0 || typeof data.currency !== 'string' || !data.currency) return null;
     const result: PricePreview = {
-      estimatedPrice: data.estimatedPrice ?? 0,
-      currency: data.currency ?? 'CNY',
-      isFreeThisCall: data.isFreeThisCall ?? false,
+      estimatedPrice: data.estimatedPrice,
+      currency: data.currency,
+      isFreeThisCall: data.isFreeThisCall === true,
       freeLimit: data.freeLimit ?? false,
       remainingFreeLimitCount: data.remainingFreeLimitCount ?? null,
     };

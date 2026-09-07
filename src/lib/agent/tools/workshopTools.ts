@@ -8,7 +8,7 @@ import { useWorkshopStore } from '@/stores/workshopStore';
 import { useCanvasTaskStore } from '@/stores/canvasTaskStore';
 import { useRunStepStore } from '@/stores/runStepStore';
 import { listProjectFiles, projectAbsPath } from '@/lib/aigc/projectStore';
-import type { AssetCandidate, StoryboardFrame, WorkshopAssetKind, WorkshopProjectBibles, WorkshopStepId, WorkshopStoryFact, WsCharacter, WsProp, WsScene, WsShot } from '@/lib/workshop/types';
+import type { AssetCandidate, WorkshopAssetKind, WorkshopProjectBibles, WorkshopStepId, WorkshopStoryFact, WsCharacter, WsProp, WsScene, WsShot } from '@/lib/workshop/types';
 import { renderStepExport } from '@/lib/workshop/exportTemplates';
 import { writeProjectFile } from '@/lib/aigc/projectStore';
 import { homeDir } from '@tauri-apps/api/path';
@@ -18,10 +18,7 @@ import { ensureVideoThumb } from '@/lib/canvas/videoThumbs';
 import {
   applyVideoPlanningReferencePrefixes,
   buildImageRefBindings,
-  buildStoryboardFrameRefBindings,
   buildVideoRefBindings,
-  compactStoryboardFrameReferences,
-  ensureDirectorConstraintMention,
   getSceneReferencePaths,
   numToCn,
   patchTouchesRefs,
@@ -45,6 +42,7 @@ import {
   auditVideoPromptNarrative,
   findFunctionalRoles,
 } from '@/lib/workshop/shotNarrativeAudit';
+import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
 
 const STEP_IDS = ['script', 'breakdown', 'assets', 'prompts', 'generate', 'handoff'];
 
@@ -173,16 +171,6 @@ function collectDirectorPromptWarnings(shotNo: string, imagePrompt?: string, vid
   return warnings;
 }
 
-function countStoryboardBoardRefs(shot: WsShot): number {
-  return (shot.storyboardBoards ?? []).filter((board) => board.imagePath && board.useInVideo !== false).length;
-}
-
-function firstPromptSentence(prompt: string): string {
-  const trimmed = prompt.trim();
-  const match = trimmed.match(/^[\s\S]{1,260}?[。！？\n]/);
-  return match ? match[0] : trimmed.slice(0, 260);
-}
-
 function buildShotRequiredRefs(shot: WsShot, data: NonNullable<ReturnType<typeof useWorkshopStore.getState>['data']>) {
   const bindings = buildShotRefBindings(shot, data);
   const sceneRefIndices = bindings.filter((ref) => ref.kind === 'scene').map((ref) => ref.index);
@@ -304,20 +292,6 @@ function validatePromptPatch(
       warnings.push(`${shotNo}: Seedance 提示词检查\n${formatSeedanceValidation(validation)}`);
     }
 
-    const storyboardRefCount = countStoryboardBoardRefs(shot);
-    if (storyboardRefCount > 0) {
-      const firstSentence = firstPromptSentence(videoPrompt);
-      const missingStoryboardRefs = Array.from({ length: storyboardRefCount }, (_, i) => `@图片${numToCn(i + 1)}`)
-        .filter((ref) => !firstSentence.includes(ref));
-      if (missingStoryboardRefs.length > 0) {
-        warnings.push(`${shotNo}: 本镜有 ${storyboardRefCount} 张高清分镜板，videoPrompt 第一句话必须把所有分镜板作为"本镜景别变化和画面参考"引用，缺少 ${missingStoryboardRefs.join('、')}`);
-      }
-      if (!/分镜板|故事板|导演分镜|景别变化|画面参考|storyboard/i.test(firstSentence)) {
-        warnings.push(`${shotNo}: 第一句话引用了高清分镜板时，必须明确写"本镜景别变化和画面参考"，不要把它当普通场景图处理，也不要暗示必须完全按每格逐镜切分`);
-      }
-    } else if (/^以分镜[版板]\s*@图片/u.test(firstPromptSentence(videoPrompt))) {
-      warnings.push(`${shotNo}: 当前没有启用高清分镜板，但 videoPrompt 仍保留了分镜板前缀，请删除该前缀并按当前 videoReferenceOrder 重新引用场景/角色参考图`);
-    }
     const directorCardRef = buildShotRefBindings(shot, data).find((ref) => ref.kind === 'directorConstraintCard');
     if (directorCardRef) {
       const expectedImageRef = `@图片${numToCn(directorCardRef.index)}`;
@@ -344,9 +318,10 @@ function validatePromptPatch(
 async function applySinglePromptPatch(
   shotNo: string,
   patch: Pick<Partial<WsShot>, 'imagePrompt' | 'videoPrompt' | 'audioPrompts'>,
-): Promise<{ ok: boolean; warnings: string[]; error?: string }> {
+  options: { dryRun?: boolean; shotOverride?: WsShot } = {},
+): Promise<{ ok: boolean; warnings: string[]; error?: string; appliedPatch?: Partial<WsShot> }> {
   const ws = useWorkshopStore.getState();
-  const shot = ws.data?.shots.find((x) => x.shotNo === shotNo);
+  const shot = options.shotOverride ?? ws.data?.shots.find((x) => x.shotNo === shotNo);
   if (!ws.data || !shot) return { ok: false, warnings: [], error: `分镜 ${shotNo} 不存在` };
 
   const normalizedImage = patch.imagePrompt !== undefined ? normalizePromptRefs(shotNo, patch.imagePrompt, 'image') : undefined;
@@ -409,6 +384,10 @@ async function applySinglePromptPatch(
     promptPatch.promptNeedsRefresh = validation.promptNeedsRefresh;
   }
 
+  if (options.dryRun) {
+    return { ok: true, warnings: validation.warnings, appliedPatch: promptPatch };
+  }
+
   ws.updateShot(shotNo, promptPatch);
   ws.markStepStatus('prompts', 'in-progress');
   ws.logChange('prompts', `更新 ${shotNo} 提示词字段${validation.warnings.length ? `，检查警告 ${validation.warnings.length} 条` : ''}`);
@@ -426,49 +405,10 @@ async function applySinglePromptPatch(
   if (promptPatch.audioPrompts !== undefined && JSON.stringify(latest.audioPrompts ?? []) !== JSON.stringify(promptPatch.audioPrompts)) {
     return { ok: false, warnings: validation.warnings, error: 'audioPrompts 写入校验失败：保存后的配音提示词不完整，请重试' };
   }
-  return { ok: true, warnings: validation.warnings };
+  return { ok: true, warnings: validation.warnings, appliedPatch: promptPatch };
 }
 
-function buildShotStoryboardRefs(shot: WsShot, data: NonNullable<ReturnType<typeof useWorkshopStore.getState>['data']>) {
-  const refs: { index: number; label: string; kind: 'scene' | 'character' | 'prop' | 'extra' | 'palette'; name: string; path: string }[] = [];
-  const sceneRefs = getSceneReferencePaths(shot, data.scenes);
-  const scene = data.scenes.find((s) => s.id === shot.sceneId);
-  sceneRefs.forEach((path, i) => refs.push({
-    index: refs.length + 1,
-    label: i === 0 ? `场景 ${scene?.name ?? shot.sceneId ?? ''}`.trim() : `场景角度 ${i + 1}`,
-    kind: 'scene',
-    name: i === 0 ? (scene?.name ?? '场景') : `场景角度 ${i + 1}`,
-    path,
-  }));
-  for (const cid of (shot.characterIds ?? [])) {
-    const char = data.characters.find((c) => c.id === cid);
-    if (char?.assetImagePath) refs.push({ index: refs.length + 1, label: `角色 ${char.name}`, kind: 'character', name: char.name, path: char.assetImagePath });
-  }
-  for (const pid of (shot.propIds ?? [])) {
-    const prop = (data.props ?? []).find((p) => p.id === pid);
-    if (prop?.assetImagePath) refs.push({ index: refs.length + 1, label: `道具 ${prop.name}`, kind: 'prop', name: prop.name, path: prop.assetImagePath });
-  }
-  for (const [_idx, path] of (shot.extraRefImages ?? []).filter(Boolean).entries()) {
-    refs.push({ index: refs.length + 1, label: `额外参考 ${path.split('/').pop() ?? refs.length + 1}`, kind: 'extra', name: path.split('/').pop() ?? '额外参考', path });
-  }
-  const palette = (data.colorPalettes ?? []).find((p) => p.id === (shot.colorPaletteId || data.globalColorPaletteId));
-  if (palette?.assetImagePath) {
-    refs.push({ index: refs.length + 1, label: `色卡 ${palette.name}`, kind: 'palette', name: palette.name, path: palette.assetImagePath });
-  }
-  return { refs, sceneRefCount: sceneRefs.length };
-}
 
-function sanitizeStoryboardImagePrompt(prompt: string): string {
-  return prompt
-    .replace(/[，,、\s]*\{[^{}]*\}/g, '')
-    .replace(/[，,、\s]*<[^<>]*>/g, '')
-    .replace(/[，,、\s]*（[^（）]*(?:台词|对白|字幕|旁白|音效|声音|环境音|音乐|配乐|BGM|bgm|说|念|喊|唱)[^（）]*）/g, '')
-    .replace(/[，,、\s]*\([^()]*(?:台词|对白|字幕|旁白|音效|声音|环境音|音乐|配乐|BGM|bgm|说|念|喊|唱)[^()]*\)/g, '')
-    .replace(/(?:台词|对白|字幕|旁白|音效|声音|环境音|音乐|配乐|BGM|bgm)[：:][^。；;\n]*(?:[。；;]|$)/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/([，,、]){2,}/g, '$1')
-    .trim();
-}
 
 function requireOpen(): { ok: true } | { ok: false; error: string } {
   const { project, data } = useWorkshopStore.getState();
@@ -476,46 +416,8 @@ function requireOpen(): { ok: true } | { ok: false; error: string } {
   return { ok: true };
 }
 
-function storyboardCandidateList(frame: { imagePath?: string; prompt?: string; candidates?: AssetCandidate[] }): AssetCandidate[] {
-  const existing = frame.candidates ?? [];
-  if (existing.length > 0) return existing;
-  return frame.imagePath
-    ? [{ path: frame.imagePath, source: 'generate', prompt: frame.prompt, createdAt: Date.now() }]
-    : [];
-}
 
-function withStoryboardCandidate(
-  frame: NonNullable<WsShot['storyboardFrames']>[number],
-  path: string,
-  source: AssetCandidate['source'],
-  engineId?: string,
-): NonNullable<WsShot['storyboardFrames']>[number] {
-  const candidates = storyboardCandidateList(frame);
-  const nextCandidates = candidates.some((c) => c.path === path)
-    ? candidates
-    : [...candidates, {
-        path,
-        source,
-        engineId,
-        prompt: frame.prompt,
-        createdAt: Date.now(),
-      }];
-  return {
-    ...frame,
-    imagePath: path,
-    candidates: nextCandidates,
-    status: 'done',
-    error: undefined,
-  };
-}
 
-function collectStoryboardGenerationRefs(
-  shot: WsShot,
-  frame: StoryboardFrame,
-  data: NonNullable<ReturnType<typeof useWorkshopStore.getState>['data']>,
-): string[] {
-  return compactStoryboardFrameReferences(shot, frame, data).bindings.map((ref) => ref.path);
-}
 
 /**
  * get_state step 详情里的资产对象瘦身：candidates 是只增不减的历史（每条还带 prompt 全文），
@@ -602,7 +504,6 @@ const getStateTool: Tool = {
                   .filter((shot) => !requestedShotNo || shot.shotNo === requestedShotNo)
                   .map((shot) => {
                   const { refs, sceneRefCount } = buildShotRequiredRefs(shot, s.data!);
-                  const storyboard = buildShotStoryboardRefs(shot, s.data!);
                   const full = !!requestedShotNo;
                   const base = full ? shot : {
                     shotNo: shot.shotNo,
@@ -640,11 +541,9 @@ const getStateTool: Tool = {
                   return {
                     ...base,
                     referenceSignature: shotReferenceSignature(shot, s.data!),
-                    // videoReferenceOrder：videoPrompt 专用编号（分镜板置首）。
-                    // imagePrompt/故事板 prompt 禁止用它——生图不传分镜板，
-                    // 必须用 imageReferenceOrder（否则 @图片N 系统性偏移）。
+                    // 新流程不把历史故事板加入参考；视频与静帧只使用当前显式参考。
                     videoReferenceOrder: refs.map((ref) => `@图片${numToCn(ref.index)}=${ref.label}`),
-                    imageReferenceOrder: storyboard.refs.map((ref) => `@图片${numToCn(ref.index)}=${ref.label}`),
+                    imageReferenceOrder: buildImageRefBindings(shot, s.data!).map((ref) => `@图片${numToCn(ref.index)}=${ref.label}`),
                     videoReferenceBindings: buildVideoRefBindings(shot, s.data!).map((ref) => ({
                       ref: `@图片${numToCn(ref.index)}`,
                       kind: ref.kind,
@@ -660,17 +559,19 @@ const getStateTool: Tool = {
                       path: ref.path,
                     })),
                     sceneReferenceCount: sceneRefCount,
-                    storyboardReferenceOrder: storyboard.refs.map((ref) => `@图片${numToCn(ref.index)}=${ref.label}`),
-                    storyboardSceneReferenceCount: storyboard.sceneRefCount,
+                    legacyHistoricalStoryboards: {
+                      frameCount: shot.storyboardFrames?.length ?? 0,
+                      boardCount: shot.storyboardBoards?.length ?? 0,
+                      participatesInGeneration: false,
+                      occupiesReferenceNumber: false,
+                    },
                     directorConstraintCard: shot.directorConstraintCard?.imagePath
                       ? {
                           id: shot.directorConstraintCard.id,
                           imagePath: shot.directorConstraintCard.imagePath,
                           prompt: shot.directorConstraintCard.prompt,
                           useInVideo: shot.directorConstraintCard.useInVideo === true,
-                          appliedFrameIndices: (shot.storyboardFrames ?? [])
-                            .flatMap((frame, index) => frame.useDirectorConstraintCard === true ? [index + 1] : []),
-                          rule: '导演约束卡是可选参考。只有明确启用的故事板格才会追加该图，且对应 prompt 必须出现 @导演约束卡；视频也由独立 useInVideo 开关控制。',
+                          rule: '导演约束卡是镜头“空间与调度”的可选参考。只有 useInVideo=true 时才进入当前镜头的视频参考和 @图片N 顺序。',
                         }
                       : null,
                   };
@@ -751,6 +652,76 @@ const readSourceTool: Tool = {
         feishuLinks: links.map((l) => l.url),
       }),
     };
+  },
+};
+
+const saveScriptTool: Tool = {
+  definition: {
+    name: 'workshop_save_script',
+    description: '把与用户讨论后定稿的剧本/大纲写入项目文档（文档页「原剧本」区实时可见、可编辑）。仅在剧本内容已与用户对齐后调用；同名文件再次调用会覆盖更新；后续拆解必须以写入的定稿文件为准。',
+    parameters: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: '剧本定稿全文（Markdown）' },
+        name: { type: 'string', description: '可选文件名，默认「剧本定稿.md」' },
+      },
+      required: ['content'],
+    },
+  },
+  risk: 'safe',
+  async execute(params) {
+    const check = requireOpen();
+    if (!check.ok) return { success: false, output: '', error: check.error };
+    const content = String(params.content ?? '').trim();
+    if (!content) return { success: false, output: '', error: '剧本内容为空，未写入' };
+    const project = useWorkshopStore.getState().project!;
+    const rawName = String(params.name ?? '').trim() || '剧本定稿.md';
+    const name = /\.(md|txt)$/i.test(rawName) ? rawName : `${rawName}.md`;
+    try {
+      await writeProjectFile(project.id, `sources/${name}`, content, { requireSuccess: true });
+      const state = useWorkshopStore.getState();
+      if (state.project?.id !== project.id) return { success: false, output: '', error: '项目已切换，文件已写入磁盘但未登记到当前项目' };
+      if (!state.project!.sources.some((s) => s.name === name)) {
+        useWorkshopStore.setState({
+          project: { ...state.project!, sources: [...state.project!.sources, { name, type: 'md', size: content.length, uploadedAt: Date.now() }] },
+        });
+        state.scheduleSave();
+      }
+      return { success: true, output: JSON.stringify({ saved: name, bytes: content.length }) };
+    } catch (error) {
+      return { success: false, output: '', error: error instanceof Error ? error.message : '剧本写入失败' };
+    }
+  },
+};
+
+const saveDocumentTool: Tool = {
+  definition: {
+    name: 'workshop_save_document',
+    description: '把项目工作文档写入项目 docs/ 目录（文档页「项目文档」区实时可见、可编辑），用于讨论纪要、分镜说明、角色小传、创作规则等。剧本定稿请用 workshop_save_script。同名文件再次调用会覆盖更新。',
+    parameters: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: '文档全文（Markdown）' },
+        name: { type: 'string', description: '文件名，如「讨论纪要.md」；缺省自动命名为 项目文档-时间戳.md' },
+      },
+      required: ['content'],
+    },
+  },
+  risk: 'safe',
+  async execute(params) {
+    const check = requireOpen();
+    if (!check.ok) return { success: false, output: '', error: check.error };
+    const content = String(params.content ?? '').trim();
+    if (!content) return { success: false, output: '', error: '文档内容为空，未写入' };
+    const project = useWorkshopStore.getState().project!;
+    const rawName = String(params.name ?? '').trim() || `项目文档-${Date.now()}.md`;
+    const name = /\.(md|txt)$/i.test(rawName) ? rawName : `${rawName}.md`;
+    try {
+      await writeProjectFile(project.id, `docs/${name}`, content, { requireSuccess: true });
+      return { success: true, output: JSON.stringify({ saved: `docs/${name}`, bytes: content.length }) };
+    } catch (error) {
+      return { success: false, output: '', error: error instanceof Error ? error.message : '文档写入失败' };
+    }
   },
 };
 
@@ -1266,7 +1237,7 @@ continuity.blockingContinuity 专门记录每一幕/每一场景的世界空间�
 const updateShotTool: Tool = {
   definition: {
     name: 'workshop_update_shot',
-    description: `修改单条分镜的字段。事实锁：用户只要求改提示词时，不得修改 description/dialogue/sourceExcerpt/characterIds/sceneId/propIds；只有用户明确要求改剧本、对白或重排分镜时才放行。force_edit 不能绕过事实锁。
+    description: `修改单条分镜的字段。调用前必须用 project_get_objects 读取该镜头稳定对象的 version，并把它作为 expected_version 传回；版本变化或对象锁定时不会覆盖用户修改。事实锁：用户只要求改提示词时，不得修改 description/dialogue/sourceExcerpt/characterIds/sceneId/propIds；只有用户明确要求改剧本、对白或重排分镜时才放行。force_edit 不能绕过事实锁。
 
 patch 可用的字段名（必须严格一致）：description（画面描述）、sourceExcerpt（对应剧本逐字原文）、sourceFactIds（覆盖的剧情事实 ID）、narrativeFunction（叙事职能）、emptyShotPurpose（无人物镜头的必要用途）、dialogue（对白）、shotType（景别）、camera（运镜）、mood（情绪）、durationSec（时长 8-15s）、characterIds（关联角色ID数组，必填！）、propIds（关联道具ID数组）、sceneId（关联场景ID，必填！）、voiceCharacterIds（本镜显式启用的角色音色资产ID数组；只有这里列出的角色 voicePath 才会传入视频生成；没有台词/不需要音色时传 []）、audioInjected（是否把 generatedAudios 作为本镜配音资产传入）、generatedAudios（已生成配音文件）、imagePrompt（生图提示词）、videoPrompt（视频提示词，默认必须用多镜头模板格式含 3-5 个子镜头；只有明确声明长镜头/一镜到底时才允许 1 个连续调度镜头）、expectedRefSignature（写提示词时从 workshop_get_shot_refs 原样带回的参考签名，不会存入分镜）、videoRatio（视频比例，如 "16:9"）、imagePath（生成图路径）、videoPath（视频路径）、genStatus。注意：不要用 prompt，必须用 imagePrompt 或 videoPrompt。批量或长文本提示词优先用 workshop_set_prompts；如果这里传 imagePrompt/videoPrompt，本工具会自动走同一套提示词校验与写后校验，videoPrompt 会按项目或单镜 videoPromptTemplate 写入经典版（videoPrompt）或新版（universalVideoPrompt）独立槽位，互不覆盖。
 
@@ -1282,12 +1253,13 @@ patch 可用的字段名（必须严格一致）：description（画面描述）
       type: 'object',
       properties: {
         shot_no: { type: 'string' },
+        expected_version: { type: 'number', description: 'project_get_objects 刚读取到的镜头对象版本号。' },
         patch: {
           type: 'object',
           description: '要更新的字段子集，如 {"durationSec": 10}。长文本提示词建议用 workshop_set_prompts；这里传 videoPrompt/imagePrompt 时会自动走提示词管线。',
         },
       },
-      required: ['shot_no', 'patch'],
+      required: ['shot_no', 'expected_version', 'patch'],
     },
   },
   risk: 'safe',
@@ -1296,6 +1268,10 @@ patch 可用的字段名（必须严格一致）：description（画面描述）
     if (!check.ok) return { success: false, output: '', error: check.error };
     const s = useWorkshopStore.getState();
     const shotNo = params.shot_no as string;
+    const expectedVersion = Number(params.expected_version);
+    if (!Number.isFinite(expectedVersion)) {
+      return { success: false, output: '', error: 'expected_version 必填。请先调用 project_get_objects 读取该镜头的当前版本。' };
+    }
     if (!s.data!.shots.some((x) => x.shotNo === shotNo)) {
       return { success: false, output: '', error: `分镜 ${shotNo} 不存在` };
     }
@@ -1414,37 +1390,45 @@ patch 可用的字段名（必须严格一致）：description（画面描述）
       };
     }
 
-    const changed: string[] = [];
-    if (Object.keys(patch).length > 0) {
-      const latestStore = useWorkshopStore.getState();
-      const oldShot = latestStore.data!.shots.find((x) => x.shotNo === shotNo)!;
-      const nextShot = { ...oldShot, ...patch };
-      const refRemap = touchesReferenceFields(patch) ? remapPromptRefsForShot(oldShot, nextShot, latestStore.data!) : {};
-      const finalPatch = { ...refRemap, ...patch };
-      useWorkshopStore.getState().updateShot(shotNo, finalPatch);
-      await useWorkshopStore.getState().commitNow();
-      const latest = useWorkshopStore.getState().data?.shots.find((x) => x.shotNo === shotNo);
-      if (!latest) return { success: false, output: '', error: `分镜 ${shotNo} 写入后无法读取` };
-      const verifyFailures = verifyShotPatch(latest, patch);
-      if (verifyFailures.length > 0) {
-        return {
-          success: false,
-          output: '',
-          error: `分镜 ${shotNo} 字段写入校验失败：${verifyFailures.join('、')} 保存后未生效。请刷新工坊状态后重试。`,
-        };
-      }
-      changed.push(...Object.keys(finalPatch));
-    }
+    const latestStore = useWorkshopStore.getState();
+    const oldShot = latestStore.data!.shots.find((x) => x.shotNo === shotNo)!;
+    const nextShot = { ...oldShot, ...patch };
+    const refRemap = touchesReferenceFields(patch) ? remapPromptRefsForShot(oldShot, nextShot, latestStore.data!) : {};
+    let finalPatch: Partial<WsShot> = { ...refRemap, ...patch };
+    let promptWarnings: string[] = [];
     if (touchesPrompt) {
-      const result = await applySinglePromptPatch(shotNo, promptPatch);
+      const result = await applySinglePromptPatch(shotNo, promptPatch, {
+        dryRun: true,
+        shotOverride: { ...nextShot, ...refRemap },
+      });
       if (!result.ok) return { success: false, output: '', error: result.error ?? `分镜 ${shotNo} 提示词写入失败` };
-      changed.push(...Object.keys(promptPatch));
-      const warningText = result.warnings.length
-        ? `\n检查警告（已写入并标记建议重写）：\n${result.warnings.slice(0, 12).join('\n')}${result.warnings.length > 12 ? `\n…还有 ${result.warnings.length - 12} 条` : ''}`
-        : '';
-      return { success: true, output: `分镜 ${shotNo} 已通过提示词管线更新：${changed.join('、') || '提示词'}${warningText}` };
+      finalPatch = { ...finalPatch, ...(result.appliedPatch ?? {}) };
+      promptWarnings = result.warnings;
     }
-    return { success: true, output: `分镜 ${shotNo} 已更新${changed.length ? `：${changed.join('、')}` : ''}` };
+    const status = useUnifiedProjectStore.getState().applyAgentShotPatch({
+      shotNo,
+      expectedVersion,
+      patch: finalPatch,
+    });
+    if (status === 'locked') return { success: false, output: '', error: `分镜 ${shotNo} 已锁定，Agent 不能修改。` };
+    if (status === 'conflict') return { success: false, output: '', error: `分镜 ${shotNo} 已被用户修改，已创建可见冲突，未自动覆盖。` };
+    if (status !== 'applied') return { success: false, output: '', error: `分镜 ${shotNo} 的统一对象不存在，请重新打开项目后再试。` };
+    if (touchesPrompt) {
+      useWorkshopStore.getState().markStepStatus('prompts', 'in-progress');
+      useWorkshopStore.getState().logChange('prompts', `更新 ${shotNo} 提示词字段${promptWarnings.length ? `，检查警告 ${promptWarnings.length} 条` : ''}`);
+    }
+    await useWorkshopStore.getState().commitNow();
+    const latest = useWorkshopStore.getState().data?.shots.find((x) => x.shotNo === shotNo);
+    if (!latest) return { success: false, output: '', error: `分镜 ${shotNo} 写入后无法读取` };
+    const verifyFailures = verifyShotPatch(latest, finalPatch);
+    if (verifyFailures.length > 0) {
+      return { success: false, output: '', error: `分镜 ${shotNo} 字段写入校验失败：${verifyFailures.join('、')} 保存后未生效。请刷新工坊状态后重试。` };
+    }
+    const changed = Object.keys(finalPatch);
+    const warningText = promptWarnings.length
+      ? `\n检查警告（已写入并标记建议重写）：\n${promptWarnings.slice(0, 12).join('\n')}${promptWarnings.length > 12 ? `\n…还有 ${promptWarnings.length - 12} 条` : ''}`
+      : '';
+    return { success: true, output: `分镜 ${shotNo} 已更新：${changed.join('、') || '无字段变化'}；改动可审阅并撤销本轮。${warningText}` };
   },
 };
 
@@ -1714,12 +1698,9 @@ const setPromptsTool: Tool = {
 - 单角色场景锚点 10-20 字，双角色 30-50 字，三角色+ 50-70 字；锚点不能挤占画面描述空间
 
 【@图片N 引用纪律——漏引=废片】
-- 参考图顺序：videoPrompt 以 workshop_get_state 返回的 videoReferenceOrder 为准（分镜板置首）；imagePrompt 和故事板 prompt 以 imageReferenceOrder 为准（不含分镜板——生图时不传它们，用错顺序会整体错位）。
-- 如果本镜有高清故事板/分镜板，高清故事板永远排在最前面：@图片一、@图片二…先对应所有启用的分镜板；它们不是场景图，必须作为"本镜景别变化和画面参考"处理。
-- 有分镜板时，videoPrompt 开头第一句话必须写成：以分镜板 @图片一 @图片二 … 作为本镜景别变化和画面参考；然后再写场景、角色、道具。所有启用的分镜板都必须在第一句话里点名 @。分镜板只提供构图、景别、人物关系和画面层次参考，不代表必须完全按每格逐镜切分。
-- 如果 videoReferenceOrder 中出现“导演约束卡”，它排在全部启用分镜板之后。必须在提示词开头明确写“以 @导演约束卡（对应 @图片N）锁定本镜人物站位、视线、机位和动作关系”，并读取 workshop_get_state 返回的 directorConstraintCard.prompt，把其中有效的站位、视线、机位、动线和动作关系落实到各子镜头；只继承调度约束，不复制灰模材质或僵硬姿势。即使它正好是第三张，也不能因后面还有场景/人物参考而漏掉 @图片三。
-- 没有分镜板但启用了导演约束卡时，导演约束卡就是 @图片一，场景、角色和道具从 @图片二 起继续编号；即使没有其它参考图，也允许只传这一张导演约束卡。只有分镜板和导演约束卡都未启用时，场景参考才排在最前面：默认最终场景资产是 @图片一；如果用户明确选了 3 张多角度场景图，则 @图片一/@图片二/@图片三 都是场景图，角色/道具从 @图片四 起继续编号。
-- 分镜板和导演约束卡之后才是场景图、角色、道具、额外参考、色卡，具体顺序以 videoReferenceOrder 为准；场景图、角色、道具、额外参考必须在场景设定行或对应镜头行中被点名引用，不能只写 @图片一。
+- 参考顺序只以 workshop_get_state 返回的 videoReferenceOrder / imageReferenceOrder 为准。旧故事板只是历史素材，默认不进入参考、不占 @图片N 编号。
+- 如果 videoReferenceOrder 中出现“导演约束卡”，它必须是用户已显式启用的当前镜头约束。在提示词开头明确写“以 @导演约束卡（对应 @图片N）锁定本镜人物站位、视线、机位和动作关系”，并把 directorConstraintCard.prompt 中的有效调度约束落实到各子镜头；不复制灰模材质或僵硬姿势。
+- 导演约束卡之后依次是场景图、角色、道具、额外参考、色卡。场景图、角色、道具和额外参考必须在场景设定行或对应镜头行中点名，不能只写 @图片一。
 - 色卡是唯一例外：色卡只作为全局配色参考，必须在全文最后一句点名一次（如"全片画面配色严格参考 @图片七（色卡），用于统一色彩风格。"），禁止在每个子镜头/每句画面描述里反复写"画面配色严格参考..."或"色调参考色卡"。
 - 每个出场的角色/道具在每个子镜头行都必须用 @图片N 引用，不能只写名字不带图
 - 人物名字后面必须紧跟对应 @图片N，如"陈墨@图片四"，禁止只写"陈墨"
@@ -1914,20 +1895,6 @@ imagePrompt 为中文（gpt-image-2），建议 80-220 中文字，必须写成�
         warnings.push(`${it.shotNo}: Seedance 提示词检查\n${formatSeedanceValidation(validation)}`);
         warningByShot.add(it.shotNo);
       }
-      const storyboardRefCount = countStoryboardBoardRefs(shot);
-      if (storyboardRefCount > 0) {
-        const firstSentence = firstPromptSentence(normalizedVideoForCheck);
-        const missingStoryboardRefs = Array.from({ length: storyboardRefCount }, (_, i) => `@图片${numToCn(i + 1)}`)
-          .filter((ref) => !firstSentence.includes(ref));
-        if (missingStoryboardRefs.length > 0) {
-          warnings.push(`${it.shotNo}: 本镜有 ${storyboardRefCount} 张高清分镜板，videoPrompt 第一句话必须把所有分镜板作为"本镜景别变化和画面参考"引用，缺少 ${missingStoryboardRefs.join('、')}`);
-          warningByShot.add(it.shotNo);
-        }
-        if (!/分镜板|故事板|导演分镜|景别变化|画面参考|storyboard/i.test(firstSentence)) {
-          warnings.push(`${it.shotNo}: 第一句话引用了高清分镜板时，必须明确写"本镜景别变化和画面参考"，不要把它当普通场景图处理，也不要暗示必须完全按每格逐镜切分`);
-          warningByShot.add(it.shotNo);
-        }
-      }
       const promptTemplate = shot.videoPromptTemplate || ws.data!.videoPromptTemplate || 'legacy';
       const subShotCount = promptTemplate === 'universal'
         ? (normalizedVideoForCheck.match(/\d+(?:\.\d+)?\s*(?:-|–|—|~|至)\s*\d+(?:\.\d+)?\s*(?:秒|s)/gi) || []).length
@@ -2020,210 +1987,14 @@ imagePrompt 为中文（gpt-image-2），建议 80-220 中文字，必须写成�
   },
 };
 
-const setStoryboardPromptsTool: Tool = {
-  definition: {
-    name: 'workshop_set_storyboard_prompts',
-    description: `为单条分镜写入高清故事板提示词。用于"高清故事板"工作流：AI 先理解剧情、人物关系、情绪转折、当前工坊风格和 bibles，再把一条分镜创作成默认 8 张、也可按用户要求扩展为 12/16/更多张的独立电影分镜图提示词。每张都必须独立可生图，强调人物脸部一致性、电影级构图、光线、表演瞬间和空间锚点。不要写拼图提示词；拼合由工具完成。
+// Legacy compatibility only. Kept callable by migration tests, but intentionally
+// omitted from allWorkshopTools so new Agent runs cannot recreate storyboard flows.
 
-写作要求：
-- 默认写 8 条，每条是一张单独剧照，不是连续视频提示词，也不是固定模板机械套用。
-- 必须继承 workshop_get_state 中的 bibles、当前风格/色卡和该镜剧情目的；如果用户选择了风格库，要把风格库的视觉基因落实到构图、色彩、光线、材质和镜头语言里。
-- 每条必须使用 workshop_get_state 返回的 storyboardReferenceOrder 里的 @图片N 资产引用；这是高清故事板专用顺序，场景从 @图片一 开始，不要套用普通视频生成的 referenceOrder。
-- 若状态中 directorConstraintCard 存在，可按剧情需要为指定 frame 传 use_director_constraint_card:true；不要默认全开。启用后该卡会追加到本格参考图末尾，提示词必须明确出现 @导演约束卡（工具会补齐对应 @图片N）。
-- 每条都必须显式引用所有场景参考图，尤其不能漏 @图片一；人物出镜时人物名后紧跟 @图片N。
-- 这是静态图片提示词，不是 Seedance 视频提示词。禁止写台词、对白、字幕、旁白、音效、环境音、音乐、BGM；禁止使用 {}、<>、（）来标注声音或台词。
-- 每条必须强调"严格复刻参考图人物脸、发型、服装、五官比例"，但不要写成空泛口号。
-- 每张应根据剧情重新设计叙事功能，可覆盖建立空间、人物关系、动作预备、关键表演、手部/道具细节、反应特写、环境反馈、尾帧构图，但顺序和内容必须服务本镜，不要死板照抄。
-- 语言要像导演给摄影/美术/演员的执行说明，避免"电影感十足/氛围拉满"这类空词。`,
-    parameters: {
-      type: 'object',
-      properties: {
-        shot_no: { type: 'string', description: '分镜编号' },
-        force: { type: 'boolean', description: '已有生成图时确认整组覆盖（会丢弃已生成图与候选集），默认 false 拒绝' },
-        frames: {
-          type: 'array',
-          description: '故事板生图提示词。首次默认 8 条；用户追加分镜后可按当前格子数量写入。',
-          items: {
-            type: 'object',
-            properties: {
-              prompt: { type: 'string' },
-              selected: { type: 'boolean' },
-              use_director_constraint_card: { type: 'boolean', description: '可选。仅当本镜已有导演约束卡且本格需要锁定站位/视线/机位/动作关系时设 true。' },
-            },
-            required: ['prompt'],
-          },
-        },
-      },
-      required: ['shot_no', 'frames'],
-    },
-  },
-  risk: 'safe',
-  async execute(params) {
-    const check = requireOpen();
-    if (!check.ok) return { success: false, output: '', error: check.error };
-    const ws = useWorkshopStore.getState();
-    const shotNo = String(params.shot_no ?? '').trim();
-    const shot = ws.data!.shots.find((s) => s.shotNo === shotNo);
-    if (!shot) return { success: false, output: '', error: `分镜 ${shotNo} 不存在` };
-    const rawFrames = params.frames as unknown;
-    if (!Array.isArray(rawFrames)) {
-      return { success: false, output: '', error: 'frames 必须是数组，每项包含 prompt' };
-    }
-    // 在途/已产出保护：整组覆盖会换掉全部 frame id——正在生成的任务完成后
-    // 找不到格子回填（已付费产物成孤儿），已生成的图和候选集也全部丢失。
-    const existingFrames = shot.storyboardFrames ?? [];
-    const generatingCount = existingFrames.filter((f) => f.status === 'generating').length;
-    if (generatingCount > 0) {
-      return { success: false, output: '', error: `分镜 ${shotNo} 有 ${generatingCount} 张故事板正在生成中，整组覆盖会让生成结果无处回填。请等生成完成，或改用 workshop_update_storyboard_frame_prompts 只改指定格子。` };
-    }
-    const doneCount = existingFrames.filter((f) => f.imagePath).length;
-    if (doneCount > 0 && params.force !== true) {
-      return { success: false, output: '', error: `分镜 ${shotNo} 已有 ${doneCount} 张生成图，整组覆盖会丢弃它们和全部候选。局部修改请用 workshop_update_storyboard_frame_prompts；确认全部重来则传 force:true。` };
-    }
-    const storyboardRefs = buildShotStoryboardRefs(shot, ws.data!);
-    const sceneLabels = storyboardRefs.refs
-      .filter((ref) => ref.kind === 'scene')
-      .map((ref) => `@图片${numToCn(ref.index)}`);
-    const repairs: string[] = [];
-    const frames = rawFrames
-      .map((raw, i) => {
-        const item = raw as Record<string, unknown>;
-        let prompt = sanitizeStoryboardImagePrompt(normalizePromptRefs(shotNo, String(item.prompt ?? '').trim(), 'image'));
-        if (!prompt) return null;
-        const missingSceneLabels = sceneLabels.filter((label) => !prompt.includes(label));
-        if (missingSceneLabels.length > 0) {
-          prompt = `${missingSceneLabels.join('、')} 场景参考，${prompt}`;
-          repairs.push(`第 ${i + 1} 张补入 ${missingSceneLabels.join('、')}`);
-        }
-        const useDirectorConstraintCard = item.use_director_constraint_card === true && Boolean(shot.directorConstraintCard?.imagePath);
-        const draft = {
-          id: `story-${Date.now()}-${i + 1}-${Math.random().toString(36).slice(2, 8)}`,
-          prompt,
-          useDirectorConstraintCard,
-          selected: item.selected !== false,
-          status: 'idle' as const,
-        };
-        const compacted = compactStoryboardFrameReferences(shot, draft, ws.data!);
-        const bindings = compacted.bindings;
-        const cardRef = bindings.find((ref) => ref.kind === 'directorConstraintCard');
-        return {
-          ...draft,
-          prompt: cardRef
-            ? ensureDirectorConstraintMention(compacted.prompt, cardRef.index)
-            : stripDirectorConstraintMention(compacted.prompt),
-          refImagePaths: bindings.map((ref) => ref.path),
-        };
-      })
-      .filter(Boolean) as NonNullable<WsShot['storyboardFrames']>;
-    if (frames.length === 0) return { success: false, output: '', error: '没有可写入的故事板提示词' };
-    ws.updateShot(shotNo, { storyboardFrames: frames });
-    ws.logChange('prompts', `写入 ${shotNo} 高清故事板提示词 ${frames.length} 条`);
-    await ws.commitNow();
-    const hint = frames.length < 8 ? `，默认建议补足到 8 张` : '';
-    const repairText = repairs.length ? `\n已自动补齐漏写的场景引用：${repairs.join('；')}` : '';
-    return { success: true, output: `已写入分镜 ${shotNo} 的高清故事板提示词 ${frames.length} 条${hint}${repairText}` };
-  },
-};
-
-const updateStoryboardFramePromptsTool: Tool = {
-  definition: {
-    name: 'workshop_update_storyboard_frame_prompts',
-    description: `只修改单条分镜中指定几张高清故事板提示词，保留其它格子的 prompt、已生成图片、选中状态和生成状态。
-
-适用场景：用户说"把第3张改成低机位特写""只改第5张光线""第2和第6张更有压迫感"，或用户追加了 4 张空分镜后要求补写第 9-12 张。不要为了局部修改调用 workshop_set_storyboard_prompts 覆盖全部故事板。`,
-    parameters: {
-      type: 'object',
-      properties: {
-        shot_no: { type: 'string', description: '分镜编号' },
-        updates: {
-          type: 'array',
-          description: '要局部修改的故事板格子。index 从 1 开始，对应 UI 里的第几张。',
-          items: {
-            type: 'object',
-            properties: {
-              index: { type: 'number', description: '第几张故事板，从 1 开始，可超过 8，对应 UI 里的当前格子序号。' },
-              prompt: { type: 'string', description: '修改后的完整静态生图提示词。只用于高清故事板图片，禁止写台词、对白、字幕、旁白、音效、环境音、音乐、BGM；禁止使用 {}、<>、（）标注声音或台词。' },
-              use_director_constraint_card: { type: 'boolean', description: '可选。设置本格是否使用导演约束卡；不传则保持现状。启用后 prompt 会自动写入 @导演约束卡。' },
-            },
-            required: ['index', 'prompt'],
-          },
-        },
-      },
-      required: ['shot_no', 'updates'],
-    },
-  },
-  risk: 'safe',
-  async execute(params) {
-    const check = requireOpen();
-    if (!check.ok) return { success: false, output: '', error: check.error };
-    const ws = useWorkshopStore.getState();
-    const shotNo = String(params.shot_no ?? '').trim();
-    const shot = ws.data!.shots.find((s) => s.shotNo === shotNo);
-    if (!shot) return { success: false, output: '', error: `分镜 ${shotNo} 不存在` };
-    const frames = shot.storyboardFrames ?? [];
-    if (frames.length === 0) return { success: false, output: '', error: `分镜 ${shotNo} 还没有故事板提示词，请先创建默认 8 张提示词，或在 UI 中新增空分镜后再写入` };
-    const updates = params.updates as unknown;
-    if (!Array.isArray(updates) || updates.length === 0) {
-      return { success: false, output: '', error: 'updates 必须是非空数组' };
-    }
-
-    const storyboardRefs = buildShotStoryboardRefs(shot, ws.data!);
-    const sceneLabels = storyboardRefs.refs
-      .filter((ref) => ref.kind === 'scene')
-      .map((ref) => `@图片${numToCn(ref.index)}`);
-    const updateByIndex = new Map<number, { prompt: string; useDirectorConstraintCard?: boolean }>();
-    const repairs: string[] = [];
-    for (const raw of updates) {
-      const item = raw as Record<string, unknown>;
-      const index = Number(item.index);
-      if (!Number.isFinite(index) || index < 1 || index > frames.length) {
-        return { success: false, output: '', error: `故事板 index ${item.index} 超出范围，当前共有 ${frames.length} 张` };
-      }
-      let prompt = sanitizeStoryboardImagePrompt(normalizePromptRefs(shotNo, String(item.prompt ?? '').trim(), 'image'));
-      if (!prompt) return { success: false, output: '', error: `第 ${index} 张 prompt 为空` };
-      const missingSceneLabels = sceneLabels.filter((label) => !prompt.includes(label));
-      if (missingSceneLabels.length > 0) {
-        prompt = `${missingSceneLabels.join('、')} 场景参考，${prompt}`;
-        repairs.push(`第 ${index} 张补入 ${missingSceneLabels.join('、')}`);
-      }
-      updateByIndex.set(index, {
-        prompt,
-        useDirectorConstraintCard: typeof item.use_director_constraint_card === 'boolean'
-          ? item.use_director_constraint_card
-          : undefined,
-      });
-    }
-
-    const nextFrames = frames.map((frame, idx) => {
-      const update = updateByIndex.get(idx + 1);
-      if (!update) return frame;
-      const useDirectorConstraintCard = update.useDirectorConstraintCard ?? frame.useDirectorConstraintCard ?? false;
-      if (useDirectorConstraintCard && !shot.directorConstraintCard?.imagePath) return frame;
-      const draft = { ...frame, prompt: update.prompt, useDirectorConstraintCard };
-      const compacted = compactStoryboardFrameReferences(shot, draft, ws.data!);
-      const bindings = compacted.bindings;
-      const cardRef = bindings.find((ref) => ref.kind === 'directorConstraintCard');
-      return {
-        ...draft,
-        prompt: cardRef
-          ? ensureDirectorConstraintMention(compacted.prompt, cardRef.index)
-          : stripDirectorConstraintMention(compacted.prompt),
-        refImagePaths: bindings.map((ref) => ref.path),
-        revision: (frame.revision ?? 0) + 1,
-      };
-    });
-    ws.updateShot(shotNo, { storyboardFrames: nextFrames });
-    ws.logChange('prompts', `局部修改 ${shotNo} 高清故事板提示词：${[...updateByIndex.keys()].map((i) => `第${i}张`).join('、')}`);
-    await ws.commitNow();
-    const repairText = repairs.length ? `\n已自动补齐漏写的场景引用：${repairs.join('；')}` : '';
-    return { success: true, output: `已局部修改分镜 ${shotNo}：${[...updateByIndex.keys()].map((i) => `第 ${i} 张`).join('、')}${repairText}` };
-  },
-};
 
 const setDirectorConstraintCardTool: Tool = {
   definition: {
     name: 'workshop_set_director_constraint_card',
-    description: '为某一镜设置、替换或删除可选的导演约束卡。卡片用于锁定人物站位、视线、机位和动作关系，不会自动应用到故事板格或视频。设置后再用 workshop_set_director_constraint_usage 精确启用。',
+    description: '为某一镜设置、替换或删除可选的导演约束卡。它属于镜头详情中的“空间与调度”，用于锁定人物站位、视线、机位和动作关系；默认不进入生成，需再显式开启视频引用。',
     parameters: {
       type: 'object',
       properties: {
@@ -2231,7 +2002,7 @@ const setDirectorConstraintCardTool: Tool = {
         image_path: { type: 'string', description: '导演约束卡本地图片路径。remove=true 时可省略。' },
         prompt: { type: 'string', description: '可选，卡片的空间/动作约束说明。' },
         source: { type: 'string', enum: ['generate', 'upload', 'artifact', 'canvas', 'external'], description: '来源，默认 external。' },
-        remove: { type: 'boolean', description: '删除约束卡并关闭所有格和视频引用。' },
+        remove: { type: 'boolean', description: '删除约束卡并关闭视频引用。旧故事板历史数据不会被删除。' },
       },
       required: ['shot_no'],
     },
@@ -2288,14 +2059,14 @@ const setDirectorConstraintCardTool: Tool = {
     });
     ws.logChange('prompts', remove ? `删除 ${shotNo} 导演约束卡` : `设置 ${shotNo} 导演约束卡`);
     await ws.commitNow();
-    return { success: true, output: remove ? `已删除 ${shotNo} 的导演约束卡，并关闭所有引用` : `已设置 ${shotNo} 的导演约束卡；当前未自动应用，请按需要启用具体格子或视频` };
+    return { success: true, output: remove ? `已删除 ${shotNo} 的导演约束卡，并关闭视频引用` : `已设置 ${shotNo} 的导演约束卡；当前不会自动参与生成，需要时请显式开启视频引用` };
   },
 };
 
 const updateDirectorConstraintPromptTool: Tool = {
   definition: {
     name: 'workshop_update_director_constraint_prompt',
-    description: '只修改某一镜现有导演约束卡的提示词，不替换图片、不新增候选图，也不改变故事板格和视频的启用范围。',
+    description: '只修改某一镜现有导演约束卡的空间与调度提示词，不替换图片、不新增候选图，也不改变视频引用开关。',
     parameters: {
       type: 'object',
       properties: {
@@ -2334,17 +2105,14 @@ const updateDirectorConstraintPromptTool: Tool = {
 const setDirectorConstraintUsageTool: Tool = {
   definition: {
     name: 'workshop_set_director_constraint_usage',
-    description: '精确控制导演约束卡的使用范围。可对全部故事板格、指定格子（从 1 开始）和视频独立开关；启用格子的 prompt 会自动写入 @导演约束卡 及对应 @图片N。',
+    description: '显式控制导演约束卡是否进入本镜视频生成。开启后会按当前稳定引用顺序写入 @导演约束卡 及对应 @图片N；旧故事板历史素材不受影响。',
     parameters: {
       type: 'object',
       properties: {
         shot_no: { type: 'string', description: '分镜编号' },
-        enabled: { type: 'boolean', description: '故事板格启用或关闭状态。' },
-        all_frames: { type: 'boolean', description: 'true 时作用于本镜所有故事板格。' },
-        frame_indices: { type: 'array', items: { type: 'number' }, description: '指定故事板格序号，从 1 开始。与 all_frames 二选一；只改视频时可省略。' },
-        use_in_video: { type: 'boolean', description: '可选，独立设置是否传入视频生成。' },
+        use_in_video: { type: 'boolean', description: '是否把导演约束卡作为本镜视频生成的显式参考。' },
       },
-      required: ['shot_no'],
+      required: ['shot_no', 'use_in_video'],
     },
   },
   risk: 'safe',
@@ -2357,45 +2125,20 @@ const setDirectorConstraintUsageTool: Tool = {
     if (!shot) return { success: false, output: '', error: `分镜 ${shotNo} 不存在` };
     if (!shot.directorConstraintCard?.imagePath) return { success: false, output: '', error: `分镜 ${shotNo} 还没有导演约束卡` };
 
-    const requested = Array.isArray(params.frame_indices)
-      ? new Set(params.frame_indices.map(Number).filter((index) => Number.isInteger(index) && index >= 1))
-      : new Set<number>();
-    const touchesFrames = params.all_frames === true || requested.size > 0;
-    if (!touchesFrames && typeof params.use_in_video !== 'boolean') {
-      return { success: false, output: '', error: '请指定 all_frames、frame_indices 或 use_in_video' };
-    }
-    const enabled = params.enabled !== false;
-    const frames = (shot.storyboardFrames ?? []).map((frame, index) => {
-      if (!touchesFrames || (params.all_frames !== true && !requested.has(index + 1))) return frame;
-      const draft = { ...frame, useDirectorConstraintCard: enabled };
-      const bindings = buildStoryboardFrameRefBindings(shot, draft, ws.data!);
-      const cardRef = bindings.find((ref) => ref.kind === 'directorConstraintCard');
-      return {
-        ...draft,
-        prompt: cardRef
-          ? ensureDirectorConstraintMention(frame.prompt, cardRef.index)
-          : stripDirectorConstraintMention(frame.prompt),
-        refImagePaths: bindings.map((ref) => ref.path),
-        revision: (frame.revision ?? 0) + 1,
-      };
-    });
-    const directorConstraintCard = typeof params.use_in_video === 'boolean'
-      ? { ...shot.directorConstraintCard, useInVideo: params.use_in_video }
-      : shot.directorConstraintCard;
-    const nextShot = { ...shot, storyboardFrames: frames, directorConstraintCard };
+    const useInVideo = params.use_in_video === true;
+    const directorConstraintCard = { ...shot.directorConstraintCard, useInVideo };
+    const nextShot = { ...shot, directorConstraintCard };
     const remapped = remapShotPromptRefs(shot, nextShot, ws.data!);
     ws.updateShot(shotNo, {
       ...remapped,
-      storyboardFrames: frames,
       directorConstraintCard,
       videoPrompt: applyVideoPlanningReferencePrefixes(nextShot, remapped.videoPrompt ?? shot.videoPrompt),
     });
-    ws.logChange('prompts', `更新 ${shotNo} 导演约束卡应用范围`);
+    ws.logChange('prompts', `${useInVideo ? '启用' : '关闭'} ${shotNo} 导演约束卡视频引用`);
     await ws.commitNow();
-    const applied = frames.flatMap((frame, index) => frame.useDirectorConstraintCard === true ? [index + 1] : []);
     return {
       success: true,
-      output: `已更新 ${shotNo}：故事板启用格 ${applied.length ? applied.join('、') : '无'}；视频${directorConstraintCard.useInVideo === true ? '已启用' : '未启用'}导演约束卡`,
+      output: `已更新 ${shotNo}：视频${useInVideo ? '已启用' : '未启用'}导演约束卡`,
     };
   },
 };
@@ -2486,9 +2229,16 @@ const generateTool: Tool = {
         }
       }
       if (targets.length === 0) return { success: true, output: '没有需要生成的资产（都已有图）' };
+      const { prepareWorkspaceAssetGeneration } = await import('../../workspace/assetGeneration');
+      if (useWorkshopStore.getState().data !== data) return { success: false, output: '', error: '项目已更新，请刷新资产后再生成' };
+      const errors = targets.flatMap((target) => {
+        const prepared = prepareWorkspaceAssetGeneration(data, target.kind, target.id);
+        return 'error' in prepared ? [`${target.kind} ${target.id}：${prepared.error}`] : [];
+      });
+      if (errors.length) return { success: false, output: '', error: `资产草稿未准备好，未提交本批生成：\n${errors.join('\n')}` };
       s.markStepStatus('assets', 'in-progress');
       void Promise.allSettled(targets.map((t) => s.generateAsset(t.kind, t.id)));
-      return { success: true, output: `已排队 ${targets.length} 个资产图生成任务。进度在任务面板实时可见，生成完成后结果会自动显示在资产卡片上。请告知用户后结束本轮对话，不要轮询等待。` };
+      return { success: true, output: `已准备 ${targets.length} 个资产生成草稿，按项目偏好进入确认队列；确认后提交，结果进入候选版本，不自动采用。请告知用户后结束本轮对话，不要轮询等待。` };
     }
 
     // 已在队列/生成中的分镜跳过（不重复触发），但允许向进行中的批次追加新分镜并行生成。
@@ -2845,177 +2595,6 @@ const removeShotsTool: Tool = {
   },
 };
 
-const recoverStoryboardResultsTool: Tool = {
-  definition: {
-    name: 'workshop_recover_storyboard_results',
-    description: '修复高清故事板并行生成后回传错图的问题。根据任务队列里的 workshopStoryboardFrameId 找回每格对应结果：有远端 URL 就重新下载，有唯一可信本地文件就重绑；如果历史文件名撞车已被覆盖，会明确标记为需要重生成。可选 regenerate_missing=true 自动重生成无法恢复的格子。',
-    parameters: {
-      type: 'object',
-      properties: {
-        shot_no: { type: 'string', description: '可选。只恢复某一镜，如 "01-04"；不传则扫描当前项目所有高清故事板。' },
-        regenerate_missing: { type: 'boolean', description: '是否对无法从历史记录恢复的格子重新生成。会调用生图通道并产生费用，默认 false。' },
-        dry_run: { type: 'boolean', description: '只检查并输出恢复计划，不写回，默认 false。' },
-      },
-      required: [],
-    },
-  },
-  risk: 'ask',
-  async execute(params) {
-    const check = requireOpen();
-    if (!check.ok) return { success: false, output: '', error: check.error };
-    const ws = useWorkshopStore.getState();
-    const data = ws.data!;
-    const shotNo = typeof params.shot_no === 'string' ? params.shot_no.trim() : '';
-    const regenerate = params.regenerate_missing === true;
-    const dryRun = params.dry_run === true;
-    const shots = data.shots.filter((shot) =>
-      (!shotNo || shot.shotNo === shotNo) && (shot.storyboardFrames?.length ?? 0) > 0,
-    );
-    if (shots.length === 0) {
-      return { success: false, output: '', error: shotNo ? `未找到带高清故事板的分镜 ${shotNo}` : '当前项目没有高清故事板分镜' };
-    }
-
-    const frameIds = new Set<string>();
-    for (const shot of shots) {
-      for (const frame of shot.storyboardFrames ?? []) frameIds.add(frame.id);
-    }
-    const allTasks = useCanvasTaskStore.getState().tasks
-      .filter((task) =>
-        task.kind === 'image' &&
-        task.workshopStoryboardFrameId &&
-        frameIds.has(task.workshopStoryboardFrameId) &&
-        task.status === 'succeeded' &&
-        (task.resultPaths.length > 0 || task.resultUrls.length > 0),
-      )
-      .sort((a, b) => (b.finishedAt ?? b.updatedAt ?? b.createdAt) - (a.finishedAt ?? a.updatedAt ?? a.createdAt));
-
-    const localPathCounts = new Map<string, number>();
-    for (const task of allTasks) {
-      const path = task.resultPaths[0];
-      if (path) localPathCounts.set(path, (localPathCounts.get(path) ?? 0) + 1);
-    }
-
-    const report: string[] = [];
-    let recovered = 0;
-    let redownloaded = 0;
-    let regenerated = 0;
-    let unrecoverable = 0;
-    let unchanged = 0;
-
-    const nextByShot = new Map<string, NonNullable<WsShot['storyboardFrames']>>();
-
-    for (const shot of shots) {
-      const nextFrames: NonNullable<WsShot['storyboardFrames']> = [];
-      for (const frame of shot.storyboardFrames ?? []) {
-        const frameTasks = allTasks.filter((task) => task.workshopShotNo === shot.shotNo && task.workshopStoryboardFrameId === frame.id);
-        let nextPath = '';
-        let nextEngine = '';
-        let sourceLabel = '';
-        let reason = '';
-
-        for (const task of frameTasks) {
-          const remote = task.resultUrls.find((url) => /^https?:\/\//.test(url));
-          const local = task.resultPaths[0];
-          const localDuplicated = local ? (localPathCounts.get(local) ?? 0) > 1 : false;
-          if (remote) {
-            if (dryRun) {
-              nextPath = frame.imagePath || remote;
-            } else {
-              const { rhtvDownloadAll } = await import('@/lib/rhtv/download');
-              const paths = await rhtvDownloadAll([remote], 'image', `storyboard-${shot.shotNo}-${frame.id.slice(-6)}`);
-              nextPath = paths[0];
-            }
-            nextEngine = task.engineId;
-            sourceLabel = '重新下载';
-            redownloaded += 1;
-            break;
-          }
-          if (local && !localDuplicated) {
-            nextPath = local;
-            nextEngine = task.engineId;
-            sourceLabel = '历史重绑';
-            recovered += 1;
-            break;
-          }
-          if (local && localDuplicated) {
-            reason = `历史输出文件 ${local.split('/').pop()} 被多个分镜共用，疑似并行撞名覆盖，不能再判断原图`;
-          }
-        }
-
-        if (!nextPath && regenerate && frame.prompt.trim()) {
-          if (dryRun) {
-            sourceLabel = '将重新生成';
-          } else {
-            const { runGeneration } = await import('@/lib/canvasGen');
-            const compacted = compactStoryboardFrameReferences(shot, frame, data);
-            const bindings = compacted.bindings;
-            const cardRef = bindings.find((ref) => ref.kind === 'directorConstraintCard');
-            const prompt = cardRef
-              ? ensureDirectorConstraintMention(compacted.prompt, cardRef.index)
-              : stripDirectorConstraintMention(compacted.prompt);
-            const result = await runGeneration({
-              engineId: 'gpt-image-2',
-              prompt,
-              referenceUrls: collectStoryboardGenerationRefs(shot, frame, data),
-              params: { aspectRatio: shot.videoRatio || data.videoRatio || '16:9' },
-              workshopShotNo: shot.shotNo,
-              workshopShotKind: 'image',
-              workshopStoryboardFrameId: frame.id,
-              projectId: data.projectId,
-            });
-            if (result.success && result.resultPaths[0]) {
-              nextPath = result.resultPaths[0];
-              nextEngine = 'gpt-image-2';
-              sourceLabel = '重新生成';
-              regenerated += 1;
-            } else {
-              reason = result.error || '重生成失败';
-            }
-          }
-        }
-
-        if (nextPath && !dryRun) {
-          nextFrames.push(withStoryboardCandidate(frame, nextPath, 'generate', nextEngine));
-          report.push(`${shot.shotNo} / ${frame.id}: ${sourceLabel} → ${nextPath.split('/').pop()}`);
-        } else if (nextPath && dryRun) {
-          nextFrames.push(frame);
-          report.push(`${shot.shotNo} / ${frame.id}: 可${sourceLabel}`);
-        } else {
-          const nextFrame = {
-            ...frame,
-            status: 'failed' as const,
-            error: reason || '没有找到该格子的历史生成结果；需要重新生成',
-          };
-          nextFrames.push(dryRun ? frame : nextFrame);
-          unrecoverable += 1;
-          report.push(`${shot.shotNo} / ${frame.id}: 需要重生成（${nextFrame.error}）`);
-        }
-      }
-      nextByShot.set(shot.shotNo, nextFrames);
-    }
-
-    if (!dryRun) {
-      for (const [no, frames] of nextByShot.entries()) {
-        ws.updateShot(no, { storyboardFrames: frames });
-      }
-      await ws.commitNow();
-    }
-
-    unchanged = allTasks.length === 0 ? frameIds.size : 0;
-    const summary = [
-      dryRun ? '检查完成，未写回。' : '高清故事板恢复已写回。',
-      `历史重绑 ${recovered}`,
-      `重新下载 ${redownloaded}`,
-      `重新生成 ${regenerated}`,
-      `需重生成 ${unrecoverable}`,
-      unchanged ? `没有历史任务 ${unchanged}` : '',
-    ].filter(Boolean).join('，');
-    return {
-      success: true,
-      output: `${summary}\n${report.slice(0, 80).join('\n')}${report.length > 80 ? `\n...还有 ${report.length - 80} 条` : ''}`,
-    };
-  },
-};
 
 const generateAudioTool: Tool = {
   definition: {
@@ -3072,14 +2651,14 @@ export const allWorkshopTools: Tool[] = [
   getStateTool,
   getShotRefsTool,
   readSourceTool,
+  saveScriptTool,
+  saveDocumentTool,
   setBreakdownTool,
   setShotsTool,
   setBiblesTool,
   updateShotTool,
   updateShotRefsTool,
   setPromptsTool,
-  setStoryboardPromptsTool,
-  updateStoryboardFramePromptsTool,
   setDirectorConstraintCardTool,
   updateDirectorConstraintPromptTool,
   setDirectorConstraintUsageTool,
@@ -3096,6 +2675,5 @@ export const allWorkshopTools: Tool[] = [
   upsertAssetsTool,
   refreshUiTool,
   removeShotsTool,
-  recoverStoryboardResultsTool,
   generateAudioTool,
 ];

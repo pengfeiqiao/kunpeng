@@ -12,6 +12,8 @@ export type KuaiziWan3MediaType =
 
 /** 构造 DashScope 兼容请求体；素材统一走 reference_* / file / link（不用首尾帧，避免互斥）。 */
 export function buildKuaiziWan3Payload(input: {
+  /** 高速版 wan3.0-video-prime */
+  prime?: boolean;
   prompt: string;
   imageUrls?: string[];
   videoUrls?: string[];
@@ -64,5 +66,5 @@ export function buildKuaiziWan3Payload(input: {
   const seed = Number(input.seed);
   if (Number.isFinite(seed) && seed > 0) parameters.seed = Math.trunc(seed);
 
-  return { model: 'wan3.0-video', input: inputField, parameters };
+  return { model: input.prime ? 'wan3.0-video-prime' : 'wan3.0-video', input: inputField, parameters };
 }

@@ -123,7 +123,7 @@ test('director constraint card is opt-in and appended after normal storyboard re
   });
 });
 
-test('video refs place the active director constraint card after storyboard boards', () => {
+test('legacy video refs place the active director constraint card after storyboard boards', () => {
   const withPlanningAssets: WsShot = {
     ...shot,
     storyboardBoards: [{
@@ -141,7 +141,7 @@ test('video refs place the active director constraint card after storyboard boar
     },
   };
 
-  const refs = buildVideoRefBindings(withPlanningAssets, ctx);
+  const refs = buildVideoRefBindings(withPlanningAssets, ctx, { includeStoryboardBoards: true });
   assert.deepEqual(
     refs.slice(0, 3).map((ref) => [ref.index, ref.kind, ref.path]),
     [
@@ -205,7 +205,7 @@ test('director constraint prompt mention is stable and removable', () => {
   assert.equal(stripDirectorConstraintMention(twice), '第1格：人物走向桌边。');
 });
 
-test('video planning prefixes mention both storyboard board and director constraint card once', () => {
+test('legacy video planning prefixes mention both storyboard board and director constraint card once', () => {
   const withPlanningAssets: WsShot = {
     ...shot,
     storyboardBoards: [{
@@ -222,8 +222,8 @@ test('video planning prefixes mention both storyboard board and director constra
       useInVideo: true,
     },
   };
-  const once = applyVideoPlanningReferencePrefixes(withPlanningAssets, '人物走向桌边。');
-  const twice = applyVideoPlanningReferencePrefixes(withPlanningAssets, once);
+  const once = applyVideoPlanningReferencePrefixes(withPlanningAssets, '人物走向桌边。', { includeStoryboardBoards: true });
+  const twice = applyVideoPlanningReferencePrefixes(withPlanningAssets, once, { includeStoryboardBoards: true });
 
   assert.equal(twice.match(/以分镜板/g)?.length, 1);
   assert.equal(twice.match(/@导演约束卡/g)?.length, 1);
@@ -343,7 +343,7 @@ test('universal Seedance 2.5 falls back to the historical no-storyboard prompt',
   assert.match(prompt, /【素材身份】@图片一为导演约束卡/);
 });
 
-test('video planning prefix keeps the director constraint card visible as the third reference', () => {
+test('legacy video planning prefix keeps the director constraint card visible as the third reference', () => {
   const withTwoBoards: WsShot = {
     ...shot,
     storyboardBoards: [
@@ -358,12 +358,39 @@ test('video planning prefix keeps the director constraint card visible as the th
     },
   };
 
-  const refs = buildVideoRefBindings(withTwoBoards, ctx);
-  const prompt = applyVideoPlanningReferencePrefixes(withTwoBoards, '人物走向桌边。');
+  const refs = buildVideoRefBindings(withTwoBoards, ctx, { includeStoryboardBoards: true });
+  const prompt = applyVideoPlanningReferencePrefixes(withTwoBoards, '人物走向桌边。', { includeStoryboardBoards: true });
 
   assert.equal(refs[2]?.kind, 'directorConstraintCard');
   assert.match(prompt, /@导演约束卡（对应 @图片三）/);
   assert.equal(prompt.match(/@图片三/g)?.length, 1);
+});
+
+test('default video refs exclude legacy storyboards and start with the director card', () => {
+  const migratedShot: WsShot = {
+    ...shot,
+    storyboardBoards: [{
+      id: 'board-1',
+      frameIds: [],
+      imagePath: '/assets/board.png',
+      createdAt: 1,
+      useInVideo: true,
+    }],
+    directorConstraintCard: {
+      id: 'director-card-1',
+      imagePath: '/assets/director-card.png',
+      createdAt: 1,
+      useInVideo: true,
+    },
+  };
+
+  const refs = buildVideoRefBindings(migratedShot, ctx);
+  const prompt = applyVideoPlanningReferencePrefixes(migratedShot, '人物走向桌边。');
+
+  assert.equal(refs.some((ref) => ref.kind === 'storyboardBoard'), false);
+  assert.equal(refs[0]?.kind, 'directorConstraintCard');
+  assert.match(prompt, /^以 @导演约束卡（对应 @图片一）/);
+  assert.doesNotMatch(prompt, /分镜板/);
 });
 
 test('director constraint card works as the only video reference without storyboard boards', () => {

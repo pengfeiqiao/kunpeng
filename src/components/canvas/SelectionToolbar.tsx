@@ -4,7 +4,7 @@
  * shortcuts (discoverability fix).
  */
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Group, CopyPlus, Grid2X2, Trash2 } from 'lucide-react';
+import { Bot, Group, CopyPlus, Trash2 } from 'lucide-react';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from 'reactflow';
@@ -12,7 +12,6 @@ import { useCanvasStore } from '@/stores/canvasStore';
 import { groupSelection } from '@/lib/canvas/grouping';
 import { duplicateSelection } from '@/lib/canvas/clipboard';
 import { captureSnapshot } from '@/lib/canvas/history';
-import StoryboardCanvasActions, { type StoryboardCanvasActionMode } from './StoryboardCanvasActions';
 import { openCanvasNodesInAgent } from '@/lib/canvas/nodeAgent';
 
 export default function SelectionToolbar() {
@@ -22,8 +21,6 @@ export default function SelectionToolbar() {
     [nodes],
   );
   const selectedCount = selectedNodes.length;
-  const selectedImageIds = selectedNodes.filter((node) => node.type === 'image').map((node) => node.id);
-  const [storyboardMode, setStoryboardMode] = useState<StoryboardCanvasActionMode | null>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number; below: boolean } | null>(null);
   const transform = useStore((state) => state.transform);
   const selectedGeometryKey = useStore((state) => {
@@ -129,21 +126,12 @@ export default function SelectionToolbar() {
           >
             <CopyPlus size={13} className="text-[var(--canvas-text-2)]" />副本
           </button>
-          {selectedImageIds.length >= 2 && selectedImageIds.length === selectedCount && (
-            <button
-              onClick={() => setStoryboardMode('compose')}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-[var(--canvas-text-1)] hover:bg-[var(--canvas-controls-hover)] transition-colors"
-              title="按当前选择顺序拼成完整故事板并回传到视频提示词"
-            >
-              <Grid2X2 size={13} className="text-[var(--canvas-text-2)]" />拼成分镜板
-            </button>
-          )}
           <button
             onClick={handleDelete}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-[var(--canvas-danger)] hover:bg-[rgba(255,97,99,0.12)] transition-colors"
-            title="删除所选 (Delete)"
+            title="从画布移除所选 (Delete)"
           >
-            <Trash2 size={13} />删除
+            <Trash2 size={13} />移除
           </button>
         </motion.div>
       )}
@@ -154,13 +142,6 @@ export default function SelectionToolbar() {
   return (
     <>
       {toolbar}
-      {storyboardMode && (
-        <StoryboardCanvasActions
-          mode={storyboardMode}
-          nodeIds={selectedImageIds}
-          onClose={() => setStoryboardMode(null)}
-        />
-      )}
     </>
   );
 }

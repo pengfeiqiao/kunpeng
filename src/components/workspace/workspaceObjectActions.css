@@ -1,0 +1,46 @@
+.workspace-object-context-menu {
+  position: fixed;
+  z-index: 150;
+  box-sizing: border-box;
+  width: 220px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid #414145;
+  border-radius: 6px;
+  background: #242426;
+  color: #e4e4e7;
+  box-shadow: 0 8px 28px #0006;
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0;
+}
+.workspace-object-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.workspace-object-context-menu button svg { flex: none; color: #a9a9b0; }
+.workspace-object-context-menu button:hover:not(:disabled),
+.workspace-object-context-menu button:focus { background: #37373b; outline: none; }
+.workspace-object-context-menu button:focus-visible { box-shadow: inset 0 0 0 1px #8bada7; }
+.workspace-object-context-menu button:disabled { opacity: .4; cursor: not-allowed; }
+.workspace-object-context-menu [role="separator"] { height: 1px; margin: 4px 5px; background: #3b3b3f; }
+.workspace-object-context-menu .workspace-object-menu-danger,
+.workspace-object-context-menu .workspace-object-menu-danger svg { color: #edaaaa; }
+.workspace-object-delete-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; background: #242426; border-color: #414145; }
+.workspace-object-delete-dialog header h2 { min-width: 0; overflow-wrap: anywhere; }
+.workspace-object-delete-dialog header button { flex: none; }
+.workspace-object-delete-dialog footer { flex-wrap: wrap; }

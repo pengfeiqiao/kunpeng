@@ -13,6 +13,7 @@ import { useWorkshopStore } from '@/stores/workshopStore';
 import { generateForNode, abortCanvasTask, runGeneration } from '@/lib/canvasGen';
 import { collectNodeReferences, selfVideoFallback } from '@/lib/canvas/collectRefs';
 import { mergeCanvasNodeGenerationParams } from '@/lib/canvas/generationParams';
+import { describeGenerationFailure } from '@/lib/projectObjects/generationDraft';
 
 const ACTIVE_STATUSES = ['queued', 'uploading', 'running', 'downloading'];
 
@@ -38,6 +39,7 @@ function TaskRow({ task }: { task: CanvasTask }) {
   const removeTask = useCanvasTaskStore((s) => s.removeTask);
   const setSelectedNodeId = useCanvasStore((s) => s.setSelectedNodeId);
   const isActive = ACTIVE_STATUSES.includes(task.status);
+  const failure = task.error ? describeGenerationFailure(task.error) : null;
 
   const handleRetry = () => {
     removeTask(task.id);
@@ -104,12 +106,15 @@ function TaskRow({ task }: { task: CanvasTask }) {
         {task.progress && isActive && (
           <p className="text-[10px] text-indigo-400">{task.progress}</p>
         )}
-        {task.error && (
-          <p className="text-[10px] text-red-400 line-clamp-2">{task.error}</p>
+        {failure && (
+          <div className="mt-1">
+            <p className="text-[10px] font-medium text-red-400">{failure.title}</p>
+            <p className="text-[10px] text-[var(--canvas-text-2)] line-clamp-2">{failure.remedy}</p>
+          </div>
         )}
       </button>
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        {task.status === 'failed' && (
+        {task.status === 'failed' && failure?.canRetry && (
           <button onClick={handleRetry} className="p-1 rounded hover:bg-[var(--canvas-controls-active)] text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)]" title="重试">
             <RotateCcw size={12} />
           </button>

@@ -1580,6 +1580,9 @@ export function projectAgentSkillToUi(skill: AgentSkillManifest): SkillManifest 
     hasPanel: typeof source.hasPanel === 'boolean' ? source.hasPanel : skill.hasPanel,
     promptTemplate: skill.promptTemplate,
     visibility,
+    source: 'user',
+    skillPath: skill.skillPath,
+    invokable: skill.invokable,
   } as SkillManifest);
 }
 
@@ -1621,5 +1624,8 @@ export async function loadSkills(): Promise<SkillManifest[]> {
  * Get all built-in skills (for cases where we don't need to scan disk).
  */
 export function getBuiltinSkills(): SkillManifest[] {
-  return [...BUILTIN_SKILLS, KIMI_VIDEO_ANALYSIS_SKILL].map(applyProductMeta);
+  return [...BUILTIN_SKILLS, KIMI_VIDEO_ANALYSIS_SKILL].map((skill) => applyProductMeta({
+    ...skill,
+    source: 'builtin',
+  }));
 }

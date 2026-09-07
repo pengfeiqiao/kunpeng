@@ -5,6 +5,7 @@ import SidebarHandle from './components/SidebarHandle';
 import ChatArea from './components/ChatArea';
 import EditorView from './components/editor/EditorView';
 import WorkshopView from './components/workshop/WorkshopView';
+import ProjectWorkspace from './components/workspace/ProjectWorkspace';
 import ProjectTopBar from './components/projects/ProjectTopBar';
 import CanvasView from './components/canvas/CanvasView';
 import WechatView from './components/wechat/WechatView';
@@ -19,11 +20,14 @@ import { SkillWizardPanel } from './components/wizard/skill-wizard';
 import { useAgent } from './hooks/useAgent';
 import { useBackgroundPoller } from './hooks/useBackgroundPoller';
 import { useCanvasTaskRecovery } from './hooks/useCanvasTaskRecovery';
+import { watchWorkspaceRuntime } from './lib/workspace/runtime';
 import { useCronScheduler } from './hooks/useCronScheduler';
 import { useSessions } from './hooks';
 import { useChatStore as _useChatStore, useSettingsStore, useSkillStore, useAigcProjectStore } from './stores';
 import { useProjectStore } from './stores/projectStore';
 import { useUnifiedProjectStore } from './stores/unifiedProjectStore';
+import { useWorkshopStore } from './stores/workshopStore';
+import { canOpenProjectWorkspace } from './lib/workspace/entryPolicy';
 import { useLarkStore } from './stores/larkStore';
 import { useWechatStore } from './stores/wechatStore';
 import { useWizardStore } from './stores/wizardStore';
@@ -40,6 +44,7 @@ function App() {
   const { loadAgents, loadSessions, loadSession } = useSessions();
   useBackgroundPoller();
   useCanvasTaskRecovery();
+  useEffect(watchWorkspaceRuntime, []);
   useCronScheduler(isReady, sendMessage);
   const { sidebarCollapsed, theme, setupComplete, setupSkipped, wizardOpen, glmApiKey, credentials, credentialRefs } = useSettingsStore();
   // 引导浮层：首次启动（未完成且未跳过）自动出现；也可由设置页横幅重新打开。
@@ -62,6 +67,12 @@ function App() {
   const wizardProject = useWizardStore((s) => s.project);
   const activeView = _useChatStore((s) => s.activeView);
   const unifiedActiveId = useUnifiedProjectStore((s) => s.activeId);
+  const workspaceReady = useWorkshopStore((s) => canOpenProjectWorkspace(unifiedActiveId, s.project?.id, s.data));
+  const [legacyWorkspaceId, setLegacyWorkspaceId] = useState<string | null>(null);
+  const mediaWorkspaceOpen = activeView === 'workshop' && workspaceReady && legacyWorkspaceId !== unifiedActiveId;
+  useEffect(() => {
+    if (legacyWorkspaceId && legacyWorkspaceId !== unifiedActiveId) setLegacyWorkspaceId(null);
+  }, [legacyWorkspaceId, unifiedActiveId]);
   const recoverUnified = useUnifiedProjectStore((s) => s.recoverUnified);
   const canvasProjects = useProjectStore((s) => s.projects);
   const activeCanvasProjectId = useProjectStore((s) => s.activeProjectId);
@@ -196,6 +207,23 @@ function App() {
     recoverUnified,
   ]);
 
+  // 统一项目打开时，把旧画布/剪辑视图重定向进项目工作台对应工作面。
+  // 入口点击时数据可能尚未水合（canOpen 短暂为 false 落入旧视图），由这里在就绪后兜底接管。
+  // 例外：用户显式"切回旧版"（legacyWorkspaceId），或当前画布是与统一项目无关联的自由画布。
+  useEffect(() => {
+    if (!settingsReady) return;
+    if (activeView !== 'canvas' && activeView !== 'editor') return;
+    if (!unifiedActiveId || !workspaceReady) return;
+    if (legacyWorkspaceId === unifiedActiveId) return;
+    const linked = canvasProjects.find((p) => p.id === activeCanvasProjectId)?.aigcProjectId;
+    const ownCanvasId = useWorkshopStore.getState().data?.canvasProjectId;
+    if (linked !== unifiedActiveId && ownCanvasId !== activeCanvasProjectId) return;
+    useWorkshopStore.getState().updateProjectViewState(activeView === 'canvas'
+      ? { workspaceSurface: 'media', workspaceMediaView: 'canvas' }
+      : { workspaceSurface: 'editor' });
+    _useChatStore.getState().setActiveView('workshop');
+  }, [settingsReady, activeView, unifiedActiveId, workspaceReady, legacyWorkspaceId, activeCanvasProjectId, canvasProjects]);
+
   // Keep Feishu/Lark connected as an app-level channel, not only after the
   // user opens the Feishu page. This mirrors OpenClaw's gateway behavior.
   useEffect(() => {
@@ -294,7 +322,7 @@ function App() {
     <div className="h-screen flex bg-dark-bg overflow-hidden">
       {/* Sidebar */}
       <AnimatePresence mode="wait">
-        {!sidebarCollapsed && (
+        {!sidebarCollapsed && !mediaWorkspaceOpen && (
           <motion.div
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 280, opacity: 1 }}
@@ -314,11 +342,14 @@ function App() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        <ProjectTopBar />
+        {!mediaWorkspaceOpen && <ProjectTopBar />}
         {/* 视图区统一包一层：SidebarHandle 挂这里，所有视图共享一个展开把手，子视图零感知 */}
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <SidebarHandle />
-          {activeView === 'chat' ? (
+          {!mediaWorkspaceOpen && <SidebarHandle />}
+          {mediaWorkspaceOpen ? (
+            <ProjectWorkspace key={unifiedActiveId} onSendMessage={sendMessage} onAbort={abort}
+              onLegacy={() => setLegacyWorkspaceId(unifiedActiveId)} />
+          ) : activeView === 'chat' ? (
             <ChatArea
               isConnected={isReady && hasAnyChatProviderKey({ glmApiKey, providerApiKeys, credentials, credentialRefs })}
               onSendMessage={sendMessage}
@@ -335,7 +366,16 @@ function App() {
           ) : activeView === 'library' ? (
             <ArtifactLibrary />
           ) : activeView === 'workshop' ? (
-            <WorkshopView onSendMessage={sendMessage} onAbort={abort} />
+            // 无统一项目时，工坊入口直接落到项目页（旧"短剧工坊"默认页与项目页重复，已下线）
+            !unifiedActiveId ? (
+              <ProjectListView />
+            ) : (
+            <>
+              {workspaceReady && <button className="shrink-0 border-b border-zinc-700 bg-zinc-900 px-4 py-2 text-left text-xs text-zinc-200"
+                onClick={() => setLegacyWorkspaceId(null)}>返回工作台（新版）</button>}
+              <WorkshopView onSendMessage={sendMessage} onAbort={abort} />
+            </>
+            )
           ) : activeView === 'copywriting' ? (
             <CopywritingView onSendMessage={sendMessage} onAbort={abort} />
           ) : (

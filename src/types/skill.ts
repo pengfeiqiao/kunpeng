@@ -83,4 +83,8 @@ export interface SkillManifest {
   category?: 'writing' | 'storyboard' | 'visual' | 'video' | 'marketing' | 'integration' | 'internal';
   /** Controls where a skill is exposed without removing its runtime capability. */
   visibility?: 'toolbar' | 'library' | 'internal';
+  /** Built-ins are read-only; user skills point at their on-disk directory. */
+  source?: 'builtin' | 'user';
+  skillPath?: string;
+  invokable?: boolean;
 }

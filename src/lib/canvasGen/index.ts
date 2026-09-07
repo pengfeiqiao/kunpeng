@@ -153,6 +153,9 @@ export interface CanvasGenRequest {
 
 /** Store-agnostic generation request (no canvas node required). */
 export interface CoreGenRequest {
+  workspaceBinding?: import('../workspace/types').WorkspaceTaskBinding;
+  /** Workspace opt-in; other callers retain their existing image fallback policy. */
+  strictPaidSafety?: boolean;
   engineId: string;
   prompt: string;
   referenceUrls?: string[];
@@ -335,7 +338,7 @@ export function resolveGenEngine(
   // MiniMax H3 例外：单端点多模态（t2v/i2v 同端点，prompt 必填、参考可选），
   // 不适用 Seedance 的"必须有参考素材"红线与 @图片N 提示词校验。
   // 万相 3.0 同样例外：全能参考模型，文生/首帧/参考/文档/网页同端点。
-  const isMinimaxH3 = engine.id === 'minimax-hailuo-h3' || engine.id === 'wan-3.0';
+  const isMinimaxH3 = engine.id === 'minimax-hailuo-h3' || engine.id === 'wan-3.0' || engine.id === 'wan-3.0-prime';
   if (!isMinimaxH3 && engine.mode === 'multimodal-video' && refs.length === 0 && (req.audioUrls?.length ?? 0) === 0 && (req.videoUrls?.length ?? 0) === 0) {
     return { error: 'Seedance 多模态视频必须提供参考素材（项目红线）。请连接参考图节点或改选「文生视频」引擎。' };
   }
@@ -373,14 +376,16 @@ function patchNode(nodeId: string, data: Record<string, unknown>) {
 }
 
 /** Lay extra outputs out as variant nodes to the right of the source node. */
-export function spawnVariantNodes(sourceNodeId: string, paths: string[], prompt: string) {
+export function spawnVariantNodes(sourceNodeId: string, paths: string[], prompt: string): string[] {
   const store = useCanvasStore.getState();
   const src = store.nodes.find((n) => n.id === sourceNodeId);
-  if (!src) return;
+  if (!src) return [];
   const baseX = (src.position?.x ?? 0) + (src.width ?? 200) + 60;
   const baseY = src.position?.y ?? 0;
+  const nodeIds: string[] = [];
   paths.forEach((p, i) => {
     const id = `node-var-${Date.now()}-${i}`;
+    nodeIds.push(id);
     store.addNode({
       id,
       type: 'image',
@@ -390,6 +395,7 @@ export function spawnVariantNodes(sourceNodeId: string, paths: string[], prompt:
         generatedImageUrl: convertFileSrc(p),
         localPath: p,
         description: `${prompt.slice(0, 30)} · 变体 ${i + 2}`,
+        mediaPurpose: 'candidate-version',
       },
     });
     store.onConnect({
@@ -400,6 +406,7 @@ export function spawnVariantNodes(sourceNodeId: string, paths: string[], prompt:
       data: { relation: 'version' },
     });
   });
+  return nodeIds;
 }
 
 // ── Queue management ──────────────────────────────────────────────────────────
@@ -542,6 +549,7 @@ async function generateViaNonRhtvRoute(
   }
   let providerTaskId = '';
   const generated = await generateImage({
+    strictPaidSafety: req.strictPaidSafety,
     prompt: req.prompt,
     model: routeModel,
     aspectRatio: String(req.params?.aspectRatio ?? req.params?.ratio ?? '16:9'),
@@ -682,6 +690,12 @@ async function cascadeFallback(
           backgroundPending: true,
         };
       }
+      if (req.strictPaidSafety && (mustNotAutoResubmit(fbErr)
+        || ((attemptTaskId || attemptCommitted) && !isTerminalRhtvRejection(fbErr)))) {
+        update({ status: 'failed', error: fbMsg, progress: '原请求结果未确认，已停止自动换渠道', finishedAt: Date.now() });
+        return { success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'image',
+          error: fbMsg, providerTaskId: attemptTaskId || paidTaskId(fbErr), submissionUncertain: true };
+      }
       console.warn(`[canvasGen] 降级通道 ${next} 失败: ${fbMsg}`);
       const uncertainSuffix = attemptTaskId
         ? `（原任务 ${attemptTaskId} 状态未知，按图片容灾策略继续）`
@@ -714,6 +728,7 @@ export async function runImageFallback(task: CanvasTask): Promise<{
   urls?: string[];
   error?: string;
 }> {
+  if (task.workspaceBinding) return { success: false, error: '工作台任务只恢复原任务，不自动创建替代付费任务。' };
   const failedIds = new Set<string>([task.engineId]);
   // 用任务持久化的参考图/参数重生成——缺了它们图生图会退化成文生图，
   // 生成出角色/场景全不对的图静默写回。
@@ -872,6 +887,7 @@ async function runApiCompatibleImageGeneration(req: CoreGenRequest, routeId: str
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
   });
   const ac = new AbortController();
@@ -955,9 +971,10 @@ async function runApiCompatibleImageGeneration(req: CoreGenRequest, routeId: str
         resultUrls: [],
         engineKind: 'image',
         error: err.message,
+        ...(req.strictPaidSafety ? { providerTaskId: err.submitId, backgroundPending: true } : {}),
       };
     }
-    if (shouldStopAutomaticPaidFallback(err, 'image')) {
+    if ((req.strictPaidSafety && mustNotAutoResubmit(err)) || shouldStopAutomaticPaidFallback(err, 'image')) {
       update({ status: 'failed', error: msg, progress: msg, finishedAt: Date.now() });
       return {
         success: false,
@@ -1124,6 +1141,7 @@ async function runApimartMidjourneyGeneration(
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
     fallbackUsed,
     submissionReceipt: {
@@ -1290,6 +1308,7 @@ async function runApimartMinimaxH3Generation(
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
     fallbackUsed,
     submissionReceipt: {
@@ -1457,6 +1476,7 @@ async function runKuaiziVideoChannel(
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
     fallbackUsed: opts.fallbackUsed,
   });
@@ -1627,6 +1647,7 @@ async function runCustomMediaGeneration(req: CoreGenRequest): Promise<CoreGenRes
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
   });
   const ac = new AbortController();
@@ -1747,8 +1768,8 @@ async function runRhtvWan3Generation(req: CoreGenRequest, fallbackUsed = false):
   const taskId = useCanvasTaskStore.getState().addTask({
     nodeId: req.nodeId ?? '',
     kind: 'video',
-    engineId: 'wan-3.0',
-    engineLabel: '万相 3.0 · RunningHub',
+    engineId: req.engineId,
+    engineLabel: req.engineId === 'wan-3.0-prime' ? '万相 3.0 Prime · RunningHub' : '万相 3.0 · RunningHub',
     endpoint: WAN3_RHTV_ENDPOINT,
     prompt: req.prompt,
     referenceUrls: refs.length > 0 ? refs : undefined,
@@ -1757,6 +1778,7 @@ async function runRhtvWan3Generation(req: CoreGenRequest, fallbackUsed = false):
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
     fallbackUsed,
   });
@@ -1920,8 +1942,8 @@ async function runApimartWan3Generation(req: CoreGenRequest, fallbackUsed = fals
   const taskId = useCanvasTaskStore.getState().addTask({
     nodeId: req.nodeId ?? '',
     kind: 'video',
-    engineId: 'wan-3.0',
-    engineLabel: '万相 3.0 · APIMart',
+    engineId: req.engineId,
+    engineLabel: req.engineId === 'wan-3.0-prime' ? '万相 3.0 Prime · APIMart' : '万相 3.0 · APIMart',
     endpoint: APIMART_WAN3_ENDPOINT,
     prompt: req.prompt,
     referenceUrls: imageRefs.length > 0 ? imageRefs : undefined,
@@ -1930,6 +1952,7 @@ async function runApimartWan3Generation(req: CoreGenRequest, fallbackUsed = fals
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
     fallbackUsed,
   });
@@ -2053,6 +2076,7 @@ async function runWan3Generation(req: CoreGenRequest): Promise<CoreGenResult> {
           provider: 'kuaizi-wan3',
           fallbackUsed,
           run: (args) => runKuaiziWan3Generation({
+            prime: req.engineId === 'wan-3.0-prime',
             prompt: req.prompt,
             referenceUrls: req.referenceUrls,
             videoUrls: req.videoUrls,
@@ -2092,7 +2116,7 @@ export async function runGeneration(req: CoreGenRequest): Promise<CoreGenResult>
   if (isCustomMediaEngine(req.engineId)) return runCustomMediaGeneration(req);
   if (isMidjourneyEngine(req.engineId)) return runMidjourneyGeneration(req);
   if (req.engineId === 'minimax-hailuo-h3') return runMinimaxH3Generation(req);
-  if (req.engineId === 'wan-3.0') return runWan3Generation(req);
+  if (req.engineId === 'wan-3.0' || req.engineId === 'wan-3.0-prime') return runWan3Generation(req);
   if (req.engineId === 'suno-v5' || req.engineId === 'suno') return runSunoGeneration(req);
   return runStandardGeneration(req);
 }
@@ -2118,6 +2142,7 @@ async function runSunoGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
   });
   const ac = new AbortController();
@@ -2224,6 +2249,7 @@ async function runArkSeedanceGeneration(req: CoreGenRequest): Promise<CoreGenRes
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
   });
   const ac = new AbortController();
@@ -2387,6 +2413,7 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
     workshopShotNo: routedReq.workshopShotNo,
     workshopShotKind: routedReq.workshopShotKind,
     workshopStoryboardFrameId: routedReq.workshopStoryboardFrameId,
+    workspaceBinding: routedReq.workspaceBinding,
     inFlight: true,
   });
   const ac = new AbortController();
@@ -2607,7 +2634,7 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
     }
 
     const submissionUncertain = err instanceof RhtvSubmissionUnknownError || mustNotAutoResubmit(err);
-    if (!isRoutedImageEngine && submissionUncertain) {
+    if ((!isRoutedImageEngine || req.strictPaidSafety) && submissionUncertain) {
       const reason = err instanceof Error ? err.message : String(err);
       recordRoute(false, err);
       update({ status: 'failed', error: reason, progress: reason, finishedAt: Date.now() });
@@ -2623,7 +2650,7 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
       };
     }
 
-    if (!isRoutedImageEngine && submissionCommitted && !providerTaskId) {
+    if ((!isRoutedImageEngine || req.strictPaidSafety) && submissionCommitted && !providerTaskId) {
       const reason = err instanceof Error ? err.message : String(err);
       recordRoute(false, err);
       update({ status: 'failed', error: reason, progress: '远端已生成产物，本地处理失败；已停止容灾以避免重复扣费。', finishedAt: Date.now() });
@@ -2642,7 +2669,7 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
     // image generation deliberately prefers availability and may fail over.
     // Terminal rejections (task_failed / balance / auth) are excluded: no
     // charge happened, so the task id must not suppress channel fallback.
-    if (!isRoutedImageEngine && providerTaskId && !isTerminalRhtvRejection(err)) {
+    if ((!isRoutedImageEngine || req.strictPaidSafety) && providerTaskId && !isTerminalRhtvRejection(err)) {
       const reason = err instanceof Error ? err.message : String(err);
       const transient = !(err instanceof RhtvBusinessError) && isTransientKuaiziError(err);
       recordRoute(false, err);
@@ -2758,6 +2785,7 @@ async function runDreaminaSeedance25Generation(req: CoreGenRequest): Promise<Cor
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
     submissionReceipt: {
       requestedImages: refs.length,
@@ -2893,6 +2921,7 @@ async function runKuaiziSeedanceGeneration(req: CoreGenRequest): Promise<CoreGen
     workshopShotNo: req.workshopShotNo,
     workshopShotKind: req.workshopShotKind,
     workshopStoryboardFrameId: req.workshopStoryboardFrameId,
+    workspaceBinding: req.workspaceBinding,
     inFlight: true,
   });
   const ac = new AbortController();
@@ -3223,8 +3252,43 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
 
   // Multi-output (MJ returns 4): primary goes to the target node, the
   // rest land as sibling "variant" nodes connected to it.
-  if (outKind === 'image' && paths.length > 1) {
-    spawnVariantNodes(targetNodeId, paths.slice(1), req.prompt);
+  const variantNodeIds = outKind === 'image' && paths.length > 1
+    ? spawnVariantNodes(targetNodeId, paths.slice(1), req.prompt)
+    : [];
+
+  // The registry is the shared project identity/version layer. Generation
+  // outputs remain candidates (or unclassified on a blank canvas) and never
+  // become references merely because the model produced them.
+  try {
+    const target = useCanvasStore.getState().nodes.find((node) => node.id === targetNodeId);
+    const targetData = target?.data as Record<string, unknown> | undefined;
+    const { useUnifiedProjectStore } = await import('@/stores/unifiedProjectStore');
+    const registered = useUnifiedProjectStore.getState().registerCanvasGenerationResult({
+      nodeId: targetNodeId,
+      nodeIds: [targetNodeId, ...variantNodeIds],
+      taskId: result.taskId,
+      paths,
+      mediaType: outKind,
+      prompt: req.prompt,
+      engineId: req.engineId,
+      ownerObjectId: typeof targetData?.projectObjectId === 'string' ? targetData.projectObjectId : undefined,
+      workshopRef: targetData?.workshopRef as { kind?: string; id?: string; shotId?: string } | undefined,
+    });
+    if (registered) {
+      [targetNodeId, ...variantNodeIds].forEach((nodeId, index) => {
+        patchNode(nodeId, {
+          projectObjectId: registered.ownerObjectId,
+          mediaObjectId: registered.mediaIds[index],
+          versionObjectId: registered.versionIds[index],
+          mediaPurpose: registered.ownerObjectId ? 'candidate-version' : 'unclassified',
+          pendingOrganization: !registered.ownerObjectId,
+        });
+      });
+    }
+  } catch (error) {
+    // A successful paid generation must stay successful even if local project
+    // indexing fails. The next workshop reconciliation can repair the index.
+    console.warn('[canvasGen] project media registration failed:', error);
   }
 
   return {

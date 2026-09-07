@@ -1,5 +1,15 @@
 export type CanvasNodeType = 'text' | 'image' | 'video' | 'audio';
 
+export interface ProjectLinkedNodeData {
+  /** Stable project object identity; canvas keeps layout, not business copies. */
+  projectObjectId?: string;
+  mediaObjectId?: string;
+  versionObjectId?: string;
+  mediaPurpose?: 'current-version' | 'candidate-version' | 'ordinary-material' | 'generation-reference' | 'final-output' | 'unclassified' | 'historical';
+  /** Newly synced/generated objects wait here until the user arranges them. */
+  pendingOrganization?: boolean;
+}
+
 export interface TextNodeData {
   description: string;
   prompt?: string;
@@ -75,4 +85,4 @@ export interface AudioNodeData {
   fileName?: string;
 }
 
-export type CanvasNodeData = TextNodeData | ImageNodeData | VideoNodeData | AudioNodeData;
+export type CanvasNodeData = (TextNodeData | ImageNodeData | VideoNodeData | AudioNodeData) & ProjectLinkedNodeData;

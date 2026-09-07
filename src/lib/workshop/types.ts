@@ -1,3 +1,13 @@
+import type {
+  ProjectBranchRecord,
+  ProjectSpec,
+  ProjectSnapshotRecord,
+  ProjectViewState,
+  UnifiedProjectRegistry,
+} from '../projectObjects/types.ts';
+import type { ProjectIntakeRecord } from '../projects/projectIntake.ts';
+import type { WorkspaceDraft, WorkspaceSubmission } from '../workspace/types.ts';
+
 /**
  * workshop — 创作工坊数据模型（小云雀/火山剧创式 6 步流水线）。
  *
@@ -84,6 +94,8 @@ export interface WsScene {
   assetEngine?: string;
   assetResolution?: string;
   assetAspectRatio?: string;
+  /** Optional shared spatial constraint; each video draft opts in separately. */
+  directorConstraintCard?: DirectorConstraintCard;
 }
 
 export interface WsProp {
@@ -262,6 +274,8 @@ export interface WsShot {
   /** 单镜视频提示词模板覆盖；undefined = 跟随项目全局 */
   videoPromptTemplate?: 'legacy' | 'universal';
   imagePrompt?: string;
+  /** Read-only compatibility projection of workspaceDrafts; never edited independently. */
+  workspaceReferenceProjection?: Partial<Record<'image' | 'video', import('../workspace/types').WorkspaceReference[]>>;
   /** Seedance 视频提示词：遵守 aigc-memory/prompt-templates/seedance/README.md */
   videoPrompt?: string;
   /** Seedance 2.5 专用提示词。与普通视频提示词分开保存，切换模型时互不覆盖。 */
@@ -352,7 +366,24 @@ export interface WorkshopProjectBibles {
 }
 
 export interface WorkshopData {
+  /** Object/output-scoped editing drafts. Optional for backward-compatible reads. */
+  workspaceDrafts?: Record<string, WorkspaceDraft>;
+  workspaceSubmissions?: Record<string, WorkspaceSubmission>;
+  /** Stable object registry schema. Older projects omit it and migrate on read. */
+  schemaVersion?: number;
   projectId: string;
+  /** Shared specification injected into workshop, canvas, editor and chat. */
+  projectSpec?: ProjectSpec;
+  /** Identity/provenance/version registry. Legacy editing fields remain readable. */
+  projectObjects?: UnifiedProjectRegistry;
+  /** Cross-view focus and drawer memory for this project. */
+  projectViewState?: ProjectViewState;
+  /** Message-bound lightweight checkpoints. Payloads never contain media bytes. */
+  projectSnapshots?: ProjectSnapshotRecord[];
+  /** Named alternatives created from checkpoints; media remains shared by path. */
+  projectBranches?: ProjectBranchRecord[];
+  /** Project-home brief and attachments shared by every Agent surface. */
+  projectIntake?: ProjectIntakeRecord;
   currentStep: WorkshopStepId;
   steps: Record<WorkshopStepId, WorkshopStepState>;
   /** 故事梗概 */
@@ -407,6 +438,7 @@ export function emptyWorkshopData(projectId: string): WorkshopData {
   const steps = {} as Record<WorkshopStepId, WorkshopStepState>;
   for (const s of WORKSHOP_STEPS) steps[s.id] = { status: 'pending', updatedAt: now };
   return {
+    schemaVersion: 1,
     projectId,
     currentStep: 'script',
     steps,

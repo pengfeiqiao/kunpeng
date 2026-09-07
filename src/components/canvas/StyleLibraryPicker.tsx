@@ -20,12 +20,14 @@ export default function StyleLibraryPicker({
   onApply,
   onClear,
   library = 'general',
+  presentation = 'anchored',
 }: {
   open: boolean;
   onClose: () => void;
   onApply: (style: StylePreset) => void;
   onClear: () => void;
   library?: 'general' | 'midjourney';
+  presentation?: 'anchored' | 'dialog';
 }) {
   const [categories, setCategories] = useState<StyleCategory[]>([]);
   const [styles, setStyles] = useState<StylePreset[]>([]);
@@ -33,6 +35,7 @@ export default function StyleLibraryPicker({
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   useEffect(() => {
@@ -51,6 +54,23 @@ export default function StyleLibraryPicker({
     const rect = anchorRef.current.getBoundingClientRect();
     setPos({ top: rect.top, left: rect.left, width: rect.width });
   }, [open]);
+
+  useEffect(() => {
+    if (!open || presentation !== 'dialog') return;
+    const previous = document.activeElement as HTMLElement | null;
+    const timer = window.setTimeout(() => panelRef.current?.querySelector<HTMLButtonElement>('button')?.focus(), 0);
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); }
+      if (event.key === 'Tab') {
+        const items = [...(panelRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select, [tabindex="0"]') ?? [])];
+        const first = items[0], last = items[items.length - 1];
+        if (first && event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (last && !event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => { window.clearTimeout(timer); document.removeEventListener('keydown', keydown); previous?.focus(); };
+  }, [open, presentation, onClose]);
 
   const filtered = useMemo(() => {
     let list = styles;
@@ -78,15 +98,22 @@ export default function StyleLibraryPicker({
     <AnimatePresence>
       {open && pos && (
         <motion.div
+          ref={panelRef}
+          role={presentation === 'dialog' ? 'dialog' : undefined}
+          aria-modal={presentation === 'dialog' ? true : undefined}
+          aria-label={library === 'midjourney' ? 'Midjourney 风格库' : '风格库'}
           initial={{ opacity: 0, y: 8, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 8, scale: 0.97 }}
           transition={{ duration: 0.15 }}
           className="canvas-dark fixed z-[9999] rounded-xl overflow-hidden"
           style={{
-            bottom: `${window.innerHeight - pos.top + 8}px`,
-            left: `${pos.left}px`,
-            width: `${Math.max(pos.width, 520)}px`,
+            ...(presentation === 'dialog' ? {
+              top: '12vh', left: 'max(12px, calc((100vw - 700px) / 2))',
+              width: 'min(700px, calc(100vw - 24px))', maxHeight: '76vh', overflowY: 'auto' as const,
+            } : {
+              bottom: `${window.innerHeight - pos.top + 8}px`, left: `${pos.left}px`, width: `${Math.max(pos.width, 520)}px`,
+            }),
             background: 'var(--canvas-panel, #262626)',
             border: '1px solid var(--canvas-node-border, #363636)',
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
@@ -228,6 +255,7 @@ export default function StyleLibraryPicker({
   return (
     <>
       <div ref={anchorRef} className="absolute inset-0 pointer-events-none" />
+      {open && presentation === 'dialog' && createPortal(<div onClick={onClose} style={{ position: 'fixed', inset: 0, background: '#0008', zIndex: 9998 }} />, document.body)}
       {createPortal(panel, document.body)}
     </>
   );

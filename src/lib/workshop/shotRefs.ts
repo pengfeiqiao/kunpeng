@@ -6,7 +6,8 @@
  * 三处各自维护参考图顺序——任何一处口径不一致都会让 @图片N 指错素材。
  *
  * 纪律：
- * 1. 顺序唯一权威（video）：故事板分镜板(useInVideo)→场景→角色→道具→额外图→色卡。
+ * 1. 顺序唯一权威（video）：导演约束卡(useInVideo)→场景→角色→道具→额外图→色卡。
+ *    旧故事板只在显式历史兼容调用中加入，不得默认影响 @图片N。
  * 2. 顺序唯一权威（image/storyboard）：场景→角色→道具→额外图→色卡（不含首帧/故事板——
  *    它们是 imagePrompt 的产物，不能作它自己的参考）。
  * 3. 任何增删参考的写入路径（UI 删除、agent 工具、画布回传、分镜板增删）都必须
@@ -40,6 +41,15 @@ export interface ShotRefBinding {
   label: string;
   path: string;
   id?: string;
+}
+
+function workspaceImageBindings(shot: WsShot, type: 'image' | 'video'): ShotRefBinding[] | undefined {
+  return shot.workspaceReferenceProjection?.[type]?.filter((ref) => ref.type === 'image').map((ref, index) => {
+    const [kind, ...id] = (ref.objectId ?? '').split(':');
+    const bindingKind: ShotRefBindingKind = ref.role === 'director-constraint' ? 'directorConstraintCard'
+      : kind === 'character' || kind === 'scene' || kind === 'prop' ? kind : kind === 'scene-asset' ? 'palette' : 'extra';
+    return { index: index + 1, kind: bindingKind, label: ref.label, path: ref.path, id: id.join(':') || ref.id };
+  });
 }
 
 function bindingIdentityList(bindings: ShotRefBinding[]): string[] {
@@ -96,6 +106,8 @@ function getPaletteReferencePath(shot: WsShot, ctx: ShotRefsContext): string | u
 
 /** 生图/高清故事板的实际参考绑定（缺图资产不占 @图片N 编号）。 */
 export function buildImageRefBindings(shot: WsShot, ctx: ShotRefsContext): ShotRefBinding[] {
+  const projected = workspaceImageBindings(shot, 'image');
+  if (projected) return projected;
   const refs: ShotRefBinding[] = [];
   const scene = ctx.scenes.find((x) => x.id === shot.sceneId);
   getSceneReferencePaths(shot, ctx.scenes).forEach((path, i) => {
@@ -242,9 +254,9 @@ export function compactStoryboardFrameReferences(
   };
 }
 
-/** 视频生成的实际参考绑定（分镜板→导演约束卡→常规资产；分镜图 imagePath 只做产物展示）。 */
+/** 视频生成的实际参考绑定（导演约束卡→常规资产；旧故事板默认不参与）。 */
 export interface VideoRefBindingOptions {
-  /** Seedance 2.5 不使用拼合故事板，但仍保留导演约束卡与常规资产。 */
+  /** 仅供旧项目迁移/历史预览。新生成入口不得开启。 */
   includeStoryboardBoards?: boolean;
 }
 
@@ -253,8 +265,10 @@ export function buildVideoRefBindings(
   ctx: ShotRefsContext,
   options: VideoRefBindingOptions = {},
 ): ShotRefBinding[] {
+  const projected = workspaceImageBindings(shot, 'video');
+  if (projected) return projected;
   const refs: ShotRefBinding[] = [];
-  if (options.includeStoryboardBoards !== false) {
+  if (options.includeStoryboardBoards === true) {
     for (const [i, board] of (shot.storyboardBoards ?? []).filter((b) => b.imagePath && b.useInVideo !== false).entries()) {
       refs.push({
         index: refs.length + 1,
@@ -274,7 +288,7 @@ export function buildVideoRefBindings(
       id: shot.directorConstraintCard.id,
     });
   }
-  for (const binding of buildImageRefBindings(shot, ctx)) {
+  for (const binding of buildImageRefBindings({ ...shot, workspaceReferenceProjection: undefined }, ctx)) {
     refs.push({ ...binding, index: refs.length + 1 });
   }
   return refs;
@@ -285,7 +299,7 @@ export function buildImageRefPaths(shot: WsShot, ctx: ShotRefsContext): string[]
   return buildImageRefBindings(shot, ctx).map((ref) => ref.path);
 }
 
-/** 视频生成的参考路径（分镜板置首；分镜图 imagePath 只做封面/产物，不作为参考） */
+/** 视频生成的参考路径（旧故事板默认不参与；分镜图只做产物展示） */
 export function buildVideoRefPaths(shot: WsShot, ctx: ShotRefsContext): string[] {
   return buildVideoRefBindings(shot, ctx).map((ref) => ref.path);
 }
@@ -452,9 +466,9 @@ export function directorConstraintVideoPrefix(
   options: VideoRefBindingOptions = {},
 ): string {
   if (!shot.directorConstraintCard?.imagePath || shot.directorConstraintCard.useInVideo !== true) return '';
-  const boardCount = options.includeStoryboardBoards === false
-    ? 0
-    : (shot.storyboardBoards ?? []).filter((board) => board.imagePath && board.useInVideo !== false).length;
+  const boardCount = options.includeStoryboardBoards === true
+    ? (shot.storyboardBoards ?? []).filter((board) => board.imagePath && board.useInVideo !== false).length
+    : 0;
   return `以 @导演约束卡（对应 @图片${numToCn(boardCount + 1)}）锁定本镜人物站位、视线、机位和动作关系；只继承调度约束，不复制白模材质。`;
 }
 
@@ -470,7 +484,7 @@ export function applyVideoPlanningReferencePrefixes(
 ): string {
   const body = stripDirectorConstraintVideoPrefix(stripStoryboardVideoPrefix(prompt));
   const prefixes = [
-    options.includeStoryboardBoards === false ? '' : storyboardVideoPrefix(shot.storyboardBoards ?? []),
+    options.includeStoryboardBoards === true ? storyboardVideoPrefix(shot.storyboardBoards ?? []) : '',
     directorConstraintVideoPrefix(shot, options),
   ].filter(Boolean);
   return [...prefixes, body].filter(Boolean).join('\n').trim();
@@ -485,7 +499,7 @@ export function seedance25PromptForShot(shot: WsShot, ctx: ShotRefsContext): str
       { includeStoryboardBoards: false },
     );
   }
-  const fullRefs = buildVideoRefBindings(shot, ctx);
+  const fullRefs = buildVideoRefBindings(shot, ctx, { includeStoryboardBoards: true });
   const seedance25Refs = buildVideoRefBindings(shot, ctx, { includeStoryboardBoards: false });
   const remapped = replaceImageMentionsByBinding(shot.videoPrompt, fullRefs, seedance25Refs);
   return applyVideoPlanningReferencePrefixes(
@@ -508,7 +522,7 @@ export function videoPromptForShot(
     includeStoryboardBoards: boolean;
   },
 ): string {
-  const fullRefs = buildVideoRefBindings(shot, ctx);
+  const fullRefs = buildVideoRefBindings(shot, ctx, { includeStoryboardBoards: true });
   const targetRefs = buildVideoRefBindings(shot, ctx, {
     includeStoryboardBoards: options.includeStoryboardBoards,
   });
@@ -519,6 +533,7 @@ export function videoPromptForShot(
   const basePrompt = options.template === 'universal'
     ? shot.universalVideoPrompt || shot.seedance25VideoPrompt || shot.videoPrompt || ''
     : shot.videoPrompt || '';
+  if (shot.workspaceReferenceProjection?.video) return basePrompt;
   const remapped = options.includeStoryboardBoards || usesHistoricalNoStoryboardPrompt
     ? basePrompt
     : replaceImageMentionsByBinding(basePrompt, fullRefs, targetRefs);

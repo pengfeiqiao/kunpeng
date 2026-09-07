@@ -7,6 +7,7 @@ import { Plus, Sparkles, Trash2, User } from 'lucide-react';
 import { confirm as tauriConfirm } from '@tauri-apps/api/dialog';
 import { useShallow } from 'zustand/react/shallow';
 import { useWorkshopStore } from '@/stores/workshopStore';
+import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
 import type { WsCharacter } from '@/lib/workshop/types';
 import { buildBreakdownPrompt } from '@/lib/workshop/workshopPrompts';
 import { dispatchWorkshopPrompt } from '../WorkshopChatPanel';
@@ -17,7 +18,12 @@ import VideoPromptVersionSwitch from '../VideoPromptVersionSwitch';
 const inputCls = 'bg-transparent text-[12px] text-[var(--canvas-text-1)] focus:outline-none placeholder:text-[var(--canvas-text-3)] w-full rounded transition-colors hover:bg-[rgba(255,255,255,0.04)] focus:bg-[rgba(255,255,255,0.04)] focus:shadow-[inset_0_-1px_0_0_var(--canvas-accent)]';
 const cardCls = 'rounded-xl border border-[var(--canvas-node-border)] p-3.5';
 
-export default function StepBreakdown() {
+export interface StepBreakdownProps {
+  embedded?: boolean;
+  onRequestBreakdown?: () => void | Promise<void>;
+}
+
+export default function StepBreakdown({ embedded = false, onRequestBreakdown }: StepBreakdownProps = {}) {
   // 浅比较对象选择器：只在本页用到的字段变化时才重渲染（logChange/shots 等写入不波及本页）
   const data = useWorkshopStore(useShallow((s) => s.data && ({
     synopsis: s.data.synopsis,
@@ -52,24 +58,39 @@ export default function StepBreakdown() {
 
   // 角色删除是全局级联删除：先确认影响范围，store 会同步清理分镜引用
   const handleRemoveCharacter = async (id: string) => {
+    const captured = useWorkshopStore.getState();
+    const activeId = useUnifiedProjectStore.getState().activeId;
+    let valid = true;
+    const current = () => {
+      const state = useWorkshopStore.getState();
+      return state.project?.id === captured.project?.id && state.data?.projectId === captured.data?.projectId
+        && state.data?.characters === captured.data?.characters && state.data?.shots === captured.data?.shots
+        && useUnifiedProjectStore.getState().activeId === activeId;
+    };
+    const check = () => { if (!current()) valid = false; };
+    const offWorkshop = useWorkshopStore.subscribe(check);
+    const offUnified = useUnifiedProjectStore.subscribe(check);
     const info = getAssetRefInfo('character', id);
     const impact = info.shots > 0
       ? `将同步从 ${info.shots} 个分镜中移除引用，并标记这些分镜提示词需刷新。`
       : '没有分镜引用它。';
-    if (!(await tauriConfirm(`删除「${info.name}」？${impact}`))) return;
-    removeCharacter(id);
+    try {
+      if (!(await tauriConfirm(`删除「${info.name}」？${impact}`))) return;
+      if (valid && current()) removeCharacter(id);
+    } finally { offWorkshop(); offUnified(); }
   };
 
   return (
-    <div className="max-w-[860px] mx-auto px-8 py-8 pb-16">
+    <div className={embedded ? 'workspace-script-step workspace-script-breakdown' : 'max-w-[860px] mx-auto px-8 py-8 pb-16'}>
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-[16px] font-semibold text-[var(--canvas-text-1)]">② 剧本拆解</h2>
-          <p className="text-[12px] text-[var(--canvas-text-3)] mt-1">梗概 · 分集分场 · 角色档案 — 可手动修改，也可让右侧助手重做</p>
+          <h2 className="text-[16px] font-semibold text-[var(--canvas-text-1)]">{embedded ? '拆解结果' : '② 剧本拆解'}</h2>
+          {!embedded && <p className="text-[12px] text-[var(--canvas-text-3)] mt-1">梗概 · 分集分场 · 角色档案 — 可手动修改，也可让右侧助手重做</p>}
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => void buildStyleSection().then((sec) => dispatchWorkshopPrompt(buildBreakdownPrompt(sec)))}
+            onClick={() => { if (onRequestBreakdown) void onRequestBreakdown();
+              else void buildStyleSection().then((sec) => dispatchWorkshopPrompt(buildBreakdownPrompt(sec))); }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] text-[var(--canvas-text-2)] border border-[var(--canvas-node-border)] hover:text-[var(--canvas-text-1)] transition-colors"
           >
             <Sparkles size={12} /> {empty ? 'AI 拆解' : '重新拆解'}

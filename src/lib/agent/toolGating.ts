@@ -12,6 +12,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useDirectorStore } from '@/stores/directorStore';
 import { isSubagentEntryView } from './subagentPolicy';
+import { effectiveToolView } from './workspaceToolScope';
 
 /** 受设置门控的工具名集合（其余工具默认始终启用） */
 const GATED: Record<string, () => boolean> = {
@@ -43,6 +44,7 @@ const GLOBAL_TIMELINE_TOOLS = new Set([
 ]);
 
 export function isToolEnabled(name: string): boolean {
+  const activeView = effectiveToolView(useChatStore.getState().activeView);
   if (name === 'agent_delegate') {
     return isSubagentEntryView(useChatStore.getState().activeView);
   }
@@ -51,11 +53,11 @@ export function isToolEnabled(name: string): boolean {
   }
   // timeline_* 工具仅在剪辑视图可见（省 token，避免画布场景误用）
   if (name.startsWith('timeline_')) {
-    return useChatStore.getState().activeView === 'editor';
+    return activeView === 'editor';
   }
   // workshop_* 工具仅在创作工坊视图可见
   if (name.startsWith('workshop_')) {
-    return useChatStore.getState().activeView === 'workshop';
+    return activeView === 'workshop';
   }
   // copywriting_* 工具仅在文案工作室可见，避免其它模块误写文案编辑器
   if (name.startsWith('copywriting_')) {

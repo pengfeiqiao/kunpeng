@@ -125,10 +125,13 @@ test('MCP RPC does not execute an ask-risk tool after rejection', async () => {
 
 test('MCP RPC forwards bridge cancellation to the running Kunpeng tool', async () => {
   let sawAbort = false;
+  let markStarted!: () => void;
+  const started = new Promise<void>((resolve) => { markStarted = resolve; });
   const tool: Tool = {
     definition: { name: 'long_task', description: 'long task', parameters: { type: 'object', properties: {} } },
     risk: 'safe',
     execute: async (_params, signal): Promise<ToolResult> => new Promise((resolve) => {
+      markStarted();
       if (signal?.aborted) {
         sawAbort = true;
         resolve({ success: false, output: '', error: 'aborted' });
@@ -147,6 +150,7 @@ test('MCP RPC forwards bridge cancellation to the running Kunpeng tool', async (
     callbacks(true),
     controller.signal,
   );
+  await started;
   controller.abort();
   const result = await pending;
   assert.equal(sawAbort, true);

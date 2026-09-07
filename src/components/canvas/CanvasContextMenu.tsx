@@ -18,6 +18,9 @@ import { IMAGE_TOOLS, applyImageTool } from '@/lib/canvas/imageTools';
 import { extendVideo, lipSyncViaAgent } from '@/lib/canvas/videoTools';
 import { Wand2 } from 'lucide-react';
 import { openCanvasNodesInAgent } from '@/lib/canvas/nodeAgent';
+import { confirm as tauriConfirm } from '@tauri-apps/api/dialog';
+import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
+import { projectDeletionTargetForCanvasNode } from '@/lib/projectObjects/deletion';
 
 export interface ContextMenuState {
   kind: 'node' | 'pane' | 'selection';
@@ -84,6 +87,7 @@ export default function CanvasContextMenu({ menu, onClose, onCreateNode, onUploa
     : node?.type === 'audio'
       ? ((nodeData?.localPath as string) || (nodeData?.audioUrl as string))
       : ((nodeData?.localPath as string) || (nodeData?.generatedImageUrl as string) || (nodeData?.referenceImage as string));
+  const projectDeletionTarget = node ? projectDeletionTargetForCanvasNode(node) : undefined;
 
   const handleDeleteNode = close(() => {
     if (!menu.nodeId) return;
@@ -98,6 +102,39 @@ export default function CanvasContextMenu({ menu, onClose, onCreateNode, onUploa
     for (const n of s.nodes.filter((x) => x.selected)) s.deleteNode(n.id);
     s.setSelectedNodeId(null);
   });
+
+  const handleDeleteFromProject = async () => {
+    if (!projectDeletionTarget) return;
+    const unified = useUnifiedProjectStore.getState();
+    const impact = unified.assessProjectDeletion(projectDeletionTarget);
+    if (!impact) return;
+    const details = [
+      impact.affectedShotNos.length > 0 ? `影响 ${impact.affectedShotNos.length} 个镜头` : '',
+      impact.videoPromptCount > 0 ? `${impact.videoPromptCount} 条视频提示词需刷新` : '',
+      impact.timelineClipCount > 0 ? `${impact.timelineClipCount} 个时间轴片段` : '',
+    ].filter(Boolean).join('、');
+    const confirmed = await tauriConfirm(
+      `将「${impact.label}」从整个项目删除${details ? `，${details}` : ''}。媒体文件不会从磁盘删除，8 秒内可以撤销。是否继续？`,
+      { title: '从项目删除', type: 'warning' },
+    ).catch(() => false);
+    if (!confirmed) return;
+
+    let result = await unified.deleteProjectObject(projectDeletionTarget);
+    if (result.status === 'confirmation-required') {
+      const confirmPending = await tauriConfirm(
+        `项目仍有 ${result.pendingTaskIds.length} 个生成任务进行中。删除不会取消已提交的供应商任务，任务结果稍后仍可能返回。确认继续删除？`,
+        { title: '生成任务仍在进行', type: 'warning' },
+      ).catch(() => false);
+      if (!confirmPending) return;
+      result = await unified.deleteProjectObject(projectDeletionTarget, true);
+    }
+    if (result.status === 'deleted') {
+      window.dispatchEvent(new CustomEvent('kunpeng-project-delete-undo', {
+        detail: { snapshotId: result.snapshotId, label: result.impact.label },
+      }));
+    }
+    onClose();
+  };
 
   const handleDownload = close(() => {
     if (!nodeMediaPath) return;
@@ -174,7 +211,10 @@ export default function CanvasContextMenu({ menu, onClose, onCreateNode, onUploa
             )}
             {nodeMediaPath && <Item icon={Download} label="另存为…" onClick={handleDownload} />}
             <Sep />
-            <Item icon={Trash2} label="删除节点" danger onClick={handleDeleteNode} />
+            <Item icon={Trash2} label="从画布移除" danger onClick={handleDeleteNode} />
+            {projectDeletionTarget && (
+              <Item icon={Trash2} label="从项目删除…" danger onClick={() => { void handleDeleteFromProject(); }} />
+            )}
           </>
         )}
 
@@ -197,7 +237,7 @@ export default function CanvasContextMenu({ menu, onClose, onCreateNode, onUploa
             <Item icon={Group} label="打组 (⌘G)" onClick={close(() => groupSelection())} />
             <Item icon={Ungroup} label="解组 (⌘⇧G)" onClick={close(() => ungroupSelection())} />
             <Sep />
-            <Item icon={Trash2} label="删除所选" danger onClick={handleDeleteSelection} />
+            <Item icon={Trash2} label="从画布移除所选" danger onClick={handleDeleteSelection} />
           </>
         )}
 

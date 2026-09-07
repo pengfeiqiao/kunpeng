@@ -23,7 +23,9 @@ function cleanRewrite(raw: string): string {
 export async function rewritePromptWithStyle(
   originalPrompt: string,
   style: StylePreset,
+  options: { signal?: AbortSignal } = {},
 ): Promise<string> {
+  if (options.signal?.aborted) throw new Error('已取消');
   const userPrompt = originalPrompt.trim() || '一个年轻女孩站在阳光下微笑';
 
   // 视觉基因（DNA）提供风格细节，promptTemplate 提供输出格式骨架。
@@ -71,7 +73,9 @@ ${template}
     maxTokens: 6000,
     directDeepseek: true,
     continueOnTruncation: true,
+    signal: options.signal,
   });
+  if (options.signal?.aborted) throw new Error('已取消');
   const cleaned = cleanRewrite(result)
     || (isMidjourney ? applyMidjourneyStylePrompt(userPrompt, style as MidjourneyStylePreset) : userPrompt);
   return isMidjourney ? stripMidjourneyControlledFlags(cleaned) : cleaned;

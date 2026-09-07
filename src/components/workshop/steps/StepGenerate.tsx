@@ -30,6 +30,7 @@ import {
   videoPromptForShot,
 } from '@/lib/workshop/shotRefs';
 import { auditUniversalVideoPrompt, rewriteUniversalVideoPrompt, type VideoPromptTemplate } from '@/lib/videoPrompt/prompt';
+import { describeGenerationFailure } from '@/lib/projectObjects/generationDraft';
 
 const NUM_TO_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 function numToCn(n: number): string { return n <= 10 ? NUM_TO_CN[n - 1] : String(n); }
@@ -88,7 +89,6 @@ function effectiveVideoPromptTemplate(
 function buildShotVideoRefs(
   shot: WsShot,
   data: ShotVideoContext,
-  model = effectiveVideoModel(shot, data),
 ): ShotAssetRef[] {
   const refContext = {
     scenes: data.scenes,
@@ -98,7 +98,7 @@ function buildShotVideoRefs(
     globalColorPaletteId: data.globalColorPaletteId,
   };
   const refs: ShotAssetRef[] = buildVideoRefBindings(shot, refContext, {
-    includeStoryboardBoards: model !== 'seedance-2.5',
+    includeStoryboardBoards: false,
   }).map((binding) => ({
     label: `@图片${numToCn(binding.index)} ${binding.label}`,
     url: convertFileSrc(binding.path),
@@ -164,14 +164,14 @@ function removeShotRef(ref: ShotAssetRef, shot: WsShot, data: NonNullable<Return
 
 function validateShotPromptForVideo(shot: WsShot, data: NonNullable<ReturnType<typeof useWorkshopStore.getState>['data']>) {
   const model = effectiveVideoModel(shot, data);
-  const refs = buildShotVideoRefs(shot, data, model).filter((ref) => ref.label.startsWith('@图片'));
+  const refs = buildShotVideoRefs(shot, data).filter((ref) => ref.label.startsWith('@图片'));
   if (refs.length === 0) return { ok: true, message: '' };
   const requiredRefs = refs.map((ref, i) => ({ index: i + 1, label: ref.label.replace(/^@图片[一二三四五六七八九十\d]*\s*/, '') || `参考图 ${i + 1}` }));
   const sceneRefs = getSceneReferencePaths(shot, data.scenes);
   const ctx = { scenes: data.scenes, characters: data.characters, props: data.props ?? [], colorPalettes: data.colorPalettes ?? [], globalColorPaletteId: data.globalColorPaletteId };
   const prompt = videoPromptForShot(shot, ctx, {
     template: effectiveVideoPromptTemplate(shot, data),
-    includeStoryboardBoards: model !== 'seedance-2.5',
+    includeStoryboardBoards: false,
   });
   const validation = validateSeedancePrompt(prompt, {
     refCount: refs.length,
@@ -224,6 +224,11 @@ export default function StepGenerate() {
   const setCurrentStep = useWorkshopStore((s) => s.setCurrentStep);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [organizing, setOrganizing] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
+  const changeVideoSetting = (apply: () => void) => {
+    try { apply(); setSettingsError(''); }
+    catch (error) { setSettingsError(error instanceof Error ? error.message : String(error)); }
+  };
 
   // 全部分镜视频就绪后自动标记完成；条件不再满足时把 done 降回 in-progress（不动 stale 等其他状态）
   const allVideosDone = !!data && data.shots.length > 0 && data.shots.every((s) => !!s.videoPath);
@@ -357,7 +362,7 @@ export default function StepGenerate() {
           <span className="mb-1.5 block text-[10px] font-medium text-[var(--canvas-text-3)]">视频模型</span>
           <select
             value={data.videoModel ?? 'seedance-2.0'}
-            onChange={(e) => setVideoModel(e.target.value)}
+            onChange={(e) => changeVideoSetting(() => setVideoModel(e.target.value))}
             className="h-9 w-full cursor-pointer rounded-lg border border-[var(--canvas-node-border)] bg-[var(--canvas-panel)] px-3 text-[11px] text-[var(--canvas-text-1)] outline-none transition-colors hover:border-[var(--canvas-node-border-selected)] focus:border-[var(--canvas-node-border-selected)]"
           >
             <option value="seedance-2.0">Seedance 2.0</option>
@@ -374,7 +379,7 @@ export default function StepGenerate() {
           <span className="mb-1.5 block text-[10px] font-medium text-[var(--canvas-text-3)]">全局比例</span>
           <select
             value={data.videoRatio ?? ''}
-            onChange={(e) => setVideoRatio(e.target.value)}
+            onChange={(e) => changeVideoSetting(() => setVideoRatio(e.target.value))}
             className="h-9 w-full cursor-pointer rounded-lg border border-[var(--canvas-node-border)] bg-[var(--canvas-panel)] px-3 text-[11px] text-[var(--canvas-text-1)] outline-none transition-colors hover:border-[var(--canvas-node-border-selected)] focus:border-[var(--canvas-node-border-selected)]"
           >
             <option value="">未设置</option>
@@ -386,6 +391,8 @@ export default function StepGenerate() {
           <VideoPromptVersionSwitch value={data.videoPromptTemplate ?? 'legacy'} onChange={setVideoPromptTemplate} />
         </div>
       </div>
+
+      {settingsError && <p role="alert" className="mt-2 text-[12px] text-red-400">{settingsError}</p>}
 
       {data.shots.length === 0 ? (
         <div className="mt-5 flex justify-center py-14">
@@ -490,6 +497,7 @@ function ShotCard({ shot, checked, onToggle }: { shot: WsShot; checked: boolean;
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [errorExpanded, setErrorExpanded] = useState(false);
+  const generationFailure = shot.genError ? describeGenerationFailure(shot.genError) : null;
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [universalRewriting, setUniversalRewriting] = useState(false);
   // 素材选择器接入 Esc 全局栈：打开时 Esc 只关选择器
@@ -504,20 +512,19 @@ function ShotCard({ shot, checked, onToggle }: { shot: WsShot; checked: boolean;
   const promptTemplate = data ? effectiveVideoPromptTemplate(shot, data) : 'legacy';
   const refContext = data ? { scenes: data.scenes, characters: data.characters, props: data.props ?? [], colorPalettes: data.colorPalettes ?? [], globalColorPaletteId: data.globalColorPaletteId } : null;
   const displayedVideoPrompt = refContext
-    ? videoPromptForShot(shot, refContext, {
-        template: promptTemplate,
-        includeStoryboardBoards: !isSeedance25,
-      })
+      ? videoPromptForShot(shot, refContext, {
+          template: promptTemplate,
+          includeStoryboardBoards: false,
+        })
     : promptTemplate === 'universal'
       ? shot.universalVideoPrompt || shot.seedance25VideoPrompt || shot.videoPrompt || ''
       : shot.videoPrompt || '';
-  const hiddenStoryboardCount = isSeedance25
-    ? (shot.storyboardBoards ?? []).filter((board) => board.imagePath && board.useInVideo !== false).length
-    : 0;
+  const hiddenStoryboardCount = (shot.storyboardBoards ?? [])
+    .filter((board) => board.imagePath && board.useInVideo !== false).length;
 
   const refImages = useMemo(() => {
     if (!expanded || !data) return [];
-    return buildShotVideoRefs(shot, data, model);
+    return buildShotVideoRefs(shot, data);
   }, [expanded, data, shot, model]);
 
   const handleUniversalRewrite = async () => {
@@ -804,15 +811,20 @@ function ShotCard({ shot, checked, onToggle }: { shot: WsShot; checked: boolean;
         {shot.genStatus === 'failed' && shot.genError && (
           <div className="mt-1">
             <div className="flex items-center gap-1.5">
-              <p className="flex-1 min-w-0 truncate text-[10px] text-red-400" title={shot.genError}>{shot.genError}</p>
-              <button
-                onClick={() => void handleGenerateVideo()}
-                disabled={!shot.videoRatio && !data?.videoRatio}
-                className="shrink-0 px-1.5 py-0.5 rounded text-[10px] text-red-300 border border-red-500/50 hover:bg-red-500/10 transition-colors disabled:opacity-40"
-                title={(shot.videoRatio || data?.videoRatio) ? '重新生成视频' : '请先设置视频比例'}
-              >
-                重试
-              </button>
+              <div className="flex-1 min-w-0">
+                <p className="truncate text-[10px] font-medium text-red-400">{generationFailure?.title}</p>
+                <p className="truncate text-[10px] text-[var(--canvas-text-3)]">{generationFailure?.remedy}</p>
+              </div>
+              {generationFailure?.canRetry && (
+                <button
+                  onClick={() => void handleGenerateVideo()}
+                  disabled={!shot.videoRatio && !data?.videoRatio}
+                  className="shrink-0 px-1.5 py-0.5 rounded text-[10px] text-red-300 border border-red-500/50 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                  title={(shot.videoRatio || data?.videoRatio) ? '重新生成视频' : '请先设置视频比例'}
+                >
+                  重试
+                </button>
+              )}
               <button
                 onClick={() => setErrorExpanded((v) => !v)}
                 className="shrink-0 text-[10px] text-[var(--canvas-text-3)] hover:text-[var(--canvas-text-1)] transition-colors"
@@ -935,7 +947,7 @@ function ShotCard({ shot, checked, onToggle }: { shot: WsShot; checked: boolean;
                 <div className="min-w-0 flex-1">
                   <div className="text-[11px] font-medium text-cyan-200">新版提示词</div>
                   <div className="mt-0.5 text-[10px] text-[var(--canvas-text-3)]">
-                    {isSeedance25 && hiddenStoryboardCount > 0 ? `2.5 已隐藏 ${hiddenStoryboardCount} 张分镜板；` : ''}统一素材身份、空间站位、时间戳动作、机位和物理一致性。
+                    {hiddenStoryboardCount > 0 ? `${hiddenStoryboardCount} 张旧故事板已转为历史素材；` : ''}统一素材身份、空间站位、时间戳动作、机位和物理一致性。
                   </div>
                   {(() => {
                     const audit = auditUniversalVideoPrompt(displayedVideoPrompt, shot.durationSec ?? 5);

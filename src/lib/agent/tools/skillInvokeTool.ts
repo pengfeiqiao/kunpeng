@@ -19,6 +19,8 @@ import { getBuiltinSkills } from '@/lib/skillLoader';
 import { buildPrompt } from '@/lib/promptBuilder';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveApiKey, resolveSlotApiKey } from '@/lib/credentials';
+import { isSkillEnabled, markSkillUsed } from '@/lib/skills/skillPreferences';
+import { useWorkshopStore } from '@/stores/workshopStore';
 
 export const skillInvokeTool: Tool = {
   definition: {
@@ -51,13 +53,16 @@ export const skillInvokeTool: Tool = {
     const loader = await getSharedSkillLoader();
     // 默认节流（750ms）即可：主链路每次发送前已刷新，evolution 新写入的
     // 技能最迟下一轮可见；每次调用强制全量重扫在大目录下有可感知开销。
+    const projectId = useWorkshopStore.getState().project?.id;
     const diskSkills = (await loader.refreshIfDue()).filter(
-      (skill) => skill.invokable && skill.visibility !== 'internal',
+      (skill) => skill.invokable && skill.visibility !== 'internal' && isSkillEnabled(skill.id || skill.name, projectId),
     );
     // 内置 fallback 技能（视频脚本、即梦、film-master 等）不落盘，但 UI 面板
     // 一直展示它们——skill_invoke 必须也能调用，否则 agent 看到的是"无此技能"。
     // 磁盘技能按 id 覆盖同名内置技能。
-    const builtinSkills = getBuiltinSkills().filter((skill) => skill.visibility !== 'internal');
+    const builtinSkills = getBuiltinSkills().filter(
+      (skill) => skill.visibility !== 'internal' && isSkillEnabled(skill.id, projectId),
+    );
     const byId = new Map(builtinSkills.map((skill) => [skill.id, skill] as const));
     for (const skill of diskSkills) byId.delete(skill.id!);
 
@@ -78,6 +83,7 @@ export const skillInvokeTool: Tool = {
         ...(fieldValues ?? {}),
         userContent: userContent ?? '',
       });
+      markSkillUsed(skillId);
       return { success: true, output: composed };
     }
 
@@ -94,6 +100,7 @@ export const skillInvokeTool: Tool = {
       dmxApiKey: resolveApiKey(settings, 'dmx', settings.dmxApiKey) || resolveSlotApiKey(settings, firstSlot),
       bananaProApiKey: resolveApiKey(settings, 'bananaPro', settings.bananaProApiKey) || resolveSlotApiKey(settings, firstSlot),
     });
+    markSkillUsed(skillId);
     return { success: true, output: composed };
   },
 };

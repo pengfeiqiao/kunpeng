@@ -1,0 +1,256 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { FolderOpen, Image as ImageIcon, Library, Mic, Package, SlidersHorizontal, Video, X } from 'lucide-react';
+import { open as openDialog } from '@tauri-apps/api/dialog';
+import type { WorkshopData } from '@/lib/workshop/types';
+import type { WorkspaceDraft, WorkspaceReference } from '@/lib/workspace/types';
+import type { WorkspaceGenerationOutcome } from '@/lib/workspace/generationCommand';
+import { changeWorkspaceReferences, cloneWorkspaceDraft, initialWorkspaceDraft } from '@/lib/workspace/drafts';
+import { workspaceMediaToolDraft, workspaceMediaTools } from '@/lib/workspace/mediaTools';
+import { pendingWorkspaceSubmission } from '@/lib/workspace/submissions';
+import { selectWorkspaceObject, workspaceSelection } from '@/lib/workspace/contentModel';
+import GenerationComposer, { type WorkspaceEngineChoice } from './GenerationComposer';
+import MediaInspector from './MediaInspector';
+import ArtifactPickerPanel from '@/components/canvas/ArtifactPickerPanel';
+import AssetLibraryPanel from '@/components/canvas/AssetLibraryPanel';
+import { workspacePriceKey, type WorkspacePrice } from '@/lib/workspace/services';
+import type { MediaFileRecord } from '@/lib/projectObjects/types';
+import type { StylePreset } from '@/lib/styleLibrary';
+
+const LOCAL_MEDIA_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'mp4', 'mov', 'webm', 'mkv', 'mp3', 'wav', 'm4a', 'aac', 'flac'];
+
+function mediaTypeFromPath(path: string): WorkspaceReference['type'] {
+  const ext = (path.split('.').pop() ?? '').toLowerCase();
+  if (['mp4', 'mov', 'webm', 'mkv'].includes(ext)) return 'video';
+  if (['mp3', 'wav', 'm4a', 'aac', 'flac'].includes(ext)) return 'audio';
+  return 'image';
+}
+
+interface Props {
+  data: WorkshopData;
+  engines: WorkspaceEngineChoice[];
+  mediaSrc: (path: string) => string;
+  onSaveDraft: (draft: WorkspaceDraft) => WorkspaceDraft | null;
+  onGenerate: (draft: WorkspaceDraft) => Promise<WorkspaceGenerationOutcome>;
+  onOptimize: (draft: WorkspaceDraft, template: 'legacy' | 'universal', signal: AbortSignal) => Promise<string>;
+  onApplyStyle?: (draft: WorkspaceDraft, style: StylePreset, signal: AbortSignal) => Promise<string>;
+  onViewState: (patch: Partial<NonNullable<WorkshopData['projectViewState']>>) => void;
+  onAdopt: (versionId: string) => void;
+  onAddToChat: (objectId: string, mediaId?: string) => void;
+  onEditToChat?: (objectId: string, mediaId?: string) => void;
+  estimatedCost?: string;
+  renderConstraint?: (draft: WorkspaceDraft) => ReactNode;
+  onEstimate?: (draft: WorkspaceDraft) => Promise<WorkspacePrice>;
+  onConfigure?: () => void;
+  onClassify?: (media: MediaFileRecord) => void;
+  onProductionTools?: (objectId: string) => void;
+  /** Resolve an uncertain submission after the user checked the original task, unblocking regeneration. */
+  onResolveSubmission?: (submissionId: string) => void;
+}
+
+/** Store adapters are supplied by the project container; every asynchronous operation captures its own draft identity. */
+export default function WorkspaceMediaPanel(props: Props) {
+  const { selected, outputType, versions, media } = workspaceSelection(props.data);
+  const draft = selected ? initialWorkspaceDraft(props.data, selected.id, outputType) : null;
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<Set<string>>(() => new Set());
+  const [quotes, setQuotes] = useState<Record<string, WorkspacePrice>>({});
+  const [quoting, setQuoting] = useState<Set<string>>(() => new Set());
+  const operations = useRef(new Map<string, AbortController>());
+  const mounted = useRef(true);
+  const [referenceTarget, setReferenceTarget] = useState<WorkspaceDraft | null>(null);
+  const [pickerSource, setPickerSource] = useState<'artifacts' | 'assets' | null>(null);
+  useEffect(() => { mounted.current = true; return () => {
+    mounted.current = false;
+    operations.current.forEach((controller) => controller.abort()); operations.current.clear();
+  }; }, []);
+  const setError = (id: string, message: string) => { if (mounted.current) setErrors((old) => ({ ...old, [id]: message })); };
+  const save = (next: WorkspaceDraft) => {
+    const saved = props.onSaveDraft(next);
+    setError(next.id, saved ? '' : '内容已被修改或对象已锁定，本次改动未覆盖现有草稿。');
+    return saved;
+  };
+  const operate = async (snapshot: WorkspaceDraft, action: (signal: AbortSignal) => Promise<void>) => {
+    if (operations.current.has(snapshot.id)) return;
+    const controller = new AbortController();
+    operations.current.set(snapshot.id, controller);
+    setBusy(new Set(operations.current.keys())); setError(snapshot.id, '');
+    try { await action(controller.signal); }
+    catch { if (!controller.signal.aborted) setError(snapshot.id, '操作未完成，草稿已保留。请检查任务状态后再操作。'); }
+    finally { operations.current.delete(snapshot.id); if (mounted.current) setBusy(new Set(operations.current.keys())); }
+  };
+  /** Append one reference to the captured draft; duplicates (by id or path) are refused silently. */
+  const addReference = (target: WorkspaceDraft, ref: WorkspaceReference) => {
+    if (target.references.some((item) => item.id === ref.id || item.path === ref.path)) return;
+    save(changeWorkspaceReferences(target, [...target.references, ref]));
+    setReferenceTarget(null);
+    setPickerSource(null);
+  };
+  const pickLocalReferences = async (target: WorkspaceDraft) => {
+    const chosen = await openDialog({ multiple: true, filters: [{ name: '媒体文件', extensions: LOCAL_MEDIA_EXTENSIONS }] });
+    if (!chosen) return;
+    let current = target;
+    for (const path of Array.isArray(chosen) ? chosen : [chosen]) {
+      if (current.references.some((item) => item.path === path)) continue;
+      const saved = save(changeWorkspaceReferences(current, [...current.references,
+        { id: `local:${path}`, type: mediaTypeFromPath(path), path, label: path.split(/[\\/]/).pop() ?? '本地文件' }]));
+      if (!saved) return;
+      current = saved;
+    }
+    setReferenceTarget(null);
+  };
+  if (selected && outputType === 'audio') return <MediaInspector title={selected.label} versions={versions} selected={media}
+    mediaSrc={props.mediaSrc} onSelect={(id) => props.onViewState({ workspaceMediaId: id })} onAdopt={props.onAdopt}
+    canGenerate={false} onPrompt={() => {}} onEdit={() => (props.onEditToChat ?? props.onAddToChat)(selected.id, media?.media.id)}
+    onAddToChat={() => props.onAddToChat(selected.id, media?.media.id)} />;
+  if (!selected || !draft) return <div className="workspace-media-empty workspace-empty-project">暂无可预览的镜头或素材</div>;
+  const pending = pendingWorkspaceSubmission(props.data, draft.objectId, draft.outputType);
+  const priceKey = workspacePriceKey(draft);
+  const pendingMessage = pending?.status === 'uncertain' ? '上次提交结果待核实，请先查询原任务，勿重复生成。'
+    : pending?.status === 'awaiting-confirmation' ? '生成草稿待确认' : pending ? '生成任务处理中' : '';
+  const composerOpen = props.data.projectViewState?.workspaceComposerOpen ?? true;
+  const flatItems = (workspaceSelection(props.data).groups ?? []).flatMap((group) => group.items);
+  const navigate = (direction: -1 | 1) => {
+    const index = flatItems.findIndex((item) => item.id === selected.id);
+    const next = flatItems[index + direction];
+    if (!next) return;
+    setReferenceTarget(null);
+    const patch = selectWorkspaceObject(props.data, next.id);
+    if (patch) props.onViewState({ ...patch, workspaceMediaId: undefined });
+  };
+  const regenerate = () => {
+    const snapshot = cloneWorkspaceDraft(draft);
+    void operate(snapshot, async () => {
+      const stored = save(snapshot);
+      if (!stored) return;
+      const outcome = await props.onGenerate(cloneWorkspaceDraft(stored));
+      if (outcome.error) setError(snapshot.id, outcome.error);
+    });
+  };
+  const runTool = (toolId: string) => {
+    if (!media) return;
+    const tool = workspaceMediaTools(media.media.mediaType).find((item) => item.id === toolId);
+    if (!tool) return;
+    const toolDraft = workspaceMediaToolDraft(props.data, media.media, tool);
+    if (!toolDraft) { setError(draft.id, '对象已锁定或媒体不可用，未执行工具。'); return; }
+    if (tool.autoRun) {
+      void operate(toolDraft, async () => {
+        const stored = save(toolDraft);
+        if (!stored) return;
+        const outcome = await props.onGenerate(cloneWorkspaceDraft(stored));
+        if (outcome.error) setError(toolDraft.id, outcome.error);
+      });
+      return;
+    }
+    // 编辑类工具：把指令和当前媒体参考预填进当前对象的图片草稿，打开编辑器由用户确认
+    const base = initialWorkspaceDraft(props.data, selected.id, 'image');
+    if (!base) return;
+    const prefilled = save({ ...base, prompt: tool.instruction ?? '',
+      references: [{ id: media.media.id, type: 'image' as const, path: media.media.path, label: media.media.label ?? '当前图片', objectId: selected.id, versionId: media.media.versionObjectId }] });
+    if (prefilled) props.onViewState({ workspaceComposerOpen: true, workspaceOutputType: 'image' });
+  };
+  const candidates = props.data.projectObjects?.media.filter((item) => !item.archived && item.purpose !== 'historical'
+    && item.source !== 'legacy-storyboard' && ['image', 'video', 'audio'].includes(item.mediaType) && item.path) ?? [];
+  return <div className="workspace-media-panel">
+    <div className="workspace-media-actions">
+    {selected.kind === 'shot' && <div className="workspace-output-tabs" role="group" aria-label="镜头媒体类型">
+      {(['video', 'image'] as const).map((type) => <button key={type} aria-pressed={outputType === type} onClick={() => {
+        setReferenceTarget(null); props.onViewState({ workspaceOutputType: type, workspaceMediaId: undefined });
+      }}>{type === 'image' ? <ImageIcon size={14} /> : <Video size={14} />}{type === 'image' ? '图片' : '视频'}</button>)}
+    </div>}
+    {selected.kind !== 'material' && props.onProductionTools && <button className="workspace-production-entry"
+      onClick={() => props.onProductionTools!(selected.id)}>
+      {selected.kind === 'character' || selected.kind === 'shot' ? <Mic size={14} /> : <SlidersHorizontal size={14} />}
+      {selected.kind === 'character' ? '角色与音色' : selected.kind === 'shot' ? '配音与配色' : '资产设置'}
+    </button>}
+    </div>
+    <div className="workspace-media-panel-inspector">{pending?.status === 'uncertain' && props.onResolveSubmission && <div className="workspace-submission-resolve" role="alert">
+      <span>上次提交结果待核实：请先在下方任务进度或任务中心核对原任务。确认原任务已失败或中断后，可标记失败再重新生成。</span>
+      <button onClick={() => props.onResolveSubmission!(pending.id)}>已核对，标记失败</button>
+    </div>}
+    <MediaInspector title={selected.kind === 'shot' ? `${selected.displayNo ?? selected.shotNo} · ${selected.description || selected.label}` : selected.label}
+      versions={versions} selected={media} mediaSrc={props.mediaSrc}
+      onSelect={(id) => props.onViewState({ workspaceMediaId: id })} onAdopt={props.onAdopt}
+      onPrompt={() => props.onViewState({ workspaceComposerOpen: true })}
+      onEdit={() => (props.onEditToChat ?? props.onAddToChat)(selected.id, media?.media.id)} onAddToChat={() => props.onAddToChat(selected.id, media?.media.id)}
+      onClassify={media && props.onClassify ? () => props.onClassify!(media.media) : undefined}
+      busy={busy.has(draft.id) || Boolean(pending)}
+      onRegenerate={regenerate}
+      tools={media ? workspaceMediaTools(media.media.mediaType) : []}
+      onTool={runTool}
+      onNavigate={flatItems.length > 1 ? navigate : undefined} navigateLabel={selected.kind === 'shot' ? '镜头' : '素材'}
+      composer={composerOpen ? <GenerationComposer key={JSON.stringify([draft.projectId, draft.objectId, draft.outputType, draft.id])} draft={draft} engines={props.engines} mediaSrc={props.mediaSrc}
+        constraintContent={selected.kind === 'shot' ? props.renderConstraint?.(draft) : undefined}
+        busy={busy.has(draft.id) || Boolean(pending)} error={errors[draft.id] || pendingMessage}
+        estimatedCost={quotes[priceKey]?.label ?? props.estimatedCost} priceDetail={quotes[priceKey]?.detail} onConfigure={props.onConfigure}
+        estimating={quoting.has(priceKey)} onEstimate={props.onEstimate ? () => {
+          if (quoting.has(priceKey)) return;
+          const snapshot = cloneWorkspaceDraft(draft);
+          setQuoting((old) => new Set([...old, priceKey]));
+          void props.onEstimate!(snapshot).catch(() => ({ label: '暂时无法估价', detail: '查询失败不代表免费。' })).then((quote) => {
+            if (mounted.current) setQuotes((old) => ({ ...old, [priceKey]: quote }));
+          }).finally(() => { if (mounted.current) setQuoting((old) => { const next = new Set(old); next.delete(priceKey); return next; }); });
+        } : undefined}
+        onChange={save} onClose={() => { setReferenceTarget(null); props.onViewState({ workspaceComposerOpen: false }); }}
+        onAddReference={() => setReferenceTarget(cloneWorkspaceDraft(draft))}
+        onOptimize={(template) => {
+          const snapshot = cloneWorkspaceDraft(draft);
+          void operate(snapshot, async (signal) => {
+            const prompt = await props.onOptimize(cloneWorkspaceDraft(snapshot), template, signal);
+            if (signal.aborted) return;
+            if (!prompt.trim()) { setError(snapshot.id, '优化没有返回提示词，原文未改变。'); return; }
+            save({ ...snapshot, prompt, promptTemplate: template });
+          });
+        }}
+        onApplyStyle={props.onApplyStyle ? (style) => {
+          const snapshot = cloneWorkspaceDraft(draft);
+          void operate(snapshot, async (signal) => {
+            const prompt = await props.onApplyStyle!(cloneWorkspaceDraft(snapshot), style, signal);
+            if (signal.aborted) return;
+            if (!prompt.trim()) { setError(snapshot.id, '风格改写没有返回提示词，原文未改变。'); return; }
+            save({ ...snapshot, prompt, styleId: style.id, styleName: style.name });
+          });
+        } : undefined}
+        onGenerate={() => {
+          const snapshot = cloneWorkspaceDraft(draft);
+          void operate(snapshot, async () => {
+            const stored = save(snapshot);
+            if (!stored) return;
+            const outcome = await props.onGenerate(cloneWorkspaceDraft(stored));
+            if (outcome.error) setError(snapshot.id, outcome.error);
+          });
+        }} /> : undefined} />
+    </div>
+    {referenceTarget && referenceTarget.objectId === selected.id && referenceTarget.outputType === outputType && <div className="workspace-picker-backdrop" onClick={() => { setReferenceTarget(null); setPickerSource(null); }}>
+      <section className="workspace-reference-picker" role="dialog" aria-label="选择本次参考素材" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <header><h2>添加参考素材</h2><button className="workspace-icon" aria-label="关闭参考选择" onClick={() => { setReferenceTarget(null); setPickerSource(null); }}><X size={16} /></button></header>
+      <div className="workspace-reference-sources" role="group" aria-label="参考来源">
+        <button onClick={() => void pickLocalReferences(referenceTarget)}><FolderOpen size={13} />本地文件</button>
+        <button onClick={() => setPickerSource('artifacts')}><Package size={13} />产物库</button>
+        <button onClick={() => setPickerSource('assets')}><Library size={13} />资产库</button>
+      </div>
+      <p className="workspace-reference-picker-label">项目素材</p>
+      <div className="workspace-picker-grid">{candidates.map((item) => <button key={item.id} disabled={referenceTarget.references.some((ref) => ref.id === item.id || ref.path === item.path)}
+        title={item.label ?? item.path.split(/[\\/]/).pop()}
+        onClick={() => {
+          const ref: WorkspaceReference = { id: item.id, type: item.mediaType as WorkspaceReference['type'], path: item.path,
+            label: item.label ?? item.path.split(/[\\/]/).pop() ?? '素材', objectId: item.ownerObjectId, versionId: item.versionObjectId };
+          addReference(referenceTarget, ref);
+        }}>
+        {item.mediaType === 'image' ? <img src={props.mediaSrc(item.path)} alt="" loading="lazy" /> : <span className="workspace-picker-kind">{item.mediaType === 'video' ? '视频' : '音频'}</span>}
+        <span>{item.label ?? '未命名素材'}</span>
+      </button>)}</div>
+      {!candidates.length && <p className="workspace-picker-empty">项目中暂无可用素材，可从本地文件、产物库或资产库添加</p>}
+    </section></div>}
+    {pickerSource === 'artifacts' && referenceTarget && <div className="canvas-dark workspace-picker-overlay"><ArtifactPickerPanel open inline onClose={() => setPickerSource(null)} onPick={(entry) => {
+      if (!['image', 'video', 'audio'].includes(entry.type)) return;
+      addReference(referenceTarget, { id: `artifact:${entry.path}`, type: entry.type as WorkspaceReference['type'], path: entry.path,
+        label: entry.path.split(/[\\/]/).pop() ?? '产物' });
+    }} /></div>}
+    {pickerSource === 'assets' && referenceTarget && <div className="canvas-dark workspace-picker-overlay"><AssetLibraryPanel open selected={new Set()} onClose={() => setPickerSource(null)} onToggleAsset={(asset) => {
+      if (!('images' in asset)) return;
+      const path = asset.images[0] ?? asset.audioPath;
+      if (!path) return;
+      addReference(referenceTarget, { id: `asset:${asset.id}`, type: asset.images.length ? 'image' : 'audio', path, label: asset.name });
+    }} /></div>}
+  </div>;
+}

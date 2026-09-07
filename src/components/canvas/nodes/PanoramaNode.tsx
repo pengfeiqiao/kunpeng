@@ -93,7 +93,7 @@ function PanoramaNodeComponent({ id, data, selected }: NodeProps<PanoramaNodeDat
               </button>
             </>
           )}
-          <button onClick={() => deleteNode(id)} className="flex flex-col items-center gap-1.5 px-3.5 py-2.5 min-w-[58px] rounded-xl text-[var(--canvas-text-2)] hover:text-red-500 hover:bg-[rgba(255,97,99,0.15)] transition-all" title="删除节点">
+          <button onClick={() => deleteNode(id)} className="flex flex-col items-center gap-1.5 px-3.5 py-2.5 min-w-[58px] rounded-xl text-[var(--canvas-text-2)] hover:text-red-500 hover:bg-[rgba(255,97,99,0.15)] transition-all" title="从画布移除">
             <Trash2 size={18} /><span className="text-[12px] leading-none">删除</span>
           </button>
         </div>

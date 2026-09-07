@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, ArrowRight, ChevronDown, ChevronRight, Loader2, BookOpen, PencilLine, Wrench } from 'lucide-react';
+import { Copy, Check, ArrowRight, ChevronDown, ChevronRight, Loader2, BookOpen, PencilLine, Wrench, RotateCcw, GitBranch } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import { confirm as tauriConfirm, message as tauriMessage } from '@tauri-apps/api/dialog';
 import { Message } from '@/types';
 import { useChatStore } from '@/stores';
 import { MarkdownRenderer } from '@/lib/markdown';
@@ -11,6 +12,7 @@ import { ArtifactGrid } from './chat/ArtifactPreview';
 import { AskUserDecisionCard } from './AskUserDialog';
 import { useAskUserStore } from '@/stores/askUserStore';
 import { formatElapsedDuration } from '@/lib/chat/formatElapsedDuration';
+import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
 
 // ── StreamingCard — unified streaming status card ─────────────────────────
 
@@ -465,13 +467,49 @@ interface MessageItemProps {
 function MessageItem({ message, index, animateEntry = true, isStreaming, onOptionClick }: MessageItemProps) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const displayContent = isUser ? stripHarnessPrefix(message.content) : message.content;
   const artifacts = artifactsFromMessage(message).filter((artifact) => artifact.origin !== 'source');
+  const projectSnapshotId = typeof message.metadata?.projectSnapshotId === 'string'
+    ? message.metadata.projectSnapshotId
+    : null;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(displayContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRestoreSnapshot = async () => {
+    if (!projectSnapshotId || historyBusy) return;
+    setHistoryBusy(true);
+    try {
+      let result = await useUnifiedProjectStore.getState().restoreProjectSnapshot(projectSnapshotId);
+      if (result.status === 'confirmation-required') {
+        const accepted = await tauriConfirm(
+          `${result.reason ?? '当前仍有生成任务。'}\n\n继续只会回退项目数据，不会取消或退款已经提交给供应商的任务。`,
+          { title: '确认回到此刻', type: 'warning' },
+        );
+        if (!accepted) return;
+        result = await useUnifiedProjectStore.getState().restoreProjectSnapshot(projectSnapshotId, true);
+      }
+      if (result.status !== 'restored') {
+        await tauriMessage(result.reason ?? '无法恢复这个快照。', { title: '回到此刻失败', type: 'error' });
+      }
+    } finally {
+      setHistoryBusy(false);
+    }
+  };
+
+  const handleCreateBranch = async () => {
+    if (!projectSnapshotId || historyBusy) return;
+    const fallback = `方案分支 ${new Date(message.timestamp).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+    const name = window.prompt('给这个项目分支命名', fallback)?.trim();
+    if (!name) return;
+    const branchId = useUnifiedProjectStore.getState().createProjectBranch(projectSnapshotId, name);
+    if (!branchId) {
+      await tauriMessage('当前项目中找不到对应快照，分支没有创建。', { title: '创建分支失败', type: 'error' });
+    }
   };
 
   const { cleanContent, options } =
@@ -557,6 +595,28 @@ function MessageItem({ message, index, animateEntry = true, isStreaming, onOptio
           <span className="text-xs text-[rgb(var(--c-text-muted))] opacity-0 transition-opacity group-hover:opacity-100">
             {new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
           </span>
+          {projectSnapshotId && (
+            <>
+              <button
+                type="button"
+                onClick={() => { void handleRestoreSnapshot(); }}
+                disabled={historyBusy}
+                className="flex items-center gap-1 text-xs text-[rgb(var(--c-text-muted))] opacity-0 transition-all hover:text-[rgb(var(--c-text))] disabled:opacity-40 group-hover:opacity-100"
+              >
+                <RotateCcw size={13} />
+                回到此刻
+              </button>
+              <button
+                type="button"
+                onClick={() => { void handleCreateBranch(); }}
+                disabled={historyBusy}
+                className="flex items-center gap-1 text-xs text-[rgb(var(--c-text-muted))] opacity-0 transition-all hover:text-[rgb(var(--c-text))] disabled:opacity-40 group-hover:opacity-100"
+              >
+                <GitBranch size={13} />
+                创建分支
+              </button>
+            </>
+          )}
         </div>
     </motion.div>
   );

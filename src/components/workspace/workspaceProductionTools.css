@@ -1,0 +1,20 @@
+.workspace-production-tools { height: 100%; min-height: 0; overflow: auto; background: #202122; color: var(--canvas-text-1); padding: 0 20px 24px; }
+.workspace-production-tools > header { display: flex; align-items: center; gap: 16px; min-height: 54px; border-bottom: 1px solid #363738; margin-bottom: 20px; }
+.workspace-production-tools button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 28px; }
+.workspace-production-tools button:disabled { opacity: .45; }
+.workspace-production-tools button:focus-visible { outline: 1px solid var(--canvas-accent); outline-offset: 3px; }
+.workspace-production-tools strong, .workspace-production-tools h3 { font-size: 13px; font-weight: 600; }
+.workspace-production-tools fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.workspace-production-tools input { max-width: 100%; min-width: 0; }
+.production-palette { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.production-notice { font-size: 12px; color: #c9b985; line-height: 1.6; margin: 10px 0; overflow-wrap: anywhere; }
+.production-results { margin-top: 24px; border-top: 1px solid #363738; padding-top: 16px; }
+.production-result { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid #303132; font-size: 12px; }
+.production-result > span:first-child { width: 90px; overflow-wrap: anywhere; }
+.production-result audio { height: 30px; width: 220px; max-width: 100%; flex: 1 1 180px; }
+.production-result img { width: 96px; height: 60px; object-fit: contain; }
+.workspace-production-tools .workspace-focused-asset { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.2fr); align-items: start; gap: 16px; background: transparent !important; }
+.workspace-production-tools .workspace-focused-asset > .h-5 { grid-column: 1; }
+.workspace-production-tools .workspace-focused-asset > .px-2\.5 { grid-column: 2; grid-row: 1 / span 2; padding: 0; }
+@media (max-width: 640px) { .workspace-production-tools { padding: 0 12px 16px; } .workspace-production-tools > header { gap: 10px; } .production-palette { flex-wrap: wrap; } }
+@media (max-width: 800px) { .workspace-production-tools .workspace-focused-asset { display: block; } .workspace-production-tools .workspace-focused-asset > .px-2\.5 { padding-top: 12px; } }

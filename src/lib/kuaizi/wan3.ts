@@ -31,6 +31,8 @@ const CREATE_PATH = '/ai-open-platform-api/api/v1/services/aigc/video-generation
 const QUERY_PATH = '/ai-open-platform-api/api/v1/tasks';
 
 export interface KuaiziWan3RunRequest {
+  /** 高速版 */
+  prime?: boolean;
   prompt: string;
   referenceUrls?: string[];
   videoUrls?: string[];
@@ -172,6 +174,7 @@ export async function runKuaiziWan3Generation(req: KuaiziWan3RunRequest): Promis
   for (const ref of req.audioUrls ?? []) audioUrls.push(await resolveKuaiziMediaRef(ref));
 
   const payload = buildKuaiziWan3Payload({
+    prime: req.prime,
     prompt: req.prompt,
     imageUrls,
     videoUrls,

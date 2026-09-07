@@ -1,6 +1,7 @@
 import type { CoordinatorCallbacks, ToolResult } from '../types';
 import type { ToolRegistry } from '../toolRegistry';
 import type { DshToolCallEvent } from './types';
+import { shouldOfferToolConfirmation } from '../../projectObjects/generationDraft.ts';
 
 export interface DshToolHooks {
   before?: (name: string, params: Record<string, unknown>) => Promise<{ cancel?: boolean; reason?: string }>;
@@ -29,6 +30,7 @@ export async function executeDshToolCall(
   signal: AbortSignal,
   hooks: DshToolHooks = {},
 ): Promise<ToolResult> {
+  if (signal.aborted) return { success: false, output: '', error: '操作已中止，未执行工具。' };
   const params = call.arguments ?? {};
   const tool = registry.get(call.name);
   if (!tool) return { success: false, output: '', error: `Unknown tool: ${call.name}` };
@@ -38,14 +40,15 @@ export async function executeDshToolCall(
   if (risk === 'deny') {
     return { success: false, output: '', error: riskCheck?.reason || `工具 ${call.name} 被禁止执行` };
   }
-  if (risk === 'ask' && callbacks.onToolConfirm) {
-    const allowed = await callbacks.onToolConfirm(call.name, params, riskCheck?.reason);
+  if (shouldOfferToolConfirmation(call.name, risk) && callbacks.onToolConfirm) {
+    const allowed = await callbacks.onToolConfirm(call.name, params, riskCheck?.reason, signal);
     if (!allowed) {
       return { success: false, output: '', error: '用户拒绝执行此操作。请询问用户是否有其他方案。' };
     }
   }
 
   const pre = await hooks.before?.(call.name, params);
+  if (signal.aborted) return { success: false, output: '', error: '操作已中止，未执行工具。' };
   callbacks.onToolBatchStart?.([{ name: call.name, params }]);
   callbacks.onToolStart(call.name, params);
   const startedAt = Date.now();

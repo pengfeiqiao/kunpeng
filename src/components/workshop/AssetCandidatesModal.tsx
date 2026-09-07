@@ -14,6 +14,7 @@ import { Z, useEscapeClose } from '@/lib/ui/layers';
 import ImageFullscreenViewer from '../canvas/ImageFullscreenViewer';
 import ArtifactPickerPanel from '../canvas/ArtifactPickerPanel';
 import type { AssetCandidate } from '@/lib/workshop/types';
+import { workspaceAssetCandidates } from '@/lib/workspace/assetCandidates';
 
 interface Props {
   kind: 'character' | 'scene' | 'prop' | 'colorPalette';
@@ -31,6 +32,7 @@ export default function AssetCandidatesModal({ kind, id, onClose }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Esc 全局栈：全屏查看器打开时先关查看器，否则关闭弹窗（栈式保证嵌套弹窗只关最上层）
   useEscapeClose(true, () => (fullscreen ? setFullscreen(null) : onClose()));
@@ -46,7 +48,11 @@ export default function AssetCandidatesModal({ kind, id, onClose }: Props) {
         : (data?.props ?? []).find((p) => p.id === id);
   if (!item) return null;
 
-  const candidates: AssetCandidate[] = item.candidates ?? [];
+  const candidates: AssetCandidate[] = data ? workspaceAssetCandidates(data, kind, id) : [];
+  const adopt = (path: string) => {
+    try { selectAssetCandidate(kind, id, path); setPreview(null); setError(null); }
+    catch (err) { setError(err instanceof Error ? err.message : '采用版本失败，请刷新后重试'); }
+  };
   const sceneItem = item as { selectedImagePaths?: string[]; sceneReferenceMode?: 'multi' };
   const sceneSelectedPaths = kind === 'scene' && sceneItem.sceneReferenceMode === 'multi'
     ? (sceneItem.selectedImagePaths ?? [])
@@ -75,9 +81,10 @@ export default function AssetCandidatesModal({ kind, id, onClose }: Props) {
   const handleRegenerate = async () => {
     if (generating) return;
     setGenerating(true);
+    setError(null);
     try {
       await generateAsset(kind, id);
-    } catch { /* error shows on card */ } finally {
+    } catch (err) { setError(err instanceof Error ? err.message : '生成未完成，请检查原任务'); } finally {
       setGenerating(false);
     }
   };
@@ -115,6 +122,7 @@ export default function AssetCandidatesModal({ kind, id, onClose }: Props) {
           </button>
         </div>
 
+        {error && <div role="alert" className="px-4 py-2 text-sm text-red-400">{error}</div>}
         {/* Main preview */}
         <div className="flex-1 min-h-0 flex items-center justify-center bg-black/40 relative" style={{ minHeight: 320 }}>
           {current ? (
@@ -143,7 +151,7 @@ export default function AssetCandidatesModal({ kind, id, onClose }: Props) {
               )}
               {current !== item.assetImagePath && (
                 <button
-                  onClick={() => { selectAssetCandidate(kind, id, current); setPreview(null); }}
+                  onClick={() => adopt(current)}
                   className="absolute bottom-3 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-lg text-white text-[12px] transition-opacity hover:opacity-90"
                   style={{ background: 'var(--canvas-accent)' }}
                 >
@@ -166,7 +174,7 @@ export default function AssetCandidatesModal({ kind, id, onClose }: Props) {
               <button
                 key={c.path}
                 onClick={() => setPreview(c.path)}
-                onDoubleClick={() => { selectAssetCandidate(kind, id, c.path); setPreview(null); }}
+                onDoubleClick={() => adopt(c.path)}
                 className="relative shrink-0 rounded-lg overflow-hidden transition-all"
                 style={{
                   width: 72, height: 72,

@@ -198,6 +198,8 @@ interface ProjectState {
   switchProject: (id: string) => Promise<void>;
   /** Flush the live canvas into the active project's file. */
   flushActiveCanvas: () => Promise<void>;
+  /** Explicit replacement used by project snapshot restore, including empty canvases. */
+  replaceActiveCanvas: (nodes: Node[], edges: Edge[]) => Promise<void>;
   /** One-time legacy migration + initial project load. Call once at startup. */
   initialize: () => Promise<void>;
   setCover: (id: string, coverUrl: string) => void;
@@ -299,6 +301,20 @@ export const useProjectStore = create<ProjectState>()(
               ? { ...p, updatedAt: Date.now(), ...(coverUrl ? { coverUrl } : {}) }
               : p,
           ),
+        }));
+      },
+
+      replaceActiveCanvas: async (nodes, edges) => {
+        const { activeProjectId } = get();
+        if (!activeProjectId) throw new Error('当前没有可恢复的画布项目');
+        const repaired = repairNodeIntegrity(nodes);
+        useCanvasStore.setState({ nodes: repaired, edges, selectedNodeId: null });
+        markCanvasLoaded();
+        await writeCanvasFile(activeProjectId, repaired, edges);
+        set((state) => ({
+          projects: state.projects.map((project) => project.id === activeProjectId
+            ? { ...project, updatedAt: Date.now() }
+            : project),
         }));
       },
 

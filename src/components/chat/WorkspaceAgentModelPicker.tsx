@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Zap } from 'lucide-react';
+import { Check, ChevronDown, Settings2, Zap } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveApiKey } from '@/lib/credentials';
 import {
@@ -61,6 +61,13 @@ export default function WorkspaceAgentModelPicker({ scope, variant = 'dark', dis
     setOpen(false);
   };
 
+  const openSettings = () => {
+    setOpen(false);
+    window.dispatchEvent(new CustomEvent('kunpeng:open-settings', {
+      detail: { section: 'models' },
+    }));
+  };
+
   return (
     <div className="flex min-w-0 flex-1 items-center gap-0.5">
       <DeepseekHarnessControl providerId={selectedProviderId} variant={variant} disabled={disabled} compact />
@@ -110,13 +117,21 @@ export default function WorkspaceAgentModelPicker({ scope, variant = 'dark', dis
                 models,
                 configured: Boolean(resolveApiKey({ credentials, credentialRefs }, `provider:${providerId}`, providerApiKeys[providerId] ?? '').trim()),
               }))
-              // 未配置 API Key 的 provider 不列出；当前选中项除外（避免选择
-              // 凭空消失）。全部未配置时至少显示当前项并标注未配置。
-              .filter((entry) => entry.configured || decodeChatModel(selection)?.providerId === entry.providerId)
               .map(({ providerId, models, configured }) => (
                 <div key={providerId} className="py-0.5">
-                  <div className="px-3 py-1 text-[9.5px]" style={{ color: text }}>
-                    {CHAT_PROVIDER_LABELS[providerId] || providerId}
+                  <div className="flex items-center justify-between gap-2 px-3 py-1 text-[9.5px]" style={{ color: text }}>
+                    <span>{CHAT_PROVIDER_LABELS[providerId] || providerId}</span>
+                    {!configured && (
+                      <button
+                        type="button"
+                        onClick={openSettings}
+                        className="flex h-5 items-center gap-1 rounded px-1.5 hover:bg-black/5 dark:hover:bg-white/5"
+                        style={{ color: text }}
+                        title="打开模型与服务设置"
+                      >
+                        <Settings2 size={9} /> 去设置
+                      </button>
+                    )}
                   </div>
                   {models.map((model) => {
                     const value = encodeChatModel(providerId, model.value);

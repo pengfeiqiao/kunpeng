@@ -9,6 +9,9 @@ import {
   removeDir,
   BaseDirectory,
 } from '@tauri-apps/api/fs';
+import { ProjectWriteQueue } from './projectWriteQueue';
+
+const projectFileWrites = new ProjectWriteQueue();
 
 // ─── Architecture ────────────────────────────────────────────────────────
 // File-as-source-of-truth, one directory per AIGC project.
@@ -264,15 +267,18 @@ export async function writeProjectFile(
   id: string,
   relPath: string,
   contents: string,
+  options?: { requireSuccess?: boolean },
 ): Promise<void> {
   try {
-    await ensureProjectSubdirs(id);
     const path = `${projectDir(id)}/${relPath}`;
-    // Ensure parent dir exists
-    const parent = path.substring(0, path.lastIndexOf('/'));
-    if (parent) await createDir(parent, { dir: BaseDirectory.Home, recursive: true });
-    await writeTextFile({ path, contents }, { dir: BaseDirectory.Home });
+    await projectFileWrites.write(path, async () => {
+      await ensureProjectSubdirs(id);
+      const parent = path.substring(0, path.lastIndexOf('/'));
+      if (parent) await createDir(parent, { dir: BaseDirectory.Home, recursive: true });
+      await writeTextFile({ path, contents }, { dir: BaseDirectory.Home });
+    });
   } catch (err) {
+    if (options?.requireSuccess) throw new Error('项目文件保存失败，未确认落盘');
     console.warn('[projectStore] writeProjectFile failed:', err);
   }
 }

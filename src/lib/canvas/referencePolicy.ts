@@ -4,14 +4,13 @@ export interface VideoReferenceData {
   [key: string]: unknown;
 }
 
-const NON_REFERENCE_EDGE_RELATIONS = new Set(['version', 'composition']);
+const REFERENCE_EDGE_RELATIONS = new Set(['reference', 'workshop-reference']);
 
-/** History/provenance edges are visual metadata, never generation inputs. */
+/** Untyped legacy edges were explicit references. New typed relations must opt in. */
 export function isNonReferenceEdgeData(data: unknown): boolean {
   if (!data || typeof data !== 'object') return false;
-  return NON_REFERENCE_EDGE_RELATIONS.has(
-    String((data as { relation?: unknown }).relation ?? ''),
-  );
+  const relation = (data as { relation?: unknown }).relation;
+  return relation != null && relation !== '' && !REFERENCE_EDGE_RELATIONS.has(String(relation));
 }
 
 /**

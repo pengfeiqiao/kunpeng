@@ -9,6 +9,51 @@ import { useChatStore } from '@/stores';
 import { bindSessionToProjectRaw, createSessionRaw, loadSessionRaw } from '@/hooks/useSessions';
 import type { Session } from '@/types';
 
+const newProjectSessionGuards = new Map<string, () => Session>();
+
+/** Explicit project creation only. Never reparent an existing conversation. */
+export async function prepareNewProjectSession(
+  projectId: string, projectName: string, assertCurrent: () => void, open: () => Promise<void>,
+): Promise<string> {
+  assertCurrent();
+  const initial = useChatStore.getState();
+  if (initial.isStreaming || initial.streamingPhase !== 'idle') {
+    throw new Error('当前对话尚未空闲，创意尚未发送。请空闲后手动继续。');
+  }
+  if (newProjectSessionGuards.has(projectId)) throw new Error('此项目正在准备对话。');
+  let sessionId: string | undefined;
+  let valid = true;
+  const checkSession = () => {
+    const state = useChatStore.getState();
+    const current = state.sessions.find((item) => item.id === state.currentSessionId);
+    // createSessionRaw publishes its new session synchronously before its first await.
+    if (!sessionId && current?.projectId === projectId && current.id !== initial.currentSessionId) sessionId = current.id;
+    else if (state.currentSessionId !== (sessionId ?? initial.currentSessionId)) valid = false;
+  };
+  const verify = () => {
+    assertCurrent();
+    checkSession();
+    const state = useChatStore.getState();
+    const session = state.sessions.find((item) => item.id === sessionId);
+    if (!valid || !session || state.currentSessionId !== sessionId || session.projectId !== projectId
+      || state.isStreaming || state.streamingPhase !== 'idle') {
+      throw new Error('项目会话已变化，创意尚未发送。请手动继续。');
+    }
+    return session;
+  };
+  const unsubscribe = useChatStore.subscribe(checkSession);
+  newProjectSessionGuards.set(projectId, verify);
+  try {
+    const session = await createSessionRaw(`${projectName} · 对话1`, projectId);
+    if (!session || session.id !== verify().id) throw new Error('项目对话尚未准备好，创意尚未发送。');
+    await open();
+    return verify().id;
+  } finally {
+    unsubscribe();
+    newProjectSessionGuards.delete(projectId);
+  }
+}
+
 /** 项目的所有会话，新→旧排序 */
 export function listProjectSessions(projectId: string): Session[] {
   return useChatStore.getState().sessions
@@ -25,6 +70,8 @@ export function listProjectSessions(projectId: string): Session[] {
  * 流式中不切换项目会话；普通对话的原地归属不会打断流式状态。
  */
 export async function ensureProjectSession(projectId: string, projectName: string): Promise<Session | null> {
+  const creationGuard = newProjectSessionGuards.get(projectId);
+  if (creationGuard) return creationGuard();
   const store = useChatStore.getState();
   const current = store.sessions.find((s) => s.id === store.currentSessionId);
   if (current?.projectId === projectId) return current;

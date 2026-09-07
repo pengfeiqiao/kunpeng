@@ -182,7 +182,7 @@ export interface CoordinatorCallbacks {
   onComplete: (finalText: string) => void;
   onError: (error: Error) => void;
   /** 工具需要确认时调用，返回 true 表示允许执行 */
-  onToolConfirm?: (name: string, params: Record<string, unknown>, reason?: string) => Promise<boolean>;
+  onToolConfirm?: (name: string, params: Record<string, unknown>, reason?: string, signal?: AbortSignal) => Promise<boolean>;
   /** 子任务文本增量（用于显示任务进度） */
   onSubAgentDelta?: (text: string, event?: SubAgentEvent) => void;
   /** 上下文压缩开始时调用（用于 UI 反馈） */

@@ -282,7 +282,7 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeData>) {
               title="只使用提示词进入白模导演预演，不传入视频资产"
             />
           )}
-          <button onClick={() => { captureSnapshot(); deleteNode(id); }} className="flex flex-col items-center gap-1.5 px-3 py-2 min-w-[50px] rounded-xl text-[var(--canvas-text-2)] hover:text-red-500 hover:bg-[rgba(255,97,99,0.15)] transition-all" title="删除节点">
+          <button onClick={() => { captureSnapshot(); deleteNode(id); }} className="flex flex-col items-center gap-1.5 px-3 py-2 min-w-[50px] rounded-xl text-[var(--canvas-text-2)] hover:text-red-500 hover:bg-[rgba(255,97,99,0.15)] transition-all" title="从画布移除">
             <Trash2 size={16} /><span className="text-[11px] leading-none">删除</span>
           </button>
         </div>

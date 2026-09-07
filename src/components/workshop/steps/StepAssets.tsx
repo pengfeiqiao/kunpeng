@@ -2,7 +2,7 @@
  * StepAssets — ③资产图：角色立绘 + 场景概念图（一致性锚定）。
  * 卡片 = 图（或空位）+ 提示词 + 生成/重生成 + 本地上传兜底。
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { ImageIcon, Loader2, MapPin, Mic, MonitorPlay, MoreHorizontal, Package, Palette, RefreshCw, Sparkles, Trash2, Upload, User, Wand2, X } from 'lucide-react';
 import { open as openDialog, confirm } from '@tauri-apps/api/dialog';
 import { copyFile, createDir, BaseDirectory } from '@tauri-apps/api/fs';
@@ -13,6 +13,7 @@ import { useWorkshopStore } from '@/stores/workshopStore';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { nanoid } from 'nanoid';
 import AssetCandidatesModal from '../AssetCandidatesModal';
+import { workspaceAssetCandidates } from '@/lib/workspace/assetCandidates';
 import { buildAssetPromptsPrompt, buildVoiceDescPrompt } from '@/lib/workshop/workshopPrompts';
 import { dispatchWorkshopPrompt } from '../WorkshopChatPanel';
 import { buildStyleSection } from '../StyleSelector';
@@ -23,6 +24,8 @@ import { useChatStore } from '@/stores';
 import { message as tauriMessage } from '@tauri-apps/api/dialog';
 import { defaultNodeStyle } from '@/lib/canvas/layout';
 import ImageGenerationSettings, { type ImageEngineOption } from '../ImageGenerationSettings';
+import { encodeReferenceTransfer, projectTransferReferences, PROJECT_REFERENCE_MIME } from '@/lib/projectObjects/referenceTransfer';
+import { stableProjectObjectId } from '@/lib/projectObjects/migrate';
 
 const DEFAULT_VOICE_SAMPLE_LINE = '你好，很高兴认识你。';
 const GPT_ENGINE: ImageEngineOption = { value: 'gpt-image-2', label: 'GPT', title: 'GPT-Image-2 智能生图通道' };
@@ -62,6 +65,8 @@ export default function StepAssets() {
     globalColorPaletteId: s.data.globalColorPaletteId,
     shots: s.data.shots,
     assetsStatus: s.data.steps.assets.status,
+    projectObjects: s.data.projectObjects,
+    workspaceSubmissions: s.data.workspaceSubmissions,
   })));
   const markStepStatus = useWorkshopStore((s) => s.markStepStatus);
   const setActiveView = useChatStore((s) => s.setActiveView);
@@ -132,7 +137,7 @@ export default function StepAssets() {
               </h3>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {data.characters.map((c) => (
-                  <AssetCard key={c.id} kind="character" id={c.id} name={c.name} imagePath={c.assetImagePath} prompt={c.assetPrompt} promptMj={c.assetPromptMj} aspect="16/9" engine={c.assetEngine} assetResolution={c.assetResolution} assetAspectRatio={c.assetAspectRatio} candidateCount={c.candidates?.length ?? 0} voicePath={c.voicePath} voiceSource={c.voiceSource} />
+                  <AssetCard key={c.id} kind="character" id={c.id} name={c.name} imagePath={c.assetImagePath} prompt={c.assetPrompt} promptMj={c.assetPromptMj} aspect="16/9" engine={c.assetEngine} assetResolution={c.assetResolution} assetAspectRatio={c.assetAspectRatio} candidateCount={workspaceAssetCandidates(data, 'character', c.id).length} voicePath={c.voicePath} voiceSource={c.voiceSource} />
                 ))}
               </div>
             </section>
@@ -144,7 +149,7 @@ export default function StepAssets() {
               </h3>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {data.scenes.map((s) => (
-                  <AssetCard key={s.id} kind="scene" id={s.id} name={s.name} imagePath={s.assetImagePath} prompt={s.assetPrompt} promptMj={s.assetPromptMj} aspect="16/9" engine={s.assetEngine} assetResolution={s.assetResolution} assetAspectRatio={s.assetAspectRatio} candidateCount={s.candidates?.length ?? 0} />
+                  <AssetCard key={s.id} kind="scene" id={s.id} name={s.name} imagePath={s.assetImagePath} prompt={s.assetPrompt} promptMj={s.assetPromptMj} aspect="16/9" engine={s.assetEngine} assetResolution={s.assetResolution} assetAspectRatio={s.assetAspectRatio} candidateCount={workspaceAssetCandidates(data, 'scene', s.id).length} />
                 ))}
               </div>
             </section>
@@ -156,7 +161,7 @@ export default function StepAssets() {
               </h3>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {(data.props ?? []).map((p) => (
-                  <AssetCard key={p.id} kind="prop" id={p.id} name={p.name} imagePath={p.assetImagePath} prompt={p.assetPrompt} promptMj={p.assetPromptMj} aspect="16/9" engine={p.assetEngine} assetResolution={p.assetResolution} assetAspectRatio={p.assetAspectRatio} candidateCount={p.candidates?.length ?? 0} />
+                  <AssetCard key={p.id} kind="prop" id={p.id} name={p.name} imagePath={p.assetImagePath} prompt={p.assetPrompt} promptMj={p.assetPromptMj} aspect="16/9" engine={p.assetEngine} assetResolution={p.assetResolution} assetAspectRatio={p.assetAspectRatio} candidateCount={workspaceAssetCandidates(data, 'prop', p.id).length} />
                 ))}
               </div>
             </section>
@@ -181,7 +186,7 @@ export default function StepAssets() {
                     engine={p.assetEngine}
                     assetResolution={p.assetResolution}
                     assetAspectRatio={p.assetAspectRatio}
-                    candidateCount={p.candidates?.length ?? 0}
+                    candidateCount={workspaceAssetCandidates(data, 'colorPalette', p.id).length}
                     isGlobalPalette={data.globalColorPaletteId === p.id}
                     isDefaultPalette={p.source === 'default'}
                   />
@@ -195,14 +200,35 @@ export default function StepAssets() {
   );
 }
 
-function AiVoiceButton({ characterId }: { characterId: string }) {
+export interface AssetVoiceActions {
+  generate: (prompt: string) => Promise<boolean>;
+  upload: () => Promise<void>;
+  remove: () => void;
+  describe: () => void;
+}
+
+export interface FocusedAssetActions {
+  isCurrent: () => boolean;
+  mutate: (action: () => void) => void;
+  uploadImage: () => Promise<void>;
+}
+
+export function AiVoiceButton({ characterId, actions }: { characterId: string; actions?: AssetVoiceActions }) {
   const [open, setOpen] = useState(false);
   const [desc, setDesc] = useState('');
   const [generating, setGenerating] = useState(false);
   const setCharacterVoice = useWorkshopStore((s) => s.setCharacterVoice);
+  const submitting = useRef(false);
 
   const handleGenerate = async () => {
-    if (!desc.trim()) return;
+    if (!desc.trim() || submitting.current) return;
+    if (actions) {
+      submitting.current = true;
+      setGenerating(true);
+      try { if (await actions.generate(buildVoiceSamplePrompt(desc))) setOpen(false); }
+      finally { submitting.current = false; setGenerating(false); }
+      return;
+    }
     const { useSettingsStore } = await import('@/stores/settingsStore');
     const { resolveApiKey } = await import('@/lib/credentials');
     const speechSettings = useSettingsStore.getState();
@@ -217,7 +243,7 @@ function AiVoiceButton({ characterId }: { characterId: string }) {
       const { fetchSpeechAudioBytes, generateSpeech } = await import('@/lib/doubaoSpeech/client');
       const resp = await generateSpeech({ text_prompt: buildVoiceSamplePrompt(desc) });
       const arr = await fetchSpeechAudioBytes(resp);
-      const rel = `.kunpeng/aigc-memory/projects/${project.id}/assets/voices/${characterId.replace(/[^\w-]+/g, '_')}-ai.mp3`;
+      const rel = `.kunpeng/aigc-memory/projects/${project.id}/assets/voices/${characterId.replace(/[^\w-]+/g, '_')}-ai-${nanoid(12)}.mp3`;
       await createDir(`.kunpeng/aigc-memory/projects/${project.id}/assets/voices`, { dir: BaseDirectory.Home, recursive: true }).catch(() => {});
       const { writeBinaryFile } = await import('@tauri-apps/api/fs');
       await writeBinaryFile(rel, arr, { dir: BaseDirectory.Home });
@@ -246,13 +272,15 @@ function AiVoiceButton({ characterId }: { characterId: string }) {
     <div className="flex items-center gap-1.5 flex-wrap">
       <input
         value={desc}
+        disabled={generating}
         onChange={(e) => setDesc(e.target.value)}
         placeholder="音色或台词，如：用河南方言说：爸..."
         className="w-56 px-2 py-1 rounded-lg text-[11px] bg-[rgba(255,255,255,0.04)] border border-[var(--canvas-node-border)] text-[var(--canvas-text-1)] focus:outline-none focus-visible:border-[var(--canvas-accent)]"
         onKeyDown={(e) => { if (e.key === 'Enter') void handleGenerate(); }}
       />
       <button
-        onClick={() => dispatchWorkshopPrompt(buildVoiceDescPrompt(characterId))}
+        onClick={() => actions ? actions.describe() : dispatchWorkshopPrompt(buildVoiceDescPrompt(characterId))}
+        disabled={generating}
         className="px-2 py-1 rounded-lg text-[10px] bg-[rgba(255,255,255,0.06)] text-[var(--canvas-text-3)] hover:text-[var(--canvas-text-1)] transition-colors"
         title="AI 根据角色特征自动生成音色描述"
       >
@@ -276,7 +304,7 @@ function AiVoiceButton({ characterId }: { characterId: string }) {
   );
 }
 
-function AssetCard({
+export function AssetCard({
   kind,
   id,
   name,
@@ -294,6 +322,9 @@ function AssetCard({
   isGlobalPalette,
   isDefaultPalette,
   colors,
+  focused,
+  voiceActions,
+  assetActions,
 }: {
   kind: 'character' | 'scene' | 'prop' | 'colorPalette';
   id: string;
@@ -314,6 +345,10 @@ function AssetCard({
   isGlobalPalette?: boolean;
   isDefaultPalette?: boolean;
   colors?: { hex: string; label: string }[];
+  /** Focused reuse excludes manual canvas synchronization. */
+  focused?: 'voice' | 'asset';
+  voiceActions?: AssetVoiceActions;
+  assetActions?: FocusedAssetActions;
 }) {
   const setAssetPrompt = useWorkshopStore((s) => s.setAssetPrompt);
   const setAssetImage = useWorkshopStore((s) => s.setAssetImage);
@@ -342,6 +377,7 @@ function AssetCard({
   const activeAspectRatio = assetAspectRatio ?? '16:9';
   const ratioOptions = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '21:9'];
   const resolutionOptions = ['1k', '2k', '4k'];
+  const mutate = (action: () => void) => assetActions ? assetActions.mutate(action) : action();
 
   const handleDelete = async () => {
     if (kind === 'colorPalette') {
@@ -362,6 +398,7 @@ function AssetCard({
   };
 
   const handleGenerate = async () => {
+    if (assetActions && !assetActions.isCurrent()) return;
     if (generating) return;
     setGenerating(true);
     setError(null);
@@ -375,6 +412,7 @@ function AssetCard({
   };
 
   const handleGenerateSceneVariants = async () => {
+    if (assetActions && !assetActions.isCurrent()) return;
     if (iteratingScene || kind !== 'scene') return;
     setIteratingScene(true);
     setError(null);
@@ -389,6 +427,7 @@ function AssetCard({
   };
 
   const handleUpload = async () => {
+    if (assetActions) { await assetActions.uploadImage(); return; }
     const selected = await openDialog({ filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
     if (!selected || Array.isArray(selected)) return;
     const project = useWorkshopStore.getState().project;
@@ -401,6 +440,7 @@ function AssetCard({
   };
 
   const handleVoiceUpload = async () => {
+    if (voiceActions) { await voiceActions.upload(); return; }
     const selected = await openDialog({ filters: [{ name: '音频', extensions: ['mp3', 'wav', 'm4a', 'ogg'] }] });
     if (!selected || Array.isArray(selected)) return;
     const project = useWorkshopStore.getState().project;
@@ -413,9 +453,26 @@ function AssetCard({
     setCharacterVoice(id, `${home}${rel}`, 'upload');
   };
 
+  const voiceControls = <div className="flex flex-col gap-3 min-w-0">
+    {voicePath && <div className="flex items-center gap-2 min-w-0">
+      <Mic size={14} className="shrink-0" />
+      <audio src={convertFileSrc(voicePath)} controls className="h-8 flex-1 min-w-0" />
+      <span className="text-[11px] text-[var(--canvas-text-3)]">{voiceSource === 'tts' ? '生成' : voiceSource === 'canvas' ? '画布' : '上传'}</span>
+      <button title="移除音色" onClick={() => voiceActions ? voiceActions.remove() : removeCharacterVoice(id)}><Trash2 size={14} /></button>
+    </div>}
+    <div className="flex flex-wrap items-center gap-2">
+      <button onClick={() => void handleVoiceUpload()} className="flex items-center gap-1 px-2 py-1 text-[12px]" title="上传音色"><Upload size={13} />上传音色</button>
+      <AiVoiceButton characterId={id} actions={voiceActions} />
+    </div>
+  </div>;
+
+  if (focused === 'voice') return <section aria-label={`${name} 音色`} data-asset-id={id} className="min-w-0">
+    <h3 className="text-[14px] font-medium mb-3">{name}</h3>{voiceControls}
+  </section>;
+
   return (
-    <div className="rounded-xl border border-[var(--canvas-node-border)] overflow-hidden group relative" style={{ background: 'var(--canvas-node-bg)' }} data-asset-id={id} data-asset-kind={kind}>
-      {!isDefaultPalette && !(kind === 'scene' && imagePath) && (
+    <div className={`${focused ? 'workspace-focused-asset' : 'rounded-xl border border-[var(--canvas-node-border)]'} overflow-hidden group relative`} style={{ background: 'var(--canvas-node-bg)' }} data-asset-id={id} data-asset-kind={kind}>
+      {!focused && !isDefaultPalette && !(kind === 'scene' && imagePath) && (
         <button
           onClick={handleDelete}
           className="absolute top-1.5 right-1.5 z-10 p-1 rounded-lg bg-black/60 text-gray-400 hover:text-red-400 opacity-70 hover:opacity-100 transition-all"
@@ -426,8 +483,17 @@ function AssetCard({
       )}
       <div
         className="relative bg-black/30 flex items-center justify-center cursor-pointer"
+        draggable
+        onDragStart={(event) => {
+          const data = useWorkshopStore.getState().data;
+          const objectId = stableProjectObjectId(kind === 'colorPalette' ? 'scene-asset' : kind, id);
+          const reference = data && projectTransferReferences(data).find((item) => item.objectId === objectId);
+          if (!data || !reference) { event.preventDefault(); return; }
+          event.dataTransfer.setData(PROJECT_REFERENCE_MIME, encodeReferenceTransfer(data.projectId, reference));
+          event.dataTransfer.effectAllowed = 'copy';
+        }}
         style={{ aspectRatio: aspect }}
-        onClick={() => setModalOpen(true)}
+        onClick={() => { if (!assetActions || assetActions.isCurrent()) setModalOpen(true); }}
         title="点击查看候选图集 / 放大"
       >
         {imagePath ? (
@@ -437,7 +503,7 @@ function AssetCard({
         ) : (
           <ImageIcon size={20} className="text-[var(--canvas-text-3)]" />
         )}
-        {candidateCount > 1 && (
+        {candidateCount > 0 && (
           <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px]">
             {candidateCount} 候选
           </span>
@@ -483,7 +549,7 @@ function AssetCard({
                   >
                     <Upload size={11} /> 上传本地图替换
                   </button>
-                  {imagePath && (
+                  {imagePath && !focused && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -526,7 +592,7 @@ function AssetCard({
           <p className="flex-1 text-[12px] text-[var(--canvas-text-1)] truncate">{name}</p>
           {kind === 'colorPalette' && (
             <button
-              onClick={() => setGlobalColorPalette(isGlobalPalette ? undefined : id)}
+              onClick={() => mutate(() => setGlobalColorPalette(isGlobalPalette ? undefined : id))}
               className="px-1.5 py-0.5 rounded-md text-[10px] border border-[var(--canvas-node-border)] transition-colors shrink-0"
               style={{
                 color: isGlobalPalette ? 'var(--canvas-accent)' : 'var(--canvas-text-3)',
@@ -543,23 +609,23 @@ function AssetCard({
           engine={activeEngine}
           engineOptions={kind === 'colorPalette' ? [GPT_ENGINE, SEEDREAM_ENGINE] : [GPT_ENGINE, SEEDREAM_ENGINE, MIDJOURNEY_V82_ENGINE, MIDJOURNEY_V81_ENGINE]}
           onEngineChange={(eid) => {
-            setAssetEngine(kind, id, eid);
+            mutate(() => setAssetEngine(kind, id, eid));
           }}
           ratio={activeAspectRatio}
           ratioOptions={ratioOptions}
-          onRatioChange={(ratio) => setAssetAspectRatio(kind, id, ratio)}
+          onRatioChange={(ratio) => mutate(() => setAssetAspectRatio(kind, id, ratio))}
           resolution={isMj ? undefined : activeResolution}
           resolutionOptions={resolutionOptions}
-          onResolutionChange={(resolution) => setAssetResolution(kind, id, resolution)}
+          onResolutionChange={(resolution) => mutate(() => setAssetResolution(kind, id, resolution))}
         />
         <div className="mt-1">
-          {kind === 'character' && !isMj && prompt && !/三视图|设定图|character design sheet|three-view/i.test(prompt) && (
+          {!focused && kind === 'character' && !isMj && prompt && !/三视图|设定图|character design sheet|three-view/i.test(prompt) && (
             <p className="text-[10px] text-amber-400/90 mb-1">旧版提示词，生成时将自动改用三视图模板；点上方「AI 写提示词」可更新</p>
           )}
           <SmartTextarea
             rows={2}
             value={isMj ? (promptMj ?? '') : (prompt ?? '')}
-            onChange={(v) => setAssetPrompt(kind, id, v, isMj ? 'mj' : 'gpt')}
+            onChange={(v) => mutate(() => setAssetPrompt(kind, id, v, isMj ? 'mj' : 'gpt'))}
             placeholder={kind === 'colorPalette' ? '一张干净的数字色卡参考设计图，16:9 横向构图…' : isMj ? 'character design sheet, front face portrait left, three-view right, ... (English prompt, no --ar)' : '角色设计三视图组合图：左侧正脸肖像大图，右侧三视图…'}
             editorTitle={`${isMj ? 'MJ' : activeEngine === 'seedream-v5-pro' ? '豆包 / GPT' : 'GPT'} 提示词 · ${name}`}
             className="w-full resize-none bg-[rgba(255,255,255,0.03)] rounded-lg px-2 py-1.5 text-[12px] text-[var(--canvas-text-2)] focus:outline-none border border-transparent focus:border-[var(--canvas-node-border-selected)] placeholder:text-[var(--canvas-text-3)]"
@@ -570,14 +636,14 @@ function AssetCard({
             <SmartTextarea
               rows={2}
               value={usagePrompt ?? ''}
-              onChange={(v) => setColorPaletteUsagePrompt(id, v)}
+              onChange={(v) => mutate(() => setColorPaletteUsagePrompt(id, v))}
               placeholder="画面配色严格参考【@色卡】…"
               editorTitle={`色卡使用提示词 · ${name}`}
               className="w-full resize-none bg-[rgba(255,255,255,0.03)] rounded-lg px-2 py-1.5 text-[12px] text-[var(--canvas-text-2)] focus:outline-none border border-transparent focus:border-[var(--canvas-node-border-selected)] placeholder:text-[var(--canvas-text-3)]"
             />
           </div>
         )}
-        {kind === 'character' && (
+        {kind === 'character' && voiceActions ? <div className="mt-2">{voiceControls}</div> : kind === 'character' && (
           <div className="mt-1.5 flex items-center gap-1.5">
             {voicePath ? (
               <>
@@ -611,3 +677,5 @@ function AssetCard({
     </div>
   );
 }
+
+export type AssetCardProps = ComponentProps<typeof AssetCard>;

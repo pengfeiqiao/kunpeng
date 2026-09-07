@@ -95,7 +95,7 @@ function clampDuration(value: number): number {
   return Math.min(180, Math.max(4, Math.round(value || 5)));
 }
 
-export async function rewriteUniversalVideoPrompt(input: RewriteUniversalVideoPromptInput): Promise<string> {
+export async function rewriteUniversalVideoPrompt(input: RewriteUniversalVideoPromptInput, options: { signal?: AbortSignal } = {}): Promise<string> {
   const refs = input.references.length > 0
     ? input.references.map((ref, index) => `${index + 1}. ${ref.label}${ref.kind ? `（${ref.kind}）` : ''}`).join('\n')
     : '无参考素材';
@@ -114,7 +114,7 @@ ${input.prompt.trim()}
   const result = await quickChat([
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'user', content: userPrompt },
-  ], { maxTokens: 16000, continueOnTruncation: true });
+  ], { maxTokens: 16000, continueOnTruncation: true, ...options });
   const cleaned = result.trim().replace(/^```(?:text|markdown)?\s*/i, '').replace(/\s*```$/, '').trim();
   if (!cleaned) throw new Error('模型没有返回可用的通用视频提示词');
   const audit = auditUniversalVideoPrompt(cleaned, duration);
@@ -125,8 +125,9 @@ ${input.prompt.trim()}
 export async function rewriteVideoPrompt(
   input: RewriteUniversalVideoPromptInput,
   template: VideoPromptTemplate,
+  options: { signal?: AbortSignal } = {},
 ): Promise<string> {
-  if (template === 'universal') return rewriteUniversalVideoPrompt(input);
+  if (template === 'universal') return rewriteUniversalVideoPrompt(input, options);
 
   const refs = input.references.length > 0
     ? input.references.map((ref, index) => `${index + 1}. ${ref.label}${ref.kind ? `（${ref.kind}）` : ''}`).join('\n')
@@ -144,7 +145,7 @@ ${input.prompt.trim()}
   const result = await quickChat([
     { role: 'system', content: CLASSIC_SYSTEM_PROMPT },
     { role: 'user', content: userPrompt },
-  ], { maxTokens: 16000, continueOnTruncation: true });
+  ], { maxTokens: 16000, continueOnTruncation: true, ...options });
   const cleaned = result.trim().replace(/^```(?:text|markdown)?\s*/i, '').replace(/\s*```$/, '').trim();
   if (!cleaned) throw new Error('模型没有返回可用的经典版视频提示词');
   return cleaned;

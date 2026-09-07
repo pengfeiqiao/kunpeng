@@ -4,6 +4,8 @@ import { isToolEnabled } from './toolGating';
 import { useChatStore } from '@/stores/chatStore';
 import { PaidToolIdempotencyGate, type PaidExecutionContext } from './paidToolIdempotency';
 import { summarizeTrajectoryValue } from './evolutionPolicy';
+import { checkWorkspaceDispatch } from './workspaceToolScope';
+import { withWorkspaceProjectBinding } from './workspaceProjectGeneration';
 
 const TOOL_TEXT_DESCRIPTION_LIMIT = 900;
 const TOOL_TEXT_PARAM_DESCRIPTION_LIMIT = 220;
@@ -36,7 +38,7 @@ export class ToolRegistry {
   }
 
   register(tool: Tool): void {
-    this.tools.set(tool.definition.name, tool);
+    this.tools.set(tool.definition.name, withWorkspaceProjectBinding(tool));
   }
 
   get(name: string): Tool | undefined {
@@ -120,6 +122,8 @@ export class ToolRegistry {
 
     const bound = context.runId ? this.runContexts.get(context.runId) : undefined;
     const executionContext: ToolExecutionContext = { ...bound, ...context };
+    const scopeError = checkWorkspaceDispatch(name, params, executionContext);
+    if (scopeError) return { success: false, output: '', error: scopeError };
     const paidRunId = executionContext.idempotencyRunId ?? executionContext.runId;
     const blocked = this.paidGate.reserve(paidRunId, name, params);
     if (blocked) return { success: false, output: '', error: blocked };
@@ -204,7 +208,6 @@ import { allProjectTools } from './tools/projectTools';
 import { allAppTools } from './tools/appTools';
 import { allDirectorTools } from './tools/directorTools';
 import { taskStatusTool } from './tools/taskStatusTool';
-import { allStoryboardTools } from './tools/storyboardTools';
 import { videoGenerateTool } from './tools/videoGenerateTool';
 import { imageGenerateTool } from './tools/imageGenerateTool';
 import { memoryWriteTool } from './tools/memoryTool';
@@ -256,9 +259,6 @@ export function createDefaultRegistry(): ToolRegistry {
     registry.register(tool);
   }
   for (const tool of allWorkshopTools) {
-    registry.register(tool);
-  }
-  for (const tool of allStoryboardTools) {
     registry.register(tool);
   }
   for (const tool of allCopywritingTools) {

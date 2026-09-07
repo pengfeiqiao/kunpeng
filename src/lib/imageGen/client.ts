@@ -12,11 +12,11 @@ import { useSettingsStore, type ImageApiSlot } from '@/stores/settingsStore';
 import { resolveSlotApiKey } from '@/lib/credentials';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { normalizeGptImage2Size, normalizeSeedreamProSize, fitSeedreamProPixelSize } from './size';
+import { imageAttemptStopError } from './attemptPolicy';
 import {
   PaidSubmissionUnknownError,
   PaidTaskCreatedError,
   isAmbiguousPaidSubmitStatus,
-  shouldStopAutomaticPaidFallback,
 } from '@/lib/billingSafety';
 import {
   APIMART_SEEDREAM_ENDPOINT,
@@ -53,6 +53,8 @@ export interface ImageResult {
 }
 
 export interface GenerateImageParams {
+  /** Opt-in workspace policy: an unsuccessful attempt never resubmits automatically. */
+  strictPaidSafety?: boolean;
   prompt: string;
   model?: string;
   size?: string;
@@ -673,7 +675,8 @@ async function tryGenerate(
               }
               break;
             } catch (e) {
-              if (shouldStopAutomaticPaidFallback(e, 'image')) throw e;
+              const stop = imageAttemptStopError(e, params.strictPaidSafety);
+              if (stop) throw stop;
               subErr = `${m}: ${e instanceof Error ? e.message : String(e)}`;
               console.warn(`⚠️ [${slot.label}] ${subErr}`);
               result = undefined!;
@@ -732,7 +735,8 @@ async function tryGenerate(
       console.log(`✅ [${slot.label}] ${model} 生成成功，耗时 ${((Date.now() - t1) / 1000).toFixed(1)}s`);
       return { success: true, imagePath: savedPath, imageUrl: displayUrl, modelUsed: model, apiUsed: slot.label };
     } catch (err) {
-      if (shouldStopAutomaticPaidFallback(err, 'image')) throw err;
+      const stop = imageAttemptStopError(err, params.strictPaidSafety);
+      if (stop) throw stop;
       if (paidResultReceived) {
         lastError = `[${slot.label}] ${model}: 生成结果已返回但本地保存失败：${err instanceof Error ? err.message : String(err)}`;
         errors.push(lastError);

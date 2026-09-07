@@ -4,7 +4,7 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, ChevronRight, ChevronUp, Clapperboard, Crosshair, Grid2X2, ImagePlus, Loader2, Maximize2, MonitorPlay, MoreHorizontal, Palette, Pause, Play, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, Clapperboard, Crosshair, Grid2X2, ImagePlus, LayoutList, Loader2, Maximize2, MessageSquarePlus, MonitorPlay, MoreHorizontal, Palette, Pause, Play, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { copyFile, createDir, BaseDirectory } from '@tauri-apps/api/fs';
 import { homeDir } from '@tauri-apps/api/path';
@@ -47,6 +47,14 @@ import { Z, useEscapeClose } from '@/lib/ui/layers';
 import { sendStoryboardFrameToCanvas } from '@/lib/workshop/storyboardBridge';
 import VideoPromptVersionSwitch from '../VideoPromptVersionSwitch';
 import type { VideoPromptTemplate } from '@/lib/videoPrompt/prompt';
+import { stableProjectObjectId } from '@/lib/projectObjects/migrate';
+import {
+  createProjectConversationReference,
+  dispatchProjectAgentContext,
+} from '@/lib/projectObjects/conversationRefs';
+import { workshopShotObject } from '@/lib/projectObjects/workshopCollaboration';
+import ProjectReferenceSource from '@/components/chat/ProjectReferenceSource';
+import { encodeReferenceTransfer, PROJECT_REFERENCE_MIME } from '@/lib/projectObjects/referenceTransfer';
 
 const cellInput = 'bg-transparent text-[11px] text-[var(--canvas-text-1)] w-full rounded placeholder:text-[var(--canvas-text-3)] focus:outline-none hover:bg-[rgba(255,255,255,0.04)] focus-visible:ring-1 focus-visible:ring-[var(--canvas-accent)]';
 
@@ -171,7 +179,7 @@ function appendStoryboardCandidate(frame: StoryboardFrame, path: string, prompt:
   return [...candidates, { path, source: 'generate', engineId, prompt, createdAt: Date.now() }];
 }
 
-type PaletteOption = {
+export type PaletteOption = {
   id: string;
   name: string;
   description?: string;
@@ -435,7 +443,7 @@ function PaletteSwatches({ palette }: { palette?: PaletteOption }) {
   );
 }
 
-function PaletteMenu({ value, palettes, placeholder, followLabel, onChange, className = '' }: {
+export function PaletteMenu({ value, palettes, placeholder, followLabel, onChange, className = '' }: {
   value?: string;
   palettes: PaletteOption[];
   placeholder: string;
@@ -644,6 +652,7 @@ export default function StepPrompts() {
     videoRatio: s.data.videoRatio,
     videoPromptTemplate: s.data.videoPromptTemplate,
     promptsStatus: s.data.steps.prompts.status,
+    projectViewState: s.data.projectViewState,
   })));
   const updateShot = useWorkshopStore((s) => s.updateShot);
   const removeShot = useWorkshopStore((s) => s.removeShot);
@@ -651,11 +660,18 @@ export default function StepPrompts() {
   const markStepStatus = useWorkshopStore((s) => s.markStepStatus);
   const setGlobalColorPalette = useWorkshopStore((s) => s.setGlobalColorPalette);
   const setVideoPromptTemplate = useWorkshopStore((s) => s.setVideoPromptTemplate);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const updateProjectViewState = useWorkshopStore((s) => s.updateProjectViewState);
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    const state = useWorkshopStore.getState().data;
+    const selected = state?.projectViewState?.selectedShotId;
+    const shot = state?.shots.find((item) => item.id === selected || item.shotNo === selected);
+    return shot ? new Set([shot.shotNo]) : new Set();
+  });
   const [directorAvailability, setDirectorAvailability] = useState<Record<string, DirectorAvailability>>({});
   const [toolbarMoreOpen, setToolbarMoreOpen] = useState(false);
   const setActiveView = useChatStore((s) => s.setActiveView);
   const [colWidths, setColWidths] = useState<Record<ColKey, number>>(loadColWidths);
+  const shotDisplayMode = data?.projectViewState?.shotDisplayMode ?? 'table';
 
   const handleResize = useCallback((key: ColKey, w: number) => {
     setColWidths((prev) => {
@@ -724,10 +740,16 @@ export default function StepPrompts() {
   const toggle = useCallback((no: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(no)) next.delete(no); else next.add(no);
+      if (next.has(no)) {
+        next.delete(no);
+      } else {
+        next.add(no);
+        const shot = useWorkshopStore.getState().data?.shots.find((item) => item.shotNo === no);
+        updateProjectViewState({ selectedShotId: shot?.id ?? no });
+      }
       return next;
     });
-  }, []);
+  }, [updateProjectViewState]);
 
   const patchShot = useCallback((shot: WsShot, patch: Partial<WsShot>) => {
     if (!shouldRemapRefs(patch)) {
@@ -769,6 +791,20 @@ export default function StepPrompts() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex h-9 items-center rounded-lg border border-[var(--canvas-node-border)] p-0.5" aria-label="镜头展示方式">
+            <button
+              type="button"
+              onClick={() => updateProjectViewState({ shotDisplayMode: 'table' })}
+              className={`flex h-7 w-8 items-center justify-center rounded-md ${shotDisplayMode === 'table' ? 'bg-[var(--canvas-controls-hover)] text-[var(--canvas-text-1)]' : 'text-[var(--canvas-text-3)]'}`}
+              title="表格编辑"
+            ><LayoutList size={13} /></button>
+            <button
+              type="button"
+              onClick={() => updateProjectViewState({ shotDisplayMode: 'cards' })}
+              className={`flex h-7 w-8 items-center justify-center rounded-md ${shotDisplayMode === 'cards' ? 'bg-[var(--canvas-controls-hover)] text-[var(--canvas-text-1)]' : 'text-[var(--canvas-text-3)]'}`}
+              title="卡片总览"
+            ><Grid2X2 size={13} /></button>
+          </div>
           <button
             onClick={openDirectorHub}
             disabled={data.shots.length === 0}
@@ -822,6 +858,42 @@ export default function StepPrompts() {
 
       {data.shots.length === 0 ? (
         <p className="text-center py-16 text-[12px] text-[var(--canvas-text-3)]">先完成第②步拆解，分镜表会自动出现在这里</p>
+      ) : shotDisplayMode === 'cards' ? (
+        <div className="mt-5 grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {data.shots.map((shot) => (
+            <article key={shot.shotNo} className="min-w-0 rounded-xl border border-[var(--canvas-node-border)] bg-[var(--canvas-node-bg)] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-mono text-[11px] font-semibold text-[var(--canvas-accent)]">{shot.shotNo}</div>
+                  <p className="mt-2 line-clamp-3 text-[12px] leading-5 text-[var(--canvas-text-1)]">{shot.description || '尚未填写画面描述'}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateProjectViewState({ shotDisplayMode: 'table', selectedShotId: shot.id ?? shot.shotNo });
+                    setExpanded(new Set([shot.shotNo]));
+                  }}
+                  className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-[var(--canvas-node-border)] px-2.5 text-[10px] text-[var(--canvas-text-2)] hover:bg-[var(--canvas-controls-hover)] hover:text-[var(--canvas-text-1)]"
+                >编辑详情 <ChevronRight size={11} /></button>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-x-3 gap-y-2 border-t border-[var(--canvas-node-border)] pt-3">
+                {[
+                  ['对白', shot.dialogue || '无'],
+                  ['景别', shot.shotType || '未定'],
+                  ['运镜', shot.camera || '未定'],
+                  ['情绪', shot.mood || '未定'],
+                  ['时长', shot.durationSec ? `${shot.durationSec}s` : '未定'],
+                  ['比例', shot.videoRatio || data.videoRatio || '未定'],
+                ].map(([label, value]) => (
+                  <div key={label} className="min-w-0">
+                    <div className="text-[9px] text-[var(--canvas-text-3)]">{label}</div>
+                    <div className="mt-0.5 truncate text-[10px] text-[var(--canvas-text-2)]" title={String(value)}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
       ) : (
         <div className="mt-5 overflow-x-auto rounded-xl border border-[var(--canvas-node-border)]">
           <table className="w-full text-[11px]" style={{ tableLayout: 'fixed', minWidth: 1100 }}>
@@ -1226,15 +1298,24 @@ function SceneRefSelector({ shot, scene, scenes, characters, props, colorPalette
   );
 }
 
-function AudioPromptsSection({ shot, characters, onPatch }: {
+export interface AudioPromptsActions {
+  generate: () => Promise<void>;
+  trim: () => Promise<void>;
+  autoFill: () => void;
+}
+
+export function AudioPromptsSection({ shot, characters, onPatch, actions }: {
   shot: WsShot;
   characters: { id: string; name: string; voicePath?: string }[];
   onPatch: (p: Partial<WsShot>) => void;
+  actions?: AudioPromptsActions;
 }) {
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState('');
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const submitting = useRef(false);
+  useEffect(() => () => { audioRef.current?.pause(); audioRef.current = null; }, []);
   const globalVideoModel = useWorkshopStore((s) => s.data?.videoModel);
   // 音频总时长上限跟当前分镜有效模型走：Seedance 2.0 限 15s、2.5 限 30s
   const audioLimitSec = (shot.videoModel || globalVideoModel) === 'seedance-2.5' ? 30 : 15;
@@ -1250,11 +1331,12 @@ function AudioPromptsSection({ shot, characters, onPatch }: {
     const character = characters.find((item) => item.id === cid);
     return character ?? { id: cid, name: `未关联角色（${cid}）` };
   });
-  const voiceIds = new Set(shot.voiceCharacterIds ?? []);
+  const voiceIds = new Set(shot.voiceCharacterIds ?? characters.filter((char) => char.voicePath).map((char) => char.id));
   const totalDuration = audios.reduce((s, a) => s + (a.trimmedDuration ?? a.duration), 0);
   const roundedTotal = Math.round(totalDuration * 10) / 10;
 
   const autoFillPrompts = () => {
+    if (actions) { actions.autoFill(); return; }
     dispatchWorkshopPrompt(buildAudioPromptsPrompt(shot.shotNo));
   };
 
@@ -1267,12 +1349,20 @@ function AudioPromptsSection({ shot, characters, onPatch }: {
   };
 
   const toggleVoiceAsset = (charId: string) => {
-    const next = new Set(shot.voiceCharacterIds ?? []);
+    const next = new Set(voiceIds);
     if (next.has(charId)) next.delete(charId); else next.add(charId);
     onPatch({ voiceCharacterIds: [...next] });
   };
 
   const handleGenerate = async () => {
+    if (submitting.current) return;
+    if (actions) {
+      submitting.current = true;
+      setGenerating(true);
+      try { await actions.generate(); }
+      finally { submitting.current = false; setGenerating(false); }
+      return;
+    }
     const { useSettingsStore } = await import('@/stores/settingsStore');
     const { resolveApiKey } = await import('@/lib/credentials');
     const speechSettings = useSettingsStore.getState();
@@ -1346,7 +1436,7 @@ function AudioPromptsSection({ shot, characters, onPatch }: {
             disabled={generating || prompts.filter((p) => p.prompt.trim()).length === 0}
             className="px-2 py-1 rounded-md text-[11px] bg-[rgba(255,255,255,0.06)] border border-[var(--canvas-node-border)] text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)] transition-colors disabled:opacity-40"
           >
-            {generating ? `生成中 ${progress}` : '生成全部配音'}
+            {generating ? `生成中 ${progress}` : actions ? '生成未提交配音' : '生成全部配音'}
           </button>
         </div>
       </div>
@@ -1430,6 +1520,7 @@ function AudioPromptsSection({ shot, characters, onPatch }: {
           {roundedTotal > audioLimitSec && (
             <button
               onClick={async () => {
+                if (actions) { await actions.trim(); return; }
                 const data = useWorkshopStore.getState().data;
                 if (!data) return;
                 const { trimAudiosToFit } = await import('@/lib/doubaoSpeech/trim');
@@ -1455,7 +1546,9 @@ function AudioPromptsSection({ shot, characters, onPatch }: {
   );
 }
 
-function StoryboardModal({ shot, characters, scenes, props, colorPalettes, globalRatio, globalColorPaletteId, onPatch, onClose }: {
+// Legacy viewer retained for compatibility with old project data. New projects do
+// not expose this entry point; storyboards are migrated to historical media.
+export function LegacyStoryboardModal({ shot, characters, scenes, props, colorPalettes, globalRatio, globalColorPaletteId, onPatch, onClose }: {
   shot: WsShot;
   characters: { id: string; name: string; assetImagePath?: string; voicePath?: string }[];
   scenes: { id: string; name: string; assetImagePath?: string; selectedImagePaths?: string[]; sceneReferenceMode?: 'multi' }[];
@@ -1897,53 +1990,15 @@ function StoryboardModal({ shot, characters, scenes, props, colorPalettes, globa
     setAssistantStatus(`已新增第 ${startIndex + 1}-${startIndex + additions.length} 张空分镜。可以让 AI 助手继续补写这些提示词。`);
   };
 
-  const askAgentForFrames = async () => {
-    const styleSection = await buildStyleSection({ includeMidjourney: false });
-    writingInitialSig.current = frameSignature;
-    setStoryboardWriting(true);
-    setAssistantRunActive(true);
-    setAssistantSawStream(false);
-    setAssistantStatus(`已发送：准备为 ${shot.shotNo} 创作 8 张故事板提示词。`);
-    const referenceOrderText = storyboardRefs.length
-      ? storyboardRefs.map((ref) => `${ref.label}=${ref.name}`).join('\n')
-      : '暂无 @图片N 资产。请先提醒用户补齐场景/角色资产，不要凭空写 @图片编号。';
-    const sceneLabels = storyboardRefs.filter((ref) => ref.kind === 'scene').map((ref) => ref.label).join('、') || '@图片一';
-    const characterLabels = storyboardRefs.filter((ref) => ref.kind === 'character').map((ref) => `${ref.name.replace(/^角色：/, '')}${ref.label}`).join('、') || '无角色参考';
-    const directorCardText = directorCard?.imagePath
-      ? `本镜已有可选的“导演约束卡”。它不会默认传入。只有确实需要锁定人物站位、视线、机位或动作关系的格子，才在 frames 对应项传 use_director_constraint_card:true；启用后提示词必须明确写“@导演约束卡”，工具会同时补入对应 @图片N。`
-      : '本镜目前没有导演约束卡，不要虚构或引用 @导演约束卡。';
-    dispatchWorkshopPrompt(`请为工坊分镜 ${shot.shotNo} 创作高清故事板提示词。注意：这一步只写 8 张分镜图的生图提示词，不直接生成图片；写完后我会手动选择是否生成。
-
-请先调用 workshop_get_state detail:"step" 查看该镜 storyboardReferenceOrder、角色、场景、对白、imagePrompt、videoPrompt 和 bibles，然后调用 workshop_set_storyboard_prompts 写入 8 条 frames。
-
-## 本镜高清故事板专用参考顺序
-${referenceOrderText}
-
-注意：这是故事板生图专用顺序，不要使用普通视频生成里的 referenceOrder；不要从 @图片二 开始。场景参考必须从 @图片一 开始。
-
-## 当前风格预设/导演规范
-${styleSection || '未设置通用风格时，请继承项目四圣经中的导演、角色、场景和连续性规范，并根据本镜剧情选择统一的电影摄影风格。'}
-
-故事板不使用 Midjourney 专属风格库、风格化参数或 MJ 提示词后缀。即使项目资产选择了 Midjourney，也只继承剧情、角色、场景和连续性，不套用 MJ 风格。
-
-## 导演约束卡
-${directorCardText}
-
-要求：
-1. 先理解剧情目的：这一镜要表达的信息、情绪转折、人物关系和动作重点，不要机械套"建立/中景/特写"模板。
-2. 8 张要像专业导演分镜板：每张承担不同叙事功能，可以是建立空间、人物关系、动作预备、关键表演、手部/道具、反应、环境反馈、尾帧，但要按本镜剧情重新排序和命名。
-3. 每条都是单张独立电影剧照提示词，不要写 2x2 拼图，不要写连续视频运动。
-4. 每条必须显式引用场景参考 ${sceneLabels}；不能漏掉 @图片一。有人物时，人物名后紧跟对应编号：${characterLabels}。
-5. 这是静态图片提示词，不是 Seedance 视频提示词。禁止写台词、对白、字幕、旁白、音效、环境音、音乐、BGM；禁止使用 {}、<>、（）来标注声音或台词。
-6. 推荐格式：第N格：${sceneLabels}，人物名@图片N，景别、构图、主体站位、光源方向、色温、材质细节、表演瞬间、空间层次。
-7. 每条必须继承当前风格预设/导演规范。人物出镜时必须强调复刻参考图人物脸、发型、服装、五官比例和年龄状态，但不要写成空泛口号。
-8. 不要写"电影感十足"、"氛围拉满"、"高级质感"这类空词；用具体镜头语言替代。表演瞬间必须克制真实、有行为目的（能看出角色此刻想隐藏/确认/靠近/疏远什么），默认禁止瞪眼、嘶吼、夸张张嘴、邪魅坏笑等 AI 短剧/漫剧风表情。
-9. 输出 frames 时每条 prompt 建议 100-220 中文字，必须可直接送去 gpt-image-2 生图。`);
-  };
 
   const askAssistantToEditFrame = () => {
     const instruction = assistantText.trim();
     if (!instruction) return;
+    // 故事板分镜提示词功能已下线：仅保留导演约束卡的 AI 改写入口
+    if (!directorCardAssistantActive) {
+      setAssistantStatus('故事板分镜提示词功能已下线；请在镜头详情中编辑视频提示词。');
+      return;
+    }
     const referenceOrderText = storyboardRefs.length
       ? storyboardRefs.map((ref) => `${ref.label}=${ref.name}`).join('\n')
       : '暂无 @图片N 资产。请先提醒用户补齐场景/角色资产，不要凭空写 @图片编号。';
@@ -2443,14 +2498,6 @@ ${currentPrompts}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
-              <button
-                onClick={() => void askAgentForFrames()}
-                disabled={storyboardWriting}
-                className="flex min-w-[160px] items-center justify-center gap-2 px-3 py-2 rounded-lg text-[12px] text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                style={{ background: 'var(--canvas-accent)' }}
-              >
-	                {storyboardWriting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} {storyboardWriting ? 'AI 正在写 8 张提示词' : 'AI 创作 8 张分镜提示词'}
-	              </button>
               <button
                 onClick={appendStoryboardRow}
                 disabled={storyboardWriting || batchBusy || composeBusy}
@@ -3050,6 +3097,142 @@ ${currentPrompts}
   );
 }
 
+function DirectorConstraintSection({
+  shot,
+  scenes,
+  characters,
+  props,
+  onPatch,
+  onPreview,
+}: {
+  shot: WsShot;
+  scenes: { id: string; name: string; assetImagePath?: string; selectedImagePaths?: string[]; sceneReferenceMode?: 'multi' }[];
+  characters: { id: string; name: string; assetImagePath?: string; voicePath?: string }[];
+  props: { id: string; name: string; assetImagePath?: string }[];
+  onPatch: (patch: Partial<WsShot>) => void;
+  onPreview: (url: string) => void;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const card = shot.directorConstraintCard;
+  useEscapeClose(pickerOpen, () => setPickerOpen(false));
+
+  const saveCard = useCallback((imagePath: string, source: DirectorConstraintCard['source'], prompt?: string) => {
+    const latest = useWorkshopStore.getState().data?.shots.find((item) => item.shotNo === shot.shotNo) ?? shot;
+    const previous = latest.directorConstraintCard;
+    onPatch({
+      directorConstraintCard: {
+        id: previous?.id ?? `director-card-${shot.shotNo}-${nanoid(8)}`,
+        imagePath,
+        prompt: prompt ?? previous?.prompt,
+        createdAt: previous?.createdAt ?? Date.now(),
+        source,
+        useInVideo: previous?.useInVideo ?? false,
+        candidates: [
+          ...(previous?.candidates ?? []),
+          { path: imagePath, source: source === 'artifact' ? 'artifact' : source === 'generate' ? 'generate' : 'upload', prompt, createdAt: Date.now() },
+        ],
+      },
+      promptNeedsRefresh: true,
+    });
+  }, [onPatch, shot]);
+
+  const uploadCard = async () => {
+    const selected = await openDialog({ filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
+    if (!selected || Array.isArray(selected)) return;
+    const path = await copyShotReferenceIntoProject(shot.shotNo, selected, 'upload');
+    if (path) saveCard(path, 'upload');
+  };
+
+  const pickArtifact = async (entry: { path: string }) => {
+    const path = await copyShotReferenceIntoProject(shot.shotNo, entry.path, 'artifact');
+    if (path) saveCard(path, 'artifact');
+    setPickerOpen(false);
+  };
+
+  const generateCard = async () => {
+    const scenePaths = getSceneReferencePaths(shot, scenes);
+    if (scenePaths.length === 0) {
+      await tauriMessage('请先为本镜选择场景参考图。导演约束卡只读取场景空间，不会把人物、道具或色卡图片传给模型。', { title: '空间与调度' });
+      return;
+    }
+    setBusy(true);
+    try {
+      const scene = scenes.find((item) => item.id === shot.sceneId);
+      const characterNames = (shot.characterIds ?? []).map((id) => characters.find((item) => item.id === id)?.name).filter(Boolean).join('、') || '无明确人物';
+      const propNames = (shot.propIds ?? []).map((id) => props.find((item) => item.id === id)?.name).filter(Boolean).join('、') || '无关键道具';
+      const refs = scenePaths.map((_, index) => `@图片${numToCn(index + 1)}`).join('、');
+      const prompt = `为镜头 ${shot.shotNo} 生成一张 16:9 的专业导演约束卡。剧情画面：${shot.description}。场景：${scene?.name ?? '当前场景'}，仅用 ${refs} 理解建筑、家具、通道和空间轴线，忽略参考图中人物外观。人物：${characterNames}；道具：${propNames}。左侧为灰白素模透视走位图，用姓名和道具名短标签标记人物起点、终点、视线、动作关系与 2-4 个摄影机位置；右侧为简洁动作关系说明。人物只用无五官、无服装细节的中性占位模型，道具只用简化几何体。不要渲染真人、服装和材质，不要锁死肢体姿势，不要俯视平面图，不要长段文字。`;
+      const result = await runGeneration({
+        engineId: 'gpt-image-2',
+        prompt,
+        referenceUrls: scenePaths,
+        params: { aspectRatio: '16:9', resolution: '2k' },
+        workshopShotNo: shot.shotNo,
+        workshopShotKind: 'image',
+        projectId: useWorkshopStore.getState().data?.projectId,
+      });
+      if (!result.success || !result.resultPaths[0]) throw new Error(result.error || '生成失败');
+      saveCard(result.resultPaths[0], 'generate', prompt);
+    } catch (error) {
+      await tauriMessage(error instanceof Error ? error.message : String(error), { title: '导演约束卡生成失败' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-[var(--canvas-node-border)] bg-[rgba(255,255,255,0.018)] p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-[11px] font-medium text-[var(--canvas-text-1)]">
+            <Crosshair size={13} className="text-[var(--canvas-accent)]" /> 导演约束卡
+            <span className="rounded-full border border-[var(--canvas-node-border)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--canvas-text-3)]">可选</span>
+          </div>
+          <p className="mt-1 text-[10px] text-[var(--canvas-text-3)]">用于锁定站位、视线、机位和动作关系。只有明确开启后才参与视频生成。</p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" onClick={() => void generateCard()} disabled={busy} className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--canvas-node-border)] px-2 text-[10px] text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)] disabled:opacity-50">
+            {busy ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />} {busy ? '生成中' : card ? '重新生成' : 'AI 生成'}
+          </button>
+          <button type="button" onClick={() => void uploadCard()} className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--canvas-node-border)] px-2 text-[10px] text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)]"><Upload size={11} /> 上传</button>
+          <button type="button" onClick={() => setPickerOpen(true)} className="h-7 rounded-md border border-[var(--canvas-node-border)] px-2 text-[10px] text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)]">素材库</button>
+        </div>
+      </div>
+      {card?.imagePath ? (
+        <div className="mt-3 grid gap-3 md:grid-cols-[190px_minmax(0,1fr)]">
+          <button type="button" onClick={() => onPreview(convertFileSrc(card.imagePath))} className="group relative aspect-video overflow-hidden rounded-lg border border-[var(--canvas-node-border)] bg-black/30">
+            <img src={convertFileSrc(card.imagePath)} alt="导演约束卡" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+            <span className="absolute bottom-2 right-2 rounded-md bg-black/70 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100"><Maximize2 size={12} /></span>
+          </button>
+          <div className="min-w-0">
+            <SmartTextarea
+              rows={3}
+              value={card.prompt ?? ''}
+              onChange={(prompt) => onPatch({ directorConstraintCard: { ...card, prompt }, promptNeedsRefresh: true })}
+              placeholder="描述本镜站位、视线、机位、动线和允许变化范围。"
+              editorTitle={`空间与调度 · ${shot.shotNo}`}
+            />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => dispatchWorkshopPrompt(`只修改分镜 ${shot.shotNo} 的导演约束卡提示词。先读取当前镜头和约束卡，保持剧情不变，补清人物站位、视线、机位、动线与允许变化范围；不要修改分镜描述、对白或视频提示词。`)} className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--canvas-node-border)] px-2 text-[10px] text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)]"><Sparkles size={11} /> Agent 修改</button>
+              <button type="button" onClick={() => onPatch({ directorConstraintCard: { ...card, useInVideo: card.useInVideo !== true }, promptNeedsRefresh: true })} className={`h-7 rounded-md border px-2 text-[10px] ${card.useInVideo === true ? 'border-[rgba(45,177,255,0.35)] bg-[rgba(45,177,255,0.10)] text-[var(--canvas-accent)]' : 'border-[var(--canvas-node-border)] text-[var(--canvas-text-2)]'}`}>{card.useInVideo === true ? '已用于视频' : '用于视频'}</button>
+              <button type="button" onClick={() => onPatch({ directorConstraintCard: undefined, promptNeedsRefresh: true })} className="ml-auto inline-flex h-7 items-center gap-1 rounded-md px-2 text-[10px] text-[var(--canvas-text-3)] hover:bg-[rgba(255,97,99,0.12)] hover:text-[var(--canvas-danger)]"><Trash2 size={11} /> 删除</button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 rounded-lg border border-dashed border-[var(--canvas-node-border)] px-3 py-4 text-center text-[10px] text-[var(--canvas-text-3)]">当前镜头未设置导演约束卡。普通镜头可直接生成，需要加强空间连续性时再添加。</div>
+      )}
+      {pickerOpen && createPortal(
+        <div className="canvas-dark fixed inset-0 flex items-center justify-center text-[var(--canvas-text-1)]" style={{ background: 'rgba(0,0,0,0.6)', zIndex: Z.picker }} onMouseDown={() => setPickerOpen(false)}>
+          <div onMouseDown={(event) => event.stopPropagation()}><ArtifactPickerPanel open onClose={() => setPickerOpen(false)} onPick={(entry) => void pickArtifact(entry)} inline /></div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
 const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPatchShot, onRemove, colWidths, characters, scenes, props, colorPalettes, globalRatio, globalColorPaletteId, globalVideoPromptTemplate, directorAvailability }: {
   shot: WsShot;
   isOpen: boolean;
@@ -3066,7 +3249,6 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
   globalVideoPromptTemplate?: VideoPromptTemplate;
   directorAvailability?: DirectorAvailability;
 }) {
-  const [storyboardOpen, setStoryboardOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState<string | null>(null);
   const [promptPickerOpen, setPromptPickerOpen] = useState(false);
   const [promptAssetPickerOpen, setPromptAssetPickerOpen] = useState(false);
@@ -3088,6 +3270,23 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
   const scene = scenes.find((s) => s.id === shot.sceneId);
   const activeVideoPromptTemplate = resolvePromptTemplate(shot, globalVideoPromptTemplate);
   const activeVideoPrompt = editableVideoPrompt(shot, globalVideoPromptTemplate);
+
+  const shotConversationReference = () => {
+    const state = useWorkshopStore.getState();
+    const version = state.data ? workshopShotObject(state.data, shot.shotNo)?.version : undefined;
+    return createProjectConversationReference({
+      objectId: stableProjectObjectId('shot', shot.id ?? shot.shotNo),
+      kind: 'shot',
+      sourceView: 'workshop',
+      sourceId: shot.shotNo,
+      label: `镜头 ${shot.shotNo}`,
+      ownerLabel: state.project?.name,
+      version,
+      operationScope: 'edit',
+      thumbnailPath: shot.imagePath,
+    });
+  };
+  const addShotToConversation = () => dispatchProjectAgentContext(shotConversationReference());
 
   const buildAuthoritativeVideoCanvasRefs = (): PromptRefItem[] => {
     const paths = buildVideoRefPaths(shot, {
@@ -3226,19 +3425,6 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
 
   return (
     <>
-      {storyboardOpen && (
-        <StoryboardModal
-          shot={shot}
-          characters={characters}
-          scenes={scenes}
-          props={props}
-          colorPalettes={colorPalettes}
-          globalRatio={globalRatio}
-          globalColorPaletteId={globalColorPaletteId}
-          onPatch={onPatch}
-          onClose={() => setStoryboardOpen(false)}
-        />
-      )}
       {fullscreen && <ImageFullscreenViewer imageUrl={fullscreen} onClose={() => setFullscreen(null)} />}
       {promptPickerOpen && (
         <div className="canvas-dark fixed inset-0 flex items-center justify-center text-[var(--canvas-text-1)]" style={{ background: 'rgba(0,0,0,0.6)', zIndex: Z.picker }} onMouseDown={() => setPromptPickerOpen(false)}>
@@ -3271,7 +3457,7 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
           setPendingPromptRef(null);
         }}
       />
-      <tr className="border-t border-[var(--canvas-node-border)] hover:bg-[rgba(255,255,255,0.02)]">
+      <tr data-shot-no={shot.shotNo} className="border-t border-[var(--canvas-node-border)] hover:bg-[rgba(255,255,255,0.02)]">
         <td className="pl-2">
           <button onClick={() => onToggle(shot.shotNo)} className="p-0.5 text-[var(--canvas-text-3)] hover:text-[var(--canvas-text-1)] transition-colors">
             {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -3294,6 +3480,7 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
           )}
         </td>
         <td className="px-2 py-2" style={colWidths.desc > 0 ? { width: colWidths.desc } : undefined}>
+          <ProjectReferenceSource reference={shotConversationReference()} projectId={useWorkshopStore.getState().data?.projectId ?? ''}>
           <SmartTextarea
             rows={1}
             value={shot.description}
@@ -3302,6 +3489,7 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
             editorTitle={`画面描述 · ${shot.shotNo}`}
             className={cellInput + ' cursor-text truncate'}
           />
+          </ProjectReferenceSource>
         </td>
         <td className="px-2 py-2" style={colWidths.dialogue > 0 ? { width: colWidths.dialogue } : undefined}>
           <SmartTextarea
@@ -3345,6 +3533,21 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
         <td className="px-1">
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={addShotToConversation}
+              draggable
+              onDragStart={(event) => {
+                const projectId = useWorkshopStore.getState().data?.projectId;
+                if (!projectId) { event.preventDefault(); return; }
+                event.dataTransfer.setData(PROJECT_REFERENCE_MIME, encodeReferenceTransfer(projectId, shotConversationReference()));
+                event.dataTransfer.effectAllowed = 'copy';
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded text-[var(--canvas-text-3)] transition-colors hover:text-[var(--canvas-accent)]"
+              title="添加到对话，也可拖入助手"
+            >
+              <MessageSquarePlus size={11} />
+            </button>
+            <button
               onClick={() => dispatchWorkshopPrompt(buildOptimizeShotPrompt(shot.shotNo))}
               className="flex h-6 w-6 items-center justify-center rounded text-[var(--canvas-text-3)] hover:text-[var(--canvas-accent)] transition-colors"
               title="AI 优化此条提示词"
@@ -3386,16 +3589,14 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <label className="block text-[10px] text-[var(--canvas-text-3)]">高清故事板</label>
-                  <span className="text-[10px] text-[var(--canvas-text-3)]">
-                    {(shot.storyboardFrames ?? []).filter((f) => f.imagePath).length}/{(shot.storyboardFrames ?? []).length || 8} 图 · {(shot.storyboardBoards ?? []).length} 板
-                  </span>
+                  <label className="block text-[10px] text-[var(--canvas-text-3)]">静态分镜图</label>
+                  {shot.imagePath && <span className="text-[10px] text-[var(--canvas-text-3)]">已有当前版本</span>}
                 </div>
                 <SmartTextarea
                   rows={3}
                   value={shot.imagePrompt ?? ''}
                   onChange={(v) => onPatch({ imagePrompt: v })}
-                  placeholder="基础分镜图提示词。需要高清分镜时，点下方故事板工作台默认拆成 8 张图，也可继续追加。"
+                  placeholder="描述这一镜需要生成的静态画面。"
                   editorTitle={`生图提示词 · ${shot.shotNo}`}
                   mentionHighlight
                   referenceImages={refImages}
@@ -3403,17 +3604,10 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
                 <RemovableRefStrip refs={refImages} shot={shot} scenes={scenes} onPatch={onPatch} onPreview={setFullscreen} />
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <button
-                    onClick={() => setStoryboardOpen(true)}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-white transition-opacity hover:opacity-90"
-                    style={{ background: 'var(--canvas-accent)' }}
-                  >
-                    <Grid2X2 size={10} /> 故事板工作台
-                  </button>
-                  <button
                     type="button"
                     onClick={() => {
                       const projectId = useWorkshopStore.getState().project?.id;
-                      if (projectId) openWorkshopDirector(shot, characters, projectId, 'storyboard');
+                      if (projectId) openWorkshopDirector(shot, characters, projectId, 'video-prompt');
                     }}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-[var(--canvas-text-2)] border border-[var(--canvas-node-border)] hover:text-[var(--canvas-text-1)] transition-colors"
                     title="按已有分镜图或画面描述建立白模机位"
@@ -3424,7 +3618,7 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
                     type="button"
                     onClick={() => void handleUploadPromptRef()}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-[var(--canvas-text-3)] border border-[var(--canvas-node-border)] hover:text-[var(--canvas-text-1)] hover:border-[var(--canvas-node-border-selected)] transition-colors"
-                    title="上传本镜参考图，高清故事板和视频提示词同步使用"
+                    title="上传本镜参考图，静态分镜图和视频提示词同步使用"
                   >
                     <Upload size={10} /> 上传
                   </button>
@@ -3452,8 +3646,8 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
                     <MonitorPlay size={10} /> 生图→画布
                   </button>
                   )}
-                  {(shot.storyboardBoards ?? []).some((b) => b.useInVideo !== false) && (
-                    <span className="text-[10px] text-[var(--canvas-accent)]">视频生成会优先传入分镜板</span>
+                  {((shot.storyboardFrames?.length ?? 0) > 0 || (shot.storyboardBoards?.length ?? 0) > 0) && (
+                    <span className="text-[10px] text-[var(--canvas-text-3)]">旧故事板已转为历史素材，不参与生成或 @图片N 编号</span>
                   )}
                 </div>
               </div>
@@ -3543,6 +3737,16 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
                 )}
               </div>
             </div>
+            <CollapsibleSection title="空间与调度">
+              <DirectorConstraintSection
+                shot={shot}
+                scenes={scenes}
+                characters={characters}
+                props={props}
+                onPatch={onPatch}
+                onPreview={setFullscreen}
+              />
+            </CollapsibleSection>
             {((shot.characterIds?.length ?? 0) > 0 || (shot.audioPrompts?.length ?? 0) > 0 || (shot.generatedAudios?.length ?? 0) > 0) && (
               <CollapsibleSection title="台词配音">
                 <AudioPromptsSection shot={shot} characters={characters} onPatch={onPatch} />

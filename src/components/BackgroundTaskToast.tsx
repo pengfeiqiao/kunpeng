@@ -12,7 +12,7 @@ export default function BackgroundTaskToast() {
   const unnotified = tasks.filter((t) => isTerminalTaskStatus(t.status) && !t.notified);
 
   return (
-    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 pointer-events-none max-w-[380px]">
+    <div className="fixed top-16 right-4 z-[35] flex flex-col gap-3 pointer-events-none max-w-[380px]">
       {/* Pending task indicator */}
       <AnimatePresence>
         {pendingCount > 0 && (

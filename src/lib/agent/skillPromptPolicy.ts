@@ -1,4 +1,7 @@
+import { isSkillEnabled } from '../skills/skillPreferences.ts';
+
 export interface PromptSkill {
+  id?: string;
   name: string;
   displayName?: string;
   description: string;
@@ -43,7 +46,7 @@ export function compactSkillDescription(description: string, limit = 180): strin
 
 export function buildSkillDescriptionText(
   skills: PromptSkill[],
-  options: { activeView?: string; query?: string } = {},
+  options: { activeView?: string; query?: string; projectId?: string } = {},
 ): string {
   const activeView = options.activeView || 'chat';
   // Deliberately NOT query-dependent: this text lives in the system prompt,
@@ -51,10 +54,11 @@ export function buildSkillDescriptionText(
   // skills) rebuilds messages[0] every turn, destroying server-side prompt
   // cache prefix stability. Query-dependent relevance moves to a transient
   // per-run notice — see buildSkillRelevanceNotice.
-  const internal = skills.filter(
+  const available = skills.filter((skill) => isSkillEnabled(skill.id || skill.name, options.projectId));
+  const internal = available.filter(
     (skill) => skill.visibility === 'internal' && shouldIncludeInternalSkill(skill, activeView),
   );
-  const publicSkills = skills.filter((skill) => skill.visibility !== 'internal');
+  const publicSkills = available.filter((skill) => skill.visibility !== 'internal');
   const groups = [
     {
       title: '### 可调用技能（可通过 skill_invoke 工具调用）',
@@ -100,16 +104,17 @@ export function buildSkillDescriptionText(
  */
 export function buildSkillRelevanceNotice(
   skills: PromptSkill[],
-  options: { activeView?: string; query?: string } = {},
+  options: { activeView?: string; query?: string; projectId?: string } = {},
 ): string | null {
   const query = (options.query || '').trim();
   if (!query) return null;
   const activeView = options.activeView || 'chat';
 
-  const relevantPublic = skills.filter(
+  const available = skills.filter((skill) => isSkillEnabled(skill.id || skill.name, options.projectId));
+  const relevantPublic = available.filter(
     (skill) => skill.visibility !== 'internal' && isSkillRelevant(skill, query),
   );
-  const keywordInternal = skills.filter(
+  const keywordInternal = available.filter(
     (skill) =>
       skill.visibility === 'internal'
       && !shouldIncludeInternalSkill(skill, activeView)

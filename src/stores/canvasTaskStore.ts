@@ -23,6 +23,8 @@ export type CanvasTaskStatus =
   | 'failed';
 
 export interface CanvasTask {
+  /** Frozen owner and request for candidate recovery, not the currently selected node. */
+  workspaceBinding?: import('@/lib/workspace/types').WorkspaceTaskBinding;
   id: string;
   nodeId: string;
   kind: 'image' | 'video' | 'audio';
@@ -97,7 +99,7 @@ const PERSIST_PROMPT_MAX = 4000;
 const PERSIST_REFS_MAX = 8;
 
 function persistedTask(task: CanvasTask): CanvasTask {
-  const isWorkshopTask = Boolean(task.workshopShotNo || task.workshopStoryboardFrameId);
+  const isWorkshopTask = Boolean(task.workshopShotNo || task.workshopStoryboardFrameId || task.workspaceBinding);
   const truncate = !isWorkshopTask && task.prompt.length > PERSIST_PROMPT_MAX;
   return {
     ...task,

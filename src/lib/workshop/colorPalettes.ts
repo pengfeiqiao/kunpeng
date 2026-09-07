@@ -159,31 +159,9 @@ export const DEFAULT_MASTER_COLOR_PALETTES: WsColorPalette[] = [
 ];
 
 export function ensureDefaultColorPalettes(existing: WsColorPalette[] | undefined): WsColorPalette[] {
-  const legacyDefaultIds = new Set(['master-cold-industrial', 'master-border-city', 'master-neon-noir']);
-  const currentDefaultIds = new Set(DEFAULT_MASTER_COLOR_PALETTES.map((p) => p.id));
-  const map = new Map(
-    (existing ?? [])
-      .filter((p) => !(p.source === 'default' && legacyDefaultIds.has(p.id)))
-      .map((p) => [p.id, p]),
-  );
-  for (const p of DEFAULT_MASTER_COLOR_PALETTES) {
-    const old = map.get(p.id);
-    if (old && old.source === 'default') {
-      map.set(p.id, {
-        ...p,
-        assetImagePath: old.assetImagePath,
-        candidates: old.candidates ?? [],
-        createdAt: old.createdAt,
-      });
-    } else if (!old) {
-      map.set(p.id, { ...p, candidates: [] });
-    }
-  }
-  return [...map.values()].sort((a, b) => {
-    const ai = currentDefaultIds.has(a.id) ? DEFAULT_MASTER_COLOR_PALETTES.findIndex((p) => p.id === a.id) : 999;
-    const bi = currentDefaultIds.has(b.id) ? DEFAULT_MASTER_COLOR_PALETTES.findIndex((p) => p.id === b.id) : 999;
-    return ai - bi || a.createdAt - b.createdAt;
-  });
+  // Compatibility hydration only: presets are not project assets until explicitly added.
+  // Preserve saved defaults (including retired IDs), edits, candidates and ordering verbatim.
+  return existing ?? [];
 }
 
 export function buildColorPalettePrompt(name: string, description: string, colors: PaletteColor[], background = '#F1F0E8'): string {

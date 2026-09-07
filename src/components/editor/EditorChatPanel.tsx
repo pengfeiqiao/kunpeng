@@ -2,7 +2,7 @@
  * EditorChatPanel — 剪辑视图鲲鹏抽屉（AgentDrawer 壳的剪辑 wrapper）。
  * Prefix 引导 agent 先 timeline_get_state 再操作时间轴工具。
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChatStore } from '@/stores';
 import { useEditorStore } from '@/stores/editorStore';
 import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
@@ -12,7 +12,16 @@ import { useHelloGreeting } from '@/lib/greeting';
 import { motionDesignGuide } from '@/lib/motion/motionPrompt';
 import { omniMgAgentGuide } from '@/lib/omni/styles';
 import AgentDrawer from '../chat/AgentDrawer';
+import ProjectConversationContext from '../chat/ProjectConversationContext';
 import { SYSTEM_REPAIR_PROMPT_EVENT, type SystemRepairPromptDetail } from '@/lib/agent/systemRepair';
+import {
+  buildProjectConversationReferenceContext,
+  createProjectConversationReference,
+  mergeProjectConversationReferences,
+  PROJECT_AGENT_CONTEXT_EVENT,
+  type ProjectAgentContextEventDetail,
+} from '@/lib/projectObjects/conversationRefs';
+import type { ProjectConversationReference } from '@/lib/projectObjects/types';
 
 const STRIP_RE = /^\[用户正在剪辑视图操作[\s\S]*?\n\n/;
 
@@ -38,15 +47,67 @@ export function dispatchEditorPrompt(prompt: string): void {
   window.dispatchEvent(new CustomEvent(EDITOR_PROMPT_EVENT, { detail: { prompt } }));
 }
 
+interface EditorQueueItem {
+  id: string;
+  label: string;
+  prompt: string;
+  status: 'queued' | 'running' | 'failed';
+  error?: string;
+}
+
+function queueLabel(prompt: string): string {
+  const first = prompt.split('\n')[0]?.trim() || '未命名任务';
+  return first.length > 30 ? `${first.slice(0, 30)}…` : first;
+}
+
+function currentEditorReference(): ProjectConversationReference | undefined {
+  const state = useEditorStore.getState();
+  const projectName = useWorkshopStore.getState().project?.name;
+  const base = { sourceView: 'editor' as const, ownerLabel: projectName, operationScope: 'edit' as const };
+  const clip = state.clips.find((item) => item.id === state.selectedClipId);
+  if (clip) return createProjectConversationReference({ ...base, objectId: `editor-clip:${clip.id}`, kind: 'editor-clip', sourceId: clip.id, label: clip.label || '主视频片段', thumbnailPath: clip.path });
+  const overlay = state.overlayClips.find((item) => item.id === state.selectedOverlayId);
+  if (overlay) return createProjectConversationReference({ ...base, objectId: `editor-clip:${overlay.id}`, kind: 'editor-clip', sourceId: overlay.id, label: overlay.label || '叠加片段', thumbnailPath: overlay.path });
+  const audio = state.audioClips.find((item) => item.id === state.selectedAudioClipId);
+  if (audio) return createProjectConversationReference({ ...base, objectId: `editor-clip:${audio.id}`, kind: 'editor-clip', sourceId: audio.id, label: audio.label || '音频片段' });
+  const text = state.textClips.find((item) => item.id === state.selectedTextId);
+  if (text) return createProjectConversationReference({ ...base, objectId: `editor-clip:${text.id}`, kind: 'editor-clip', sourceId: text.id, label: text.text || '文字片段', quotedText: text.text });
+  const fx = state.fxClips.find((item) => item.id === state.selectedFxId);
+  if (fx) return createProjectConversationReference({ ...base, objectId: `editor-clip:${fx.id}`, kind: 'editor-clip', sourceId: fx.id, label: fx.label || '特效片段' });
+  const subtitle = state.subtitles.find((item) => item.id === state.selectedSubtitleId);
+  if (subtitle) return createProjectConversationReference({ ...base, objectId: `editor-clip:${subtitle.id}`, kind: 'editor-clip', sourceId: subtitle.id, label: subtitle.text || '字幕', quotedText: subtitle.text });
+  return undefined;
+}
+
 export default function EditorChatPanel({ onSendMessage, onAbort }: {
-  onSendMessage: (content: string, filePaths?: string[]) => void;
+  onSendMessage: (content: string, filePaths?: string[]) => Promise<void> | void;
   onAbort: () => void;
 }) {
   const hello = useHelloGreeting();
   const [open, setOpen] = useState(false);
-  const [queued, setQueued] = useState<string | null>(null);
+  const [queue, setQueue] = useState<EditorQueueItem[]>([]);
+  const queueSeqRef = useRef(0);
+  const queueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduledQueueRef = useRef<string | null>(null);
   const lastAutoPromptRef = useRef<{ prompt: string; at: number } | null>(null);
   const isStreaming = useChatStore((s) => s.streamingPhase) !== 'idle';
+  const conversationReferences = useWorkshopStore((s) => s.data?.projectViewState?.conversationReferences ?? []);
+  const selectionKey = useEditorStore((s) => [s.selectedClipId, s.selectedOverlayId, s.selectedAudioClipId, s.selectedTextId, s.selectedFxId, s.selectedSubtitleId].join('|'));
+  const selectedReference = useMemo(() => currentEditorReference(), [selectionKey]);
+
+  const enqueue = (prompt: string) => {
+    setOpen(true);
+    setQueue((current) => {
+      if (current.some((item) => item.prompt === prompt)) return current;
+      queueSeqRef.current += 1;
+      return [...current, {
+        id: `eq-${Date.now()}-${queueSeqRef.current}`,
+        label: queueLabel(prompt),
+        prompt,
+        status: 'queued' as const,
+      }];
+    });
+  };
 
   useEffect(() => {
     const h = () => setOpen(true);
@@ -58,9 +119,7 @@ export default function EditorChatPanel({ onSendMessage, onAbort }: {
     const handler = (event: Event) => {
       const prompt = (event as CustomEvent<SystemRepairPromptDetail>).detail?.prompt;
       if (!prompt) return;
-      setOpen(true);
-      if (useChatStore.getState().streamingPhase === 'idle') setTimeout(() => handleSend(prompt), 250);
-      else setQueued(prompt);
+      enqueue(prompt);
     };
     window.addEventListener(SYSTEM_REPAIR_PROMPT_EVENT, handler);
     return () => window.removeEventListener(SYSTEM_REPAIR_PROMPT_EVENT, handler);
@@ -76,29 +135,57 @@ export default function EditorChatPanel({ onSendMessage, onAbort }: {
       const last = lastAutoPromptRef.current;
       if (last && last.prompt === prompt && now - last.at < 5000) return;
       lastAutoPromptRef.current = { prompt, at: now };
-      setOpen(true);
-      if (useChatStore.getState().streamingPhase === 'idle') {
-        setTimeout(() => handleSend(prompt), 250);
-      } else {
-        setQueued(prompt);
-      }
+      enqueue(prompt);
     };
     window.addEventListener(EDITOR_PROMPT_EVENT, handler);
     return () => window.removeEventListener(EDITOR_PROMPT_EVENT, handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 排队 prompt 在空闲后补发
   useEffect(() => {
-    if (!queued || isStreaming) return;
-    const p = queued;
-    setQueued(null);
-    setTimeout(() => handleSend(p), 250);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queued, isStreaming]);
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<ProjectAgentContextEventDetail>).detail;
+      if (!detail?.references?.some((reference) => reference.sourceView === 'editor')) return;
+      const store = useWorkshopStore.getState();
+      store.updateProjectViewState({
+        conversationReferences: mergeProjectConversationReferences(
+          store.data?.projectViewState?.conversationReferences,
+          detail.references,
+        ),
+      });
+      if (detail.open !== false) setOpen(true);
+    };
+    window.addEventListener(PROJECT_AGENT_CONTEXT_EVENT, handler);
+    return () => window.removeEventListener(PROJECT_AGENT_CONTEXT_EVENT, handler);
+  }, []);
 
-  const handleSend = (text: string, filePaths?: string[]) => {
-    void (async () => {
+  // 与工坊一致的可见消息队列：Promise 终态才放行下一项，失败保留供编辑/重试。
+  useEffect(() => {
+    if (isStreaming || queue.some((item) => item.status === 'running')) return;
+    const head = queue.find((item) => item.status === 'queued');
+    if (!head || scheduledQueueRef.current === head.id) return;
+    scheduledQueueRef.current = head.id;
+    setQueue((current) => current.map((item) => item.id === head.id ? { ...item, status: 'running' as const } : item));
+    queueTimerRef.current = setTimeout(() => {
+      queueTimerRef.current = null;
+      scheduledQueueRef.current = null;
+      Promise.resolve(handleSend(head.prompt)).then(
+        () => setQueue((current) => current.filter((item) => item.id !== head.id)),
+        (error) => setQueue((current) => current.map((item) => item.id === head.id ? {
+          ...item,
+          status: 'failed' as const,
+          error: error instanceof Error ? error.message : String(error || '发送失败'),
+        } : item)),
+      );
+    }, 250);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue, isStreaming]);
+
+  useEffect(() => () => {
+    if (queueTimerRef.current) clearTimeout(queueTimerRef.current);
+  }, []);
+
+  const handleSend = async (text: string, filePaths?: string[]) => {
       const unifiedId = useUnifiedProjectStore.getState().activeId;
       const proj = useWorkshopStore.getState().project;
       if (unifiedId && proj) await ensureProjectSession(unifiedId, proj.name);
@@ -110,9 +197,33 @@ export default function EditorChatPanel({ onSendMessage, onAbort }: {
       const omniCurrentPolicy = omniGuide
         ? '[当前付费 MG 规则覆盖上面的历史 Omni 专用说明：第一轮只问网页特效还是付费 MG；第二轮优先用 ask_user_question 对话内选项卡询问引擎，选项为 MiniMax H3（默认推荐，2K、5-15秒）、Omni（720p、固定10秒）、Seedance Mini（4-15秒），同时再问风格及视频生MG/文字生MG。用户未明确选择时默认 H3。调用 plan/generate/batch 必须传 engine，旧工具名不代表使用 Omni，严禁调用 Seedance 2.0 普通版。每条提示词必须按 MG 专属结构包含核心概念、主视觉、至少两组辅助元素、空间层级、元素互动关系、分阶段动作和主体保护，禁止写成普通电影镜头描述、单一元素循环或随机堆料。生成后不自动评分或重生，先交给用户判断，再根据反馈定向修复。]\n\n'
         : '';
-      onSendMessage(prefix + omniCurrentPolicy + text, filePaths);
-    })();
+      const storeRefs = useWorkshopStore.getState().data?.projectViewState?.conversationReferences;
+      const current = currentEditorReference();
+      const refs = current ? mergeProjectConversationReferences(storeRefs, [current]) : storeRefs;
+      const sharedContext = buildProjectConversationReferenceContext(refs);
+      await onSendMessage(prefix + omniCurrentPolicy + sharedContext + '\n\n' + text, filePaths);
   };
+
+  const deleteQueueItem = (id: string) => setQueue((current) => current.filter((item) => item.id !== id || item.status === 'running'));
+  const editQueueItem = (id: string, prompt: string) => {
+    const next = prompt.trim();
+    if (!next) return;
+    setQueue((current) => current.map((item) => item.id === id && item.status !== 'running'
+      ? { ...item, prompt: next, label: queueLabel(next), status: 'queued' as const, error: undefined }
+      : item));
+  };
+  const retryQueueItem = (id: string) => setQueue((current) => current.map((item) => item.id === id && item.status === 'failed'
+    ? { ...item, status: 'queued' as const, error: undefined }
+    : item));
+  const prioritizeQueueItem = (id: string) => setQueue((current) => {
+    const target = current.find((item) => item.id === id && item.status !== 'running');
+    if (!target) return current;
+    return [
+      ...current.filter((item) => item.status === 'running'),
+      { ...target, status: 'queued' as const, error: undefined },
+      ...current.filter((item) => item.id !== id && item.status !== 'running'),
+    ];
+  });
 
   return (
     <AgentDrawer
@@ -133,6 +244,18 @@ export default function EditorChatPanel({ onSendMessage, onAbort }: {
       onAbort={onAbort}
       modelScope="editor"
       placeholder="剪流畅、分镜组装、配特效、高光切片，直接说"
+      queueItems={queue}
+      onDeleteQueueItem={deleteQueueItem}
+      onEditQueueItem={editQueueItem}
+      onRetryQueueItem={retryQueueItem}
+      onSendQueueItemNow={prioritizeQueueItem}
+      contextBannerKey={`${selectionKey}:${conversationReferences.map((reference) => reference.id).join('|')}`}
+      contextBanner={(
+        <ProjectConversationContext
+          currentLabel={selectedReference?.label ?? '剪辑项目'}
+          currentMeta={selectedReference ? '当前时间轴对象会随本轮消息发送' : `${conversationReferences.length} 个对象已添加到对话`}
+        />
+      )}
     />
   );
 }

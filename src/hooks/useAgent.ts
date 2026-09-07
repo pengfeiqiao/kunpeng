@@ -55,6 +55,11 @@ import { resolveApiKey, resolveSlotApiKey, type CredentialHostState } from '@/li
 import { useToolConfirmStore } from '@/stores/toolConfirmStore';
 import { useBackgroundTaskStore } from '@/stores/backgroundTaskStore';
 import { useAigcProjectStore } from '@/stores/aigcProjectStore';
+import { useWorkshopStore } from '@/stores/workshopStore';
+import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
+import { buildProjectSpecAgentContext } from '@/lib/projectObjects/projectSpec';
+import { buildProjectIntakeAgentContext } from '@/lib/projects/projectIntake';
+import { isGenerationToolName, isPaidGeneration, shouldConfirmGeneration } from '@/lib/projectObjects/generationDraft';
 import { useRunStepStore } from '@/stores/runStepStore';
 import { useDeepseekHarnessStore } from '@/stores/deepseekHarnessStore';
 import { useTodoStore } from '@/stores/todoStore';
@@ -75,6 +80,7 @@ import {
   recoverDegradedAgentHistory,
 } from '@/lib/agent/projectMessages';
 import { stripHarnessPrefix } from '@/lib/agent/harnessDisplay';
+import { bindWorkspaceRunDispatch } from '@/lib/agent/workspaceDispatchRuntime';
 import type { RouteStrategy } from '@/lib/agent/providers/router';
 import { decodeChatModel, getAllChatModelIds, inferAgentWorkspaceScope } from '@/lib/agent/modelCatalog';
 import {
@@ -339,6 +345,16 @@ function compactToolExecutionsForHistory(executions: ToolExecution[]): ToolExecu
   });
 }
 
+const PROJECT_MUTATION_TOOL_RE = /^(?:canvas_(?:add|update|delete|connect|disconnect|auto_layout|set_|batch_|duplicate|execute|generate)|workshop_(?:set|update|delete|remove|add|generate|sync)|project_(?:update|lock|delete|set)|timeline_(?:add|update|remove|split|trim|reorder|set_|apply|ripple_delete|generate|export))/;
+
+function completedProjectMutation(executions: ToolExecution[]): boolean {
+  return executions.some((execution) => (
+    execution.status === 'completed'
+    && execution.result?.success !== false
+    && PROJECT_MUTATION_TOOL_RE.test(execution.toolName)
+  ));
+}
+
 interface AgentMessagesSaveSnapshot {
   sessionId: string;
   messages: AgentMessage[];
@@ -573,6 +589,23 @@ function buildAigcProjectContext(project: AigcProject | null): string | undefine
   lines.push('读取/写入项目数据请使用 `~/.kunpeng/aigc-memory/projects/<id>/` 下对应子目录（sources/parsed/prompts/scenes/assets）。');
 
   return lines.join('\n');
+}
+
+function buildCombinedProjectContext(): string | undefined {
+  const memoryProject = useAigcProjectStore.getState().getCurrent();
+  const workshop = useWorkshopStore.getState();
+  const memoryContext = buildAigcProjectContext(memoryProject);
+  const specContext = workshop.project && workshop.data
+    ? buildProjectSpecAgentContext(workshop.project.name, workshop.data.projectSpec)
+    : undefined;
+  const intakeContext = workshop.data
+    ? buildProjectIntakeAgentContext(workshop.data.projectIntake)
+    : undefined;
+  return [memoryContext, specContext, intakeContext].filter(Boolean).join('\n\n') || undefined;
+}
+
+function currentSkillProjectId(): string | undefined {
+  return useWorkshopStore.getState().project?.id;
 }
 
 // DeepSeek Harness runs outlive individual view components. Canvas/workshop/
@@ -937,10 +970,12 @@ export function useAgent(options?: { primary?: boolean }) {
           workspace: workspace || undefined,
           skillDescriptions: loader.getDescriptionText({
             activeView: useChatStore.getState().activeView,
+            projectId: currentSkillProjectId(),
           }) || undefined,
           skillDescriptionResolver: (query: string) => loader.getDescriptionText({
             activeView: useChatStore.getState().activeView,
             query,
+            projectId: currentSkillProjectId(),
           }) || undefined,
           // Query-dependent relevance goes to a transient attachment, not the
           // system prompt — keeps the cached prefix byte-stable across turns.
@@ -948,13 +983,14 @@ export function useAgent(options?: { primary?: boolean }) {
             buildSkillRelevanceNotice(loader.getAll(), {
               activeView: useChatStore.getState().activeView,
               query,
+              projectId: currentSkillProjectId(),
             }),
           customRules: mergedRules,
           routeStrategy: buildRouteStrategyFromSettings(settings, glmApiKey, meta?.preferredProviderId),
           outputStyle: meta?.outputStyle ?? globalOutputStyle ?? 'default',
           imageApiContext: buildImageApiContext(settings),
           runninghubContext: buildRunninghubContext(settings),
-          aigcMemoryContext: buildAigcProjectContext(useAigcProjectStore.getState().getCurrent()),
+          aigcMemoryContext: buildCombinedProjectContext(),
         };
 
         const c = new AgentCoordinator(coordinatorConfig);
@@ -1189,16 +1225,19 @@ export function useAgent(options?: { primary?: boolean }) {
   // Re-runs whenever the user selects a different project or the project's
   // sources / stats / status change.
   useEffect(() => {
+    let previousContext: string | undefined;
     const apply = () => {
-      const project = useAigcProjectStore.getState().getCurrent();
-      const context = buildAigcProjectContext(project);
+      const context = buildCombinedProjectContext();
+      if (context === previousContext) return;
+      previousContext = context;
       for (const c of coordinatorsRef.current.values()) {
         c.setAigcMemoryContext(context);
       }
     };
     apply();
-    const unsub = useAigcProjectStore.subscribe(apply);
-    return () => unsub();
+    const unsubMemory = useAigcProjectStore.subscribe(apply);
+    const unsubWorkshop = useWorkshopStore.subscribe(apply);
+    return () => { unsubMemory(); unsubWorkshop(); };
   }, []);
 
   // 联网搜索开关切换时刷新各 coordinator 的系统提示词，
@@ -1237,6 +1276,7 @@ export function useAgent(options?: { primary?: boolean }) {
       // Refreshing here makes newly written evolution skills visible on the
       // next task without rebuilding the Agent engine.
       await skillLoaderRef.current?.refreshIfDue();
+      coordinator.refreshSystemPrompt();
       // Secondary (wizard) engines share the global chat stores but must not
       // write session files — their coordinators hold wizard-scoped history
       // that would overwrite the real chat session's agent history on disk.
@@ -1603,9 +1643,16 @@ export function useAgent(options?: { primary?: boolean }) {
           cancelFlush();
 
           const duration = Math.floor((Date.now() - startTime) / 1000);
+          const assistantMessageId = randomUUID();
+          const projectSnapshotId = completedProjectMutation(toolExecutionsRef.current)
+            ? useUnifiedProjectStore.getState().captureProjectSnapshot({
+                messageId: assistantMessageId,
+                label: displayContent.trim().slice(0, 36) || 'Agent 完成一次修改',
+              })
+            : null;
           // Add assistant message
           addMessage({
-            id: randomUUID(),
+            id: assistantMessageId,
             role: 'assistant',
             content: finalText || accumulatedText,
             thinkingContent: accumulatedThinking || undefined,
@@ -1613,6 +1660,7 @@ export function useAgent(options?: { primary?: boolean }) {
             workingDuration: duration,
             metadata: {
               runId,
+              ...(projectSnapshotId ? { projectSnapshotId } : {}),
               ...(toolExecutionsRef.current.length > 0
                 ? { toolExecutions: compactToolExecutionsForHistory(toolExecutionsRef.current) }
                 : {}),
@@ -1667,13 +1715,24 @@ export function useAgent(options?: { primary?: boolean }) {
           }
         },
 
-        onToolConfirm: (name, params, reason) => {
+        onToolConfirm: (name, params, reason, signal) => {
+          if (!isCurrentRun() || signal?.aborted) return Promise.resolve(false);
+          if (isGenerationToolName(name)) {
+            const tool = registry.get(name);
+            const risk = tool?.checkRisk?.(params).risk ?? tool?.risk;
+            const preference = useWorkshopStore.getState().data?.projectSpec?.generationConfirmation
+              ?? 'paid-only-confirm';
+            if (!shouldConfirmGeneration(preference, isPaidGeneration(risk))) {
+              return Promise.resolve(true);
+            }
+            return useToolConfirmStore.getState().requestConfirm(name, params, reason, { scope: runId, signal, risk });
+          }
           // 自动执行模式：跳过确认弹窗（bashSecurity 的 deny 裁决在 coordinator
           // 层先于此回调，危险命令仍会被拦）
           if (useSettingsStore.getState().toolConfirmMode === 'auto') {
             return Promise.resolve(true);
           }
-          return useToolConfirmStore.getState().requestConfirm(name, params, reason);
+          return useToolConfirmStore.getState().requestConfirm(name, params, reason, { scope: runId, signal });
         },
 
         onSubAgentDelta: (text, event) => {
@@ -1752,6 +1811,7 @@ export function useAgent(options?: { primary?: boolean }) {
 
       let subagentRunner: SubagentRunner | null = null;
       const registry = coordinator.getToolRegistry();
+      const releaseWorkspaceDispatch = bindWorkspaceRunDispatch(runId, content);
       if (isOrdinaryChatRun) {
         subagentRunner = new SubagentRunner({
           parentRunId: runId,
@@ -1926,8 +1986,10 @@ export function useAgent(options?: { primary?: boolean }) {
         emit('agent-status-change', 'error');
         useRunStepStore.getState().finishRun('failed', runId);
       } finally {
+        useToolConfirmStore.getState().cancelScope(runId);
         await subagentRunner?.dispose();
         registry.clearRunContext(runId);
+        releaseWorkspaceDispatch();
         if (resumeContext && !resumeContextDelivered) {
           resumeContextQueueRef.current.restore(sessionId, resumeContext);
         }
@@ -1983,6 +2045,7 @@ export function useAgent(options?: { primary?: boolean }) {
           ?? getSharedDshBridge(targetAgentId);
       }
     }
+    if (activeRunId) useToolConfirmStore.getState().cancelScope(activeRunId);
     if (activeDsh) {
       void activeDsh.abort();
       for (const [agentId, shared] of sharedDshBridges) {

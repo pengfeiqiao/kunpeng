@@ -1,3 +1,5 @@
+import { readWorkspaceMessage } from './workspaceMessage.ts';
+
 export type ChatModelOption = {
   value: string;
   label: string;
@@ -82,6 +84,8 @@ export function getAllChatModelIds(): string[] {
 }
 
 export function inferAgentWorkspaceScope(content: string): AgentWorkspaceScope | null {
+  const envelope = readWorkspaceMessage(content);
+  if (envelope.status === 'valid') return envelope.scope;
   if (content.startsWith('[用户正在画布视图中操作')) return 'canvas';
   if (content.startsWith('[工坊上下文：')) return 'workshop';
   if (content.startsWith('[用户正在剪辑视图操作')) return 'editor';

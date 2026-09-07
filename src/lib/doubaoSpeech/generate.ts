@@ -2,6 +2,13 @@ import { fetchSpeechAudioBytes, generateSpeech } from './client';
 import type { WsShot, WsCharacter, GeneratedAudio } from '@/lib/workshop/types';
 import { homeDir } from '@tauri-apps/api/path';
 import { createDir, readBinaryFile, writeBinaryFile, BaseDirectory } from '@tauri-apps/api/fs';
+import { productionFileName } from '../workspace/productionSafety';
+
+export interface ShotAudioOptions {
+  operationId?: string;
+  frozenReferences?: Record<string, string | undefined>;
+  beforeSubmit?: () => void;
+}
 
 function safeName(s: string): string {
   return s.replace(/[^\w一-龥-]+/g, '_');
@@ -21,6 +28,7 @@ export async function generateShotAudio(
   characters: WsCharacter[],
   projectId: string,
   onProgress?: (done: number, total: number) => void,
+  options?: ShotAudioOptions,
 ): Promise<GeneratedAudio[]> {
   const prompts = shot.audioPrompts ?? [];
   if (prompts.length === 0) return [];
@@ -39,7 +47,10 @@ export async function generateShotAudio(
 
     try {
       const references: { audio_data?: string }[] = [];
-      if (char.voicePath) {
+      if (options?.frozenReferences) {
+        const audioData = options.frozenReferences[char.id];
+        if (audioData) references.push({ audio_data: audioData });
+      } else if (char.voicePath && (shot.voiceCharacterIds === undefined || shot.voiceCharacterIds.includes(char.id))) {
         try {
           const bytes = await readBinaryFile(char.voicePath);
           references.push({ audio_data: uint8ToBase64(new Uint8Array(bytes)) });
@@ -50,6 +61,7 @@ export async function generateShotAudio(
 
       console.log('[doubaoSpeech] 开始生成配音:', char.name, '提示词长度:', ap.prompt.length, '有参考音色:', references.length > 0);
 
+      options?.beforeSubmit?.();
       const resp = await generateSpeech({
         text_prompt: ap.prompt,
         references: references.length > 0 ? references : undefined,
@@ -59,7 +71,7 @@ export async function generateShotAudio(
 
       const arr = await fetchSpeechAudioBytes(resp);
 
-      const fileName = `${safeName(shot.shotNo)}-${safeName(char.name)}.mp3`;
+      const fileName = productionFileName(`${safeName(shot.shotNo)}-${safeName(char.name)}`, `${options?.operationId ?? crypto.randomUUID()}-${char.id}`);
       const relPath = `${relDir}/${fileName}`;
       await writeBinaryFile(relPath, arr, { dir: BaseDirectory.Home });
 

@@ -20,6 +20,9 @@ import { useChatStore, useSettingsStore } from '@/stores';
 import { useWechatStore } from '@/stores/wechatStore';
 import { useLarkStore } from '@/stores/larkStore';
 import { useAigcProjectStore } from '@/stores/aigcProjectStore';
+import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
+import { useWorkshopStore } from '@/stores/workshopStore';
+import { canOpenProjectWorkspace } from '@/lib/workspace/entryPolicy';
 import { useSessions } from '@/hooks';
 import { setSessionTitleRaw } from '@/hooks/useSessions';
 import SettingsPanel from './Settings';
@@ -71,6 +74,12 @@ export default function Sidebar() {
     Object.fromEntries(s.projects.map((project) => [project.id, project.name])),
   );
 
+  useEffect(() => {
+    const openSettings = () => setShowSettings(true);
+    window.addEventListener('kunpeng:open-settings', openSettings);
+    return () => window.removeEventListener('kunpeng:open-settings', openSettings);
+  }, []);
+
   const resolvedSessionTitle = (session: (typeof sessions)[number]) => {
     const shortId = session.id.split(':').pop() || '';
     return sessionTitles[session.id] || sessionTitles[shortId] || session.title;
@@ -83,6 +92,35 @@ export default function Sidebar() {
 
   const handleNewChat = async () => {
     await createSession();
+  };
+
+  // 有统一项目打开时，画布/剪辑/工坊一律进入新项目工作台对应工作面；
+  // 无项目时点工坊：直接打开最近项目的工作台；一个项目都没有才落项目页。
+  const openWorkspaceSurface = (target: 'workshop' | 'canvas' | 'editor') => {
+    const unifiedId = useUnifiedProjectStore.getState().activeId;
+    const ws = useWorkshopStore.getState();
+    if (unifiedId && canOpenProjectWorkspace(unifiedId, ws.project?.id, ws.data)) {
+      ws.updateProjectViewState(target === 'canvas'
+        ? { activeView: 'workshop', workspaceSurface: 'media', workspaceMediaView: 'canvas' }
+        : target === 'editor'
+          ? { activeView: 'workshop', workspaceSurface: 'editor' }
+          : { activeView: 'workshop', workspaceSurface: 'media', workspaceMediaView: 'list' });
+      setActiveView('workshop');
+      return;
+    }
+    if (target === 'workshop') {
+      // projects 已按 updatedAt 倒序（aigcProjectStore.loadProjects）
+      const latest = useAigcProjectStore.getState().projects[0];
+      if (latest) {
+        void useUnifiedProjectStore.getState().openUnified(latest.id)
+          .then(() => setActiveView('workshop'))
+          .catch(() => setActiveView('projects'));
+      } else {
+        setActiveView('projects');
+      }
+      return;
+    }
+    setActiveView(activeView === target ? 'chat' : target);
   };
 
   const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
@@ -200,12 +238,12 @@ export default function Sidebar() {
         </button>
 
         <div className="space-y-0.5">
-          <SidebarNavItem active={activeView === 'editor'} icon={<Scissors size={15} />} label="剪辑" onClick={() => setActiveView(activeView === 'editor' ? 'chat' : 'editor')} />
+          <SidebarNavItem active={activeView === 'editor'} icon={<Scissors size={15} />} label="剪辑" onClick={() => openWorkspaceSurface('editor')} />
           <SidebarNavItem active={activeView === 'copywriting'} icon={<PenLine size={15} />} label="文案" onClick={() => setActiveView(activeView === 'copywriting' ? 'chat' : 'copywriting')} />
-          <SidebarNavItem active={activeView === 'canvas'} icon={<LayoutDashboard size={15} />} label="画布" onClick={() => setActiveView(activeView === 'canvas' ? 'chat' : 'canvas')} />
+          <SidebarNavItem active={activeView === 'canvas'} icon={<LayoutDashboard size={15} />} label="画布" onClick={() => openWorkspaceSurface('canvas')} />
           <SidebarNavItem active={activeView === 'projects'} icon={<FolderKanban size={15} />} label="项目" onClick={() => setActiveView(activeView === 'projects' ? 'chat' : 'projects')} />
           <SidebarNavItem active={activeView === 'library'} icon={<Images size={15} />} label="产物库" onClick={() => setActiveView(activeView === 'library' ? 'chat' : 'library')} />
-          <SidebarNavItem active={activeView === 'workshop'} icon={<Clapperboard size={15} />} label="工坊" onClick={() => setActiveView(activeView === 'workshop' ? 'chat' : 'workshop')} />
+          <SidebarNavItem active={activeView === 'workshop'} icon={<Clapperboard size={15} />} label="工坊" onClick={() => openWorkspaceSurface('workshop')} />
         </div>
       </div>
       {/* Sessions List */}

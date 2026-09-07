@@ -70,8 +70,8 @@ export const viewCapabilitiesTool: Tool = {
     const capabilities: Record<string, { label: string; tools: string[]; note: string }> = {
       chat: { label: '普通对话', tools: ['web_search', 'web_fetch', 'browser_control', 'image_recognition', 'capability_api_config', 'media_api_plugin', 'image_generate', 'video_generate', 'mg_generate_with_reference_boards', 'task_status', 'apimart_route_status'], note: '通用研究、文件和直接生图生视频能力；无需为了生成切换到画布。APIMart 超时时可无扣费并行检测四条线路并刷新选择' },
       editor: { label: '剪辑', tools: ['timeline_get_state', 'timeline_add_clip', 'timeline_add_audio', 'timeline_add_overlay', 'timeline_add_scene', 'timeline_add_free_page', 'timeline_render_frame', 'timeline_set_export', 'timeline_export_analyze', 'timeline_export_video', 'timeline_export_status'], note: '支持从素材落轨、动效合成、逐帧验收到设置参数和导出成片的完整闭环' },
-      canvas: { label: '画布', tools: ['canvas_get_state', 'canvas_get_selection', 'canvas_capture_node', 'canvas_generate', 'canvas_generate_batch', 'storyboard_list_targets', 'storyboard_writeback_frame', 'canvas_compose_storyboard_board'], note: '节点、连线、单节点/批量并行生成、单格回传和多图拼板' },
-      workshop: { label: '工坊', tools: ['workshop_get_state', 'workshop_generate', 'storyboard_list_targets', 'storyboard_send_to_canvas'], note: '分镜、资产、批量生成和故事板画布精修' },
+      canvas: { label: '画布', tools: ['canvas_get_state', 'canvas_get_selection', 'canvas_capture_node', 'canvas_generate', 'canvas_generate_batch'], note: '节点、连线、单节点/批量并行生成和生成结果验收' },
+      workshop: { label: '工坊', tools: ['workshop_get_state', 'workshop_get_shot_refs', 'workshop_generate', 'workshop_set_director_constraint_card', 'workshop_set_director_constraint_usage'], note: '分镜、资产、批量生成和导演约束卡' },
       copywriting: { label: '文案', tools: ['copywriting_get_state'], note: '文案编辑、批注和改写' },
       projects: { label: '项目', tools: ['project_get_paths'], note: '项目和工作区路径' },
       library: { label: '产物库', tools: [], note: '查看项目产物' },
