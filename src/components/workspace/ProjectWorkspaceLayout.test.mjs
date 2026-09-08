@@ -16,6 +16,8 @@ function runtime(viewport = 1440) {
   const jsx = (type, props) => ({ type, props });
   const modules = { 'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react': {},
     '@/lib/workspace/layoutWidths': widths,
+    // 顶栏花费 chip：本测试不给 projectId，真实组件会返回 null；这里用空组件桩
+    './WorkspaceCostChip': { default: () => null },
     react: {
       useState: (value) => { const i = slot(() => typeof value === 'function' ? value() : value); return [slots[i],
         (next) => { slots[i] = typeof next === 'function' ? next(slots[i]) : next; }]; },

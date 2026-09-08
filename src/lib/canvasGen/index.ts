@@ -129,6 +129,9 @@ import {
   MIDJOURNEY_PARAMETER_PRESETS,
   isMidjourneyEngineId,
 } from '@/lib/midjourney/prompt';
+import { useCostLedgerStore } from '@/stores/costLedgerStore';
+import { estimateEngineCost, pricingCapsFromSettings } from '@/lib/pricing/estimate';
+import { formatCny, kuaiziActualCnyFromTokens, type CostProvider } from '@/lib/pricing/rates';
 
 export interface CanvasGenRequest {
   nodeId: string;
@@ -205,6 +208,16 @@ export interface CoreGenResult {
   submissionCommitted?: boolean;
   /** 筷子 Seedance 已进入可能计费阶段；Agent 本轮不得再次提交。 */
   automaticRetryBlocked?: boolean;
+  /**
+   * 本次成功生成的计费归属（仅真实新发起的付费任务填写；midjourney 幂等复用、
+   * 自定义插件等路径不填，落账层跳过）。actualCny 是供应商实报（人民币元），
+   * 缺省时由落账层按单价表预估入账并标注"预估"。
+   */
+  cost?: {
+    provider: CostProvider;
+    actualCny?: number;
+    actualDetail?: string;
+  };
 }
 
 export interface CanvasGenResult {
@@ -352,7 +365,8 @@ export function resolveGenEngine(
   }
   // 标准 API 引擎的能力校验（appConfig 引擎上面已校验槽位数，这里对称补齐）：
   // 传了引擎不支持的参考类型必须报错——曾经是静默上传后丢弃，用户以为参考
-  // 生效了（Fast 丢音频、Mini 首尾帧丢第 3 张图都是这么漏的）。
+  // 生效了（早期 rhart 通道丢音频、Mini 首尾帧丢第 3 张图都是这么漏的；
+  // 现筷子 fast 档按官方矩阵支持 图≤9/视频≤3/音频≤3，schema 已对齐）。
   if (!engine.appConfig) {
     if ((req.audioUrls?.length ?? 0) > 0 && !engine.audioParam) {
       return { error: `${engine.label} 不支持音频参考（本次传了 ${req.audioUrls!.length} 个）。请改用 Seedance 2.0 多模态引擎，或去掉音频参考。` };
@@ -360,8 +374,17 @@ export function resolveGenEngine(
     if ((req.videoUrls?.length ?? 0) > 0 && !engine.videoParam && engine.mode !== 'start-end-video') {
       return { error: `${engine.label} 不支持视频参考（本次传了 ${req.videoUrls!.length} 个）。请改用 Seedance 2.0 多模态引擎，或去掉视频参考。` };
     }
-    if (engine.mode === 'start-end-video' && refs.length > 2) {
-      return { error: `首尾帧模式只使用前 2 张图（首帧+尾帧），本次传了 ${refs.length} 张——多余的图不会生效。请减到 2 张以内，或改用 Seedance 2.0 多模态引擎（支持多参考图）。` };
+    if (engine.mode === 'start-end-video') {
+      // Mini 图生走筷子 mini 档支持 ≤9 图（首帧 + 其余 reference_image）；
+      // 但 Mini 选 -1 自动时长时走原生 RHTV 通道，只认首/尾帧两张。
+      const startEndLimit = engine.id.includes('mini') && !requestsProviderAutoDuration(req) ? 9 : 2;
+      if (refs.length > startEndLimit) {
+        return { error: startEndLimit === 9
+          ? `Mini 图生视频最多 9 张参考图（第 1 张作首帧，其余作多模态参考），本次传了 ${refs.length} 张。`
+          : engine.id.includes('mini')
+            ? `Mini 自动时长（-1）走原生通道只支持 2 张图（首帧+尾帧），本次传了 ${refs.length} 张；多参考请选择具体时长（走筷子通道，≤9 张）。`
+            : `首尾帧模式只使用前 2 张图（首帧+尾帧），本次传了 ${refs.length} 张——多余的图不会生效。请减到 2 张以内，或改用 Seedance 2.0 多模态引擎（支持多参考图）。` };
+      }
     }
   }
   return { engine };
@@ -619,6 +642,11 @@ async function cascadeFallback(
           success: true, taskId, resultPaths: fb.paths,
           resultUrls: fb.urls,
           engineKind: 'image', fallbackUsed: true,
+          cost: {
+            provider: routeDef?.provider === 'dmxapi' ? 'dmxapi'
+              : routeDef?.provider === 'dreamina' ? 'jimeng'
+                : routeDef?.provider === 'apimart' ? 'apimart' : 'other',
+          },
         };
       }
       const rhEngine = resolveImageEngine(next, refs.length);
@@ -647,6 +675,7 @@ async function cascadeFallback(
       const rhTaskId = submitResp.taskId;
       attemptTaskId = rhTaskId ?? '';
       let urls: string[];
+      let rhtvConsume: { consumeMoney?: number; consumeCoins?: number } | undefined;
       if (submitResp.status === 'SUCCESS' && submitResp.results?.length) {
         urls = submitResp.results.map((r) => r.url || r.outputUrl || '').filter(Boolean);
       } else {
@@ -656,6 +685,7 @@ async function cascadeFallback(
           maxMs: IMAGE_MAIN_CHAIN_TIMEOUT_MS,
           onProgress: (status, elapsed) => update({ progress: `${routeDef?.label ?? next}: ${status} · ${Math.round(elapsed / 1000)}s` }),
         });
+        rhtvConsume = polled;
         urls = polled.urls;
       }
       if (urls.length === 0) throw new Error('生成完成但没有输出文件');
@@ -674,6 +704,7 @@ async function cascadeFallback(
         success: true, taskId, resultPaths: paths,
         resultUrls: paths.map((p) => convertFileSrc(p)),
         engineKind: 'image', fallbackUsed: true,
+        cost: runninghubCostOutcome(rhtvConsume),
       };
     } catch (fbErr) {
       const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
@@ -930,12 +961,17 @@ async function runApiCompatibleImageGeneration(req: CoreGenRequest, routeId: str
     void appendArtifact({
       path: fb.paths[0], type: 'image', engine: fb.apiUsed, prompt: req.prompt, taskId,
     });
+    // 生图槽位实耗不返回，按渠道单价表预估入账（dmxapi 有公示价，其余渠道无价表不记）
+    const costProvider: CostProvider = route?.provider === 'dmxapi' ? 'dmxapi'
+      : route?.provider === 'dreamina' ? 'jimeng'
+        : route?.provider === 'apimart' ? 'apimart' : 'other';
     return {
       success: true,
       taskId,
       resultPaths: fb.paths,
       resultUrls: fb.urls,
       engineKind: 'image',
+      cost: { provider: costProvider },
     };
   } catch (err) {
     const msg = err instanceof DOMException && err.name === 'AbortError'
@@ -1041,6 +1077,13 @@ function mapSeedanceToKuaiziImageRoles(
   const engine = findCanvasEngine(engineId);
   if (engine?.mode === 'start-end-video') {
     const roles: KuaiziImageInput['role'][] = [];
+    // >2 张是 Mini 全能参考语义：第 1 张作首帧，其余全部 reference_image
+    // （不能把第 2 张误标成 last_frame，否则参考图被当成尾帧约束）。
+    if (refCount > 2) {
+      roles.push('first_frame');
+      for (let i = 1; i < refCount; i++) roles.push('reference_image');
+      return roles;
+    }
     if (refCount >= 1) roles.push('first_frame');
     if (refCount >= 2) roles.push('last_frame');
     return roles;
@@ -1223,6 +1266,7 @@ async function runApimartMidjourneyGeneration(
       engineKind: 'image',
       fallbackUsed,
       providerTaskId: result.taskId,
+      cost: { provider: 'apimart' },
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : errorText(err) || '未知错误';
@@ -1376,6 +1420,7 @@ async function runApimartMinimaxH3Generation(
       engineKind: 'video',
       fallbackUsed,
       providerTaskId,
+      cost: { provider: 'apimart' },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1519,6 +1564,7 @@ async function runKuaiziVideoChannel(
       resultUrls: result.resultUrls,
       engineKind: 'video',
       fallbackUsed: opts.fallbackUsed,
+      cost: { provider: 'kuaizi' },
     };
   } catch (err) {
     const kuaiziRetryStopped = shouldStopAutomaticPaidFallback(err, 'kuaizi-video');
@@ -1824,6 +1870,7 @@ async function runRhtvWan3Generation(req: CoreGenRequest, fallbackUsed = false):
     providerTaskId = submitResp.taskId ?? '';
 
     let urls: string[];
+    let rhtvConsume: { consumeMoney?: number; consumeCoins?: number } | undefined;
     if (submitResp.status === 'SUCCESS' && submitResp.results?.length) {
       urls = submitResp.results.map((r) => r.url || r.outputUrl || '').filter(Boolean);
     } else {
@@ -1833,6 +1880,7 @@ async function runRhtvWan3Generation(req: CoreGenRequest, fallbackUsed = false):
         signal: ac.signal,
         onProgress: (status, elapsed) => update({ progress: `${status} · ${Math.round(elapsed / 1000)}s` }),
       });
+      rhtvConsume = polled;
       urls = polled.urls;
     }
     const videoUrls = urls.filter(isVideoOutputUrl);
@@ -1869,6 +1917,7 @@ async function runRhtvWan3Generation(req: CoreGenRequest, fallbackUsed = false):
       success: true, taskId, resultPaths: paths,
       resultUrls: paths.map((p) => convertFileSrc(p)),
       engineKind: 'video', fallbackUsed, providerTaskId,
+      cost: runninghubCostOutcome(rhtvConsume),
     };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -2013,6 +2062,7 @@ async function runApimartWan3Generation(req: CoreGenRequest, fallbackUsed = fals
       engineKind: 'video',
       fallbackUsed,
       providerTaskId,
+      cost: { provider: 'apimart' },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2113,13 +2163,91 @@ async function runWan3Generation(req: CoreGenRequest): Promise<CoreGenResult> {
   return runVideoChannelCascade({ available, first, runChannel });
 }
 
+// ── 成本落账：任务成功时记一笔（实账优先，否则按单价表预估）────────────────────
+
+/** RunningHub 查询返回实耗（consumeMoney/consumeCoins）时记实账；没有实耗也要带出渠道。 */
+function runninghubCostOutcome(consume?: {
+  consumeMoney?: number;
+  consumeCoins?: number;
+}): CoreGenResult['cost'] {
+  if (consume?.consumeMoney) {
+    return {
+      provider: 'runninghub',
+      actualCny: consume.consumeMoney,
+      actualDetail: `RunningHub 实报 consumeMoney ¥${formatCny(consume.consumeMoney)}`,
+    };
+  }
+  if (consume?.consumeCoins) {
+    return {
+      provider: 'runninghub',
+      actualCny: consume.consumeCoins,
+      actualDetail: `RunningHub 实报 ${consume.consumeCoins} coins（按 1 币≈1 元折算）`,
+    };
+  }
+  return { provider: 'runninghub' };
+}
+
+/**
+ * 落账入口：实报记 actual，没实报的用 estimateEngineCost 按单价表记 estimate
+ * （即梦/方舟等无单价渠道的预估没有金额，不记）。拿不到 projectId 不记——
+ * 纯画布节点任务没有项目归属；同一 taskId 幂等。任何异常都不准冒泡进生成链路。
+ */
+async function recordGenerationCost(req: CoreGenRequest, result: CoreGenResult): Promise<void> {
+  try {
+    if (!result.success || !result.cost || !result.taskId) return;
+    const ledger = useCostLedgerStore.getState();
+    if (ledger.hasRecordForTask(result.taskId)) return;
+    const task = useCanvasTaskStore.getState().tasks.find((item) => item.id === result.taskId);
+    const projectId = req.projectId ?? task?.projectId ?? req.workspaceBinding?.snapshot.projectId;
+    if (!projectId) return;
+    const base = {
+      projectId,
+      taskId: result.taskId,
+      objectLabel: req.workspaceBinding?.snapshot.objectId,
+      kind: result.engineKind ?? task?.kind ?? ('image' as const),
+      engineId: req.engineId,
+      engineLabel: task?.engineLabel ?? req.engineId,
+      provider: result.cost.provider,
+    };
+    if (result.cost.actualCny !== undefined
+      && Number.isFinite(result.cost.actualCny) && result.cost.actualCny > 0) {
+      ledger.addRecord({
+        ...base,
+        costType: 'actual',
+        amountCny: result.cost.actualCny,
+        displayText: `实账 ¥${formatCny(result.cost.actualCny)}`,
+        detail: result.cost.actualDetail,
+      });
+      return;
+    }
+    const estimate = await estimateEngineCost(req.engineId, req.params ?? {}, {
+      images: req.referenceUrls?.length ?? 0,
+      videos: req.videoUrls?.length ?? 0,
+      audios: req.audioUrls?.length ?? 0,
+    }, pricingCapsFromSettings(useSettingsStore.getState()), result.cost.provider);
+    // 没有金额的预估（即梦积分等）不入账，避免污染项目总计
+    if (!estimate || estimate.amountCny === undefined) return;
+    ledger.addRecord({
+      ...base,
+      costType: 'estimate',
+      amountCny: estimate.amountCny,
+      displayText: estimate.label,
+      detail: estimate.detail,
+    });
+  } catch { /* 落账是旁路记账，失败静默 */ }
+}
+
 export async function runGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
-  if (isCustomMediaEngine(req.engineId)) return runCustomMediaGeneration(req);
-  if (isMidjourneyEngine(req.engineId)) return runMidjourneyGeneration(req);
-  if (req.engineId === 'minimax-hailuo-h3') return runMinimaxH3Generation(req);
-  if (req.engineId === 'wan-3.0' || req.engineId === 'wan-3.0-prime') return runWan3Generation(req);
-  if (req.engineId === 'suno-v5' || req.engineId === 'suno') return runSunoGeneration(req);
-  return runStandardGeneration(req);
+  const result = await (() => {
+    if (isCustomMediaEngine(req.engineId)) return runCustomMediaGeneration(req);
+    if (isMidjourneyEngine(req.engineId)) return runMidjourneyGeneration(req);
+    if (req.engineId === 'minimax-hailuo-h3') return runMinimaxH3Generation(req);
+    if (req.engineId === 'wan-3.0' || req.engineId === 'wan-3.0-prime') return runWan3Generation(req);
+    if (req.engineId === 'suno-v5' || req.engineId === 'suno') return runSunoGeneration(req);
+    return runStandardGeneration(req);
+  })();
+  void recordGenerationCost(req, result);
+  return result;
 }
 
 // ── Suno 音乐生成（APIMart /v1/music/generations，2026-08 接回）──────────────
@@ -2194,6 +2322,7 @@ async function runSunoGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
       resultUrls: paths.map((path) => convertFileSrc(path)),
       engineKind: 'audio',
       providerTaskId,
+      cost: { provider: 'apimart' },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2328,6 +2457,7 @@ async function runArkSeedanceGeneration(req: CoreGenRequest): Promise<CoreGenRes
       resultUrls: paths.map((path) => convertFileSrc(path)),
       engineKind: 'video',
       providerTaskId,
+      cost: { provider: 'ark' },
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2550,6 +2680,7 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
     const rhTaskId = submitResp.taskId;
     providerTaskId = rhTaskId ?? '';
     let urls: string[];
+    let rhtvConsume: { consumeMoney?: number; consumeCoins?: number } | undefined;
     if (submitResp.status === 'SUCCESS' && submitResp.results?.length) {
       urls = submitResp.results.map((r) => r.url || r.outputUrl || '').filter(Boolean);
     } else {
@@ -2565,6 +2696,7 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
           update({ progress: `${status} · ${Math.round(elapsed / 1000)}s` }),
       });
       queueMs = Date.now() - pollStarted;
+      rhtvConsume = polled;
       urls = polled.urls;
     }
     if (engine.kind === 'video') {
@@ -2627,6 +2759,7 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
       success: true, taskId, resultPaths: paths,
       resultUrls: paths.map((p) => convertFileSrc(p)),
       engineKind: engine.kind,
+      cost: runninghubCostOutcome(rhtvConsume),
     };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -2863,6 +2996,7 @@ async function runDreaminaSeedance25Generation(req: CoreGenRequest): Promise<Cor
       resultPaths: result.paths,
       resultUrls: result.urls.length > 0 ? result.urls : displayUrls,
       engineKind: 'video',
+      cost: { provider: 'jimeng' },
     };
   } catch (err) {
     const aborted = err instanceof DOMException && err.name === 'AbortError';
@@ -2980,12 +3114,26 @@ async function runKuaiziSeedanceGeneration(req: CoreGenRequest): Promise<CoreGen
       finishedAt: Date.now(),
     });
 
+    // 实账：任务查询返回 usage.completion_tokens（API 文档明确失败不扣费，
+    // 能走到这里的一定是 succeeded 实扣）。tokens 缺失时降级为单价表预估。
+    const completionTokens = result.status.usage?.completion_tokens;
+    const actualCny = typeof completionTokens === 'number'
+      && Number.isFinite(completionTokens) && completionTokens > 0
+      ? kuaiziActualCnyFromTokens(completionTokens)
+      : undefined;
     return {
       success: true,
       taskId,
       resultPaths: result.resultPaths,
       resultUrls: result.resultUrls,
       engineKind: 'video',
+      cost: {
+        provider: 'kuaizi',
+        ...(actualCny !== undefined ? {
+          actualCny,
+          actualDetail: `筷子丽帧实报 ${completionTokens} tokens × 0.0000686 元/token（0.00007 点/token，含充值 98 折）`,
+        } : {}),
+      },
     };
   } catch (err) {
     const kuaiziRetryStopped = shouldStopAutomaticPaidFallback(err, 'kuaizi-video');

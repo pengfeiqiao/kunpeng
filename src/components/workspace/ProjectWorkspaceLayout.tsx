@@ -3,11 +3,14 @@ import { ArrowLeft, ChevronRight, List, Maximize2, MessageSquare, Minimize2, Pan
 import type { ProjectViewState, WorkspaceLayoutWidths } from '@/lib/projectObjects/types';
 import { DEFAULT_WORKSPACE_LAYOUT_WIDTHS, WORKSPACE_COLUMN_GAP, WORKSPACE_COLUMN_LIMITS, fitWorkspaceLayoutWidths,
   normalizeWorkspaceLayoutWidths, resizeWorkspaceColumn, workspaceColumnKeyboardDelta, workspaceColumnMaximum } from '@/lib/workspace/layoutWidths';
+import WorkspaceCostChip from './WorkspaceCostChip';
 import './workspace.css';
 import './workspaceLayoutExperience.css';
 
 interface Props {
   projectName: string;
+  /** 传入后顶栏显示项目累计花费 chip（成本账本有记录才渲染）。 */
+  projectId?: string;
   specSummary: string;
   surface: 'media' | 'editor' | 'documents';
   assistantState: NonNullable<ProjectViewState['agentDrawerState']>;
@@ -151,6 +154,7 @@ export default function ProjectWorkspaceLayout(props: Props) {
           key={surface} aria-current={props.surface === surface ? 'page' : undefined} onClick={() => props.onSurface(surface)}>{label}</button>)}
       </nav>
       <button className="workspace-spec-summary" title={props.specSummary} onClick={props.onSpec}>{props.specSummary}</button>
+      <WorkspaceCostChip projectId={props.projectId} />
       {props.projectActions}
       {props.surface === 'media' && !canvasMode && props.onNewMaterial && <div className="workspace-new-material">
         <button className="workspace-icon" title="新建素材" aria-label="新建素材" aria-expanded={newMaterialOpen} onClick={() => setNewMaterialOpen(!newMaterialOpen)}><Plus size={17} /></button>

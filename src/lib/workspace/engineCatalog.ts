@@ -27,7 +27,7 @@ export const WORKSPACE_ENGINES: RhtvCanvasEngine[] = [
     params: [
       { key: 'ratio', label: '比例', type: 'list', default: '16:9', options: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'] },
       { key: 'duration', label: '时长', type: 'list', default: '5', options: Array.from({ length: 27 }, (_, i) => String(i + 4)) },
-      { key: 'resolution', label: '分辨率', type: 'list', default: '720p', options: ['480p', '720p'] },
+      { key: 'resolution', label: '分辨率', type: 'list', default: '480p', options: ['480p', '720p'] },
     ] },
   ...CANVAS_VIDEO_ENGINES,
 ];

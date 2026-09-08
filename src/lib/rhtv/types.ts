@@ -41,6 +41,9 @@ export interface RhtvQueryResponse {
   errorMessage?: string;
   errorCode?: string | number;
   failedReason?: unknown;
+  /** 实耗（部分端点返回）：人民币元 / 平台币。 */
+  consumeMoney?: string | number;
+  consumeCoins?: string | number;
   data?: {
     taskId?: string;
     taskStatus?: string;
@@ -59,6 +62,9 @@ export interface RhtvTaskResult {
   urls: string[];
   /** Text outputs, if the endpoint produces text. */
   texts: string[];
+  /** 查询返回的实耗（有则为供应商实账）：consumeMoney=人民币元，consumeCoins=平台币。 */
+  consumeMoney?: number;
+  consumeCoins?: number;
 }
 
 /**

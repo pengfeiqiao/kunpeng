@@ -196,7 +196,7 @@ export default function ProjectWorkspace(props: Props) {
     if (selected.length) dispatchProjectAgentContext(selected);
   };
   return <>
-    <ProjectWorkspaceLayout key={data.projectId} projectName={project.name} specSummary={summarizeProjectSpec(data.projectSpec)} surface={surface}
+    <ProjectWorkspaceLayout key={data.projectId} projectId={data.projectId} projectName={project.name} specSummary={summarizeProjectSpec(data.projectSpec)} surface={surface}
       widths={view.workspaceLayoutWidths} onWidths={(workspaceLayoutWidths) => patchView({ workspaceLayoutWidths })}
       mediaView={view.workspaceMediaView ?? 'list'} onMediaView={(workspaceMediaView) => patchView({ workspaceMediaView })}
       onNewMaterial={(type) => { if (ownsProject()) applyWorkspaceProjectCommand(data.projectId, (current) => createUnclassifiedGeneration(current, crypto.randomUUID(), type)); }}

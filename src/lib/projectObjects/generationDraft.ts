@@ -140,6 +140,8 @@ function maxReferenceCount(engineId: string, kind: 'image' | 'video' | 'audio', 
   const id = engineId.toLowerCase();
   if (id.includes('hailuo-h3') || id.includes('minimax-h3')) return kind === 'image' ? 9 : 3;
   if (id.includes('seedance-2.5')) return kind === 'image' ? 30 : 10;
+  // Seedance 2.0 家族（pro/fast/mini 多模态档）：API 矩阵 参考图≤9 / 视频≤3 / 音频≤3
+  if (id.includes('seedance-2.0')) return kind === 'image' ? 9 : 3;
   if (id.includes('wan-3')) return kind === 'image' ? 10 : 5;
   return Number.POSITIVE_INFINITY;
 }
@@ -150,8 +152,9 @@ function clampReferences(
   values: string[],
   multiple: boolean,
   adjustments: string[],
+  cap?: number,
 ): string[] {
-  const limit = maxReferenceCount(engine.id, kind, multiple);
+  const limit = Math.min(cap ?? Number.POSITIVE_INFINITY, maxReferenceCount(engine.id, kind, multiple));
   if (values.length <= limit) return [...values];
   const label = kind === 'image' ? '参考图片' : kind === 'video' ? '参考视频' : '参考音频';
   adjustments.push(`${label}由 ${values.length} 个调整为 ${limit} 个（${engine.label} 上限）`);
@@ -182,8 +185,14 @@ export function calibrateGenerationForEngine(
     }
   }
 
-  const images = engine.imageParam
-    ? clampReferences(engine, 'image', references.images ?? [], engine.imageParam.multiple, adjustments)
+  // start-end-video 引擎（首尾帧/Mini 图生）经 firstFrameUrl/lastFrameUrl 特判提交，
+  // schema 不带 imageParam，但确实支持参考图——不能按"不支持"剥光。
+  // 上限：Mini 图生走筷子 mini 档支持 ≤9 图（首帧 + 其余 reference_image）；
+  // startend 首尾帧语义就是首帧+尾帧两张。
+  const startEnd = engine.mode === 'start-end-video';
+  const startEndImageCap = engine.id.includes('mini') ? 9 : 2;
+  const images = engine.imageParam || startEnd
+    ? clampReferences(engine, 'image', references.images ?? [], engine.imageParam?.multiple ?? true, adjustments, startEnd ? startEndImageCap : undefined)
     : [];
   const videos = engine.videoParam
     ? clampReferences(engine, 'video', references.videos ?? [], engine.videoParam.multiple, adjustments)
@@ -192,7 +201,7 @@ export function calibrateGenerationForEngine(
     ? clampReferences(engine, 'audio', references.audios ?? [], engine.audioParam.multiple, adjustments)
     : [];
 
-  if (!engine.imageParam && (references.images?.length ?? 0) > 0) adjustments.push(`${engine.label} 不支持参考图片，已移除`);
+  if (!engine.imageParam && !startEnd && (references.images?.length ?? 0) > 0) adjustments.push(`${engine.label} 不支持参考图片，已移除`);
   if (!engine.videoParam && (references.videos?.length ?? 0) > 0) adjustments.push(`${engine.label} 不支持参考视频，已移除`);
   if (!engine.audioParam && (references.audios?.length ?? 0) > 0) adjustments.push(`${engine.label} 不支持参考音频，已移除`);
 

@@ -1,17 +1,9 @@
 import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
 import { errorText } from '@/lib/errorText';
+import { APIMART_BASE_URLS } from './gateways.ts';
 
-/**
- * APIMart is reachable through several equivalent gateway domains. Keep the
- * documented API host in the pool and select the currently healthy route
- * before a paid submission instead of pinning any single domain.
- */
-export const APIMART_BASE_URLS = [
-  'https://api.apimart.ai',
-  'https://apib.ai',
-  'https://aiuxu.com',
-  'https://aishuch.com',
-] as const;
+// 网关域名清单单一事实源在 ./gateways.ts（零依赖叶子，node --test 可加载），这里透传再导出
+export { APIMART_BASE_URLS };
 
 export const APIMART_BASE_URL = 'https://api.apimart.ai';
 

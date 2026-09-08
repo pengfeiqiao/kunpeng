@@ -4,8 +4,10 @@ import {
   applyVideoPlanningReferencePrefixes,
   buildStoryboardFrameRefBindings,
   buildVideoRefBindings,
+  clearExplicitEmptyLocks,
   compactStoryboardFrameReferences,
   ensureDirectorConstraintMention,
+  findExtraRefAssetConflict,
   remapShotPromptRefs,
   seedance25PromptForShot,
   stripDirectorConstraintMention,
@@ -547,4 +549,44 @@ test('stale empty stored draft refreshes from cast unless explicitly cleared', a
     workspaceReferenceProjection: { image: [] } })) };
   const repaired = initialWorkspaceDraft(shadowed, 'shot:s', 'image')!;
   assert.ok(repaired.references.length > 0, '残影应按选角重算回填');
+});
+
+test('clearExplicitEmptyLocks unlocks layers the cast can produce and keeps unproductive locks', () => {
+  // 视频层被显式清空锁死、选角能产出引用 → 解锁，投影数组原样保留
+  const locked: WsShot = { ...shot, workspaceReferenceProjection: { video: [], explicitEmpty: { video: true } } };
+  const unlock = clearExplicitEmptyLocks(locked, locked, ctx)!;
+  assert.deepEqual(unlock.unlocked, ['video']);
+  assert.equal(unlock.projection?.explicitEmpty, undefined);
+  assert.deepEqual(unlock.projection?.video, [], '投影数组不动，只清标记');
+  // 另一层的标记保留
+  const bothLocked: WsShot = { ...shot, characterIds: [], propIds: [], extraRefImages: [], colorPaletteId: '__none__',
+    workspaceReferenceProjection: { image: [], video: [], explicitEmpty: { image: true, video: true } } };
+  const bothCtx: ShotRefsContext = { scenes: [], characters: [], props: [] };
+  // 选角完全产出不了引用 → 两层都保留锁定
+  assert.equal(clearExplicitEmptyLocks(bothLocked, bothLocked, bothCtx), undefined);
+  // 加入角色后：image/video 两层都能产出 → 都解锁
+  const recast = { ...bothLocked, characterIds: ['char-1'] };
+  const recastUnlock = clearExplicitEmptyLocks(bothLocked, recast, ctx)!;
+  assert.deepEqual(recastUnlock.unlocked, ['image', 'video']);
+  assert.equal(recastUnlock.projection?.explicitEmpty, undefined);
+  // 无 explicitEmpty 标记时不解锁
+  assert.equal(clearExplicitEmptyLocks(shot, shot, ctx), undefined);
+});
+
+test('extra ref conflicting with a bound asset is flagged; unbound or ownerless media passes', () => {
+  const media = [
+    { path: '/old-character.png', ownerObjectId: 'character:char-1' },
+    { path: '/assets/character.png', ownerObjectId: 'character:char-1' },
+    { path: '/stray.png', ownerObjectId: 'character:char-2' },
+    { path: '/no-owner.png' },
+  ];
+  const bound = { characterIds: new Set(['char-1']), propIds: new Set<string>(), sceneId: 'scene-1', paletteId: undefined };
+  const stale = findExtraRefAssetConflict('/old-character.png', media, bound, ctx);
+  assert.equal(stale?.reason, 'stale-version');
+  assert.equal(stale?.name, '姮氏');
+  assert.equal(stale?.currentPath, '/assets/character.png');
+  assert.equal(findExtraRefAssetConflict('/assets/character.png', media, bound, ctx)?.reason, 'already-covered');
+  assert.equal(findExtraRefAssetConflict('/stray.png', media, bound, ctx), undefined, '归属资产未绑定本镜时允许');
+  assert.equal(findExtraRefAssetConflict('/no-owner.png', media, bound, ctx), undefined);
+  assert.equal(findExtraRefAssetConflict('/old-character.png', undefined, bound, ctx), undefined);
 });

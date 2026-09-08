@@ -29,8 +29,7 @@ test('price quote calls the existing endpoint using parameters, without prompt t
     assert.equal(params.prompt, 'estimate'); assert.equal(params.duration, '8');
     return { estimatedPrice: 1.2, currency: 'CNY', isFreeThisCall: false };
   });
-  assert.equal(called, true); assert.match(result.label, /RunningHub 预估 CNY 1.2/);
-  assert.match(result.detail, /实际路由与计费可能不同/);
+  assert.equal(called, true); assert.match(result.label, /约 CNY 1.2/);
 });
 
 test('missing quote support never calls provider and is not labelled free', async () => {

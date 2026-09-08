@@ -308,6 +308,82 @@ export function buildVideoRefPaths(shot: WsShot, ctx: ShotRefsContext): string[]
   return buildVideoRefBindings(shot, ctx).map((ref) => ref.path);
 }
 
+/**
+ * 参考字段变化后解除"显式清空"锁定：对 image/video 两层分别检查，按新选角
+ * （剥离投影后实时计算）能产出引用的层清除 explicitEmpty 标记，产出不了的层保留。
+ * 返回的投影保留原 image/video 投影数组不动，只改 explicitEmpty；无需解锁时返回 undefined。
+ */
+export function clearExplicitEmptyLocks(
+  shot: WsShot,
+  nextShot: WsShot,
+  ctx: ShotRefsContext,
+): { projection: WsShot['workspaceReferenceProjection']; unlocked: Array<'image' | 'video'> } | undefined {
+  const explicitEmpty = shot.workspaceReferenceProjection?.explicitEmpty;
+  if (!explicitEmpty) return undefined;
+  const raw = { ...nextShot, workspaceReferenceProjection: undefined };
+  const unlocked: Array<'image' | 'video'> = [];
+  for (const type of ['image', 'video'] as const) {
+    if (explicitEmpty[type] !== true) continue;
+    const paths = type === 'image' ? buildImageRefPaths(raw, ctx) : buildVideoRefPaths(raw, ctx);
+    if (paths.length > 0) unlocked.push(type);
+  }
+  if (unlocked.length === 0) return undefined;
+  const nextExplicitEmpty = { ...explicitEmpty };
+  for (const type of unlocked) delete nextExplicitEmpty[type];
+  return {
+    projection: {
+      ...shot.workspaceReferenceProjection,
+      explicitEmpty: Object.keys(nextExplicitEmpty).length > 0 ? nextExplicitEmpty : undefined,
+    },
+    unlocked,
+  };
+}
+
+export interface ExtraRefAssetConflict {
+  ownerKind: 'character' | 'prop' | 'scene' | 'scene-asset';
+  ownerId: string;
+  name: string;
+  /** 资产当前定版图；与传入 path 相同说明资产绑定已覆盖该图。 */
+  currentPath?: string;
+  reason: 'stale-version' | 'already-covered';
+}
+
+/**
+ * 额外参考图与资产定版的冲突检测：path 归属的媒体若属于某个已绑定进本镜的
+ * 资产（角色/道具/场景/色卡），extra 不应再占号——path 是旧版本或就是定版图都跳过。
+ * 归属资产未绑定本镜、或媒体没有归属资产时返回 undefined（允许添加）。
+ */
+export function findExtraRefAssetConflict(
+  path: string,
+  media: ReadonlyArray<{ path: string; ownerObjectId?: string }> | undefined,
+  bound: { characterIds: ReadonlySet<string>; propIds: ReadonlySet<string>; sceneId?: string; paletteId?: string },
+  ctx: ShotRefsContext,
+): ExtraRefAssetConflict | undefined {
+  const record = media?.find((item) => item.path === path && item.ownerObjectId);
+  if (!record?.ownerObjectId) return undefined;
+  const [kind, ...rest] = record.ownerObjectId.split(':');
+  const ownerId = rest.join(':');
+  if (!ownerId) return undefined;
+  const boundHere = kind === 'character' ? bound.characterIds.has(ownerId)
+    : kind === 'prop' ? bound.propIds.has(ownerId)
+    : kind === 'scene' ? bound.sceneId === ownerId
+    : kind === 'scene-asset' ? bound.paletteId === ownerId
+    : false;
+  if (!boundHere) return undefined;
+  const asset = kind === 'character' ? ctx.characters.find((x) => x.id === ownerId)
+    : kind === 'prop' ? ctx.props.find((x) => x.id === ownerId)
+    : kind === 'scene' ? ctx.scenes.find((x) => x.id === ownerId)
+    : kind === 'scene-asset' ? ctx.colorPalettes?.find((x) => x.id === ownerId)
+    : undefined;
+  return {
+    ownerKind: kind as ExtraRefAssetConflict['ownerKind'],
+    ownerId,
+    name: asset?.name ?? ownerId,
+    currentPath: asset?.assetImagePath,
+    reason: asset?.assetImagePath && asset.assetImagePath === path ? 'already-covered' : 'stale-version',
+  };
+}
+
 /** 兼容旧调用：按路径重排。新代码应优先使用语义绑定重排。 */
 export function replaceImageMentionsByPath(prompt: string | undefined, oldPaths: string[], newPaths: string[]): string | undefined {
   if (!prompt) return prompt;

@@ -19,12 +19,20 @@ export interface RhtvPollOptions {
   maxIntervalMs?: number;
 }
 
+function consumeNumber(value: unknown): number | undefined {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : undefined;
+}
+
 function extractResult(taskId: string, resp: RhtvQueryResponse): RhtvTaskResult {
   const items = resp.results ?? [];
   return {
     taskId,
     urls: items.map((r) => r.url || r.outputUrl || '').filter(Boolean),
     texts: items.map((r) => r.text || '').filter(Boolean),
+    // 实耗字段顶层与 data 层都试（RunningHub 响应结构在不同端点间不稳定）
+    consumeMoney: consumeNumber(resp.consumeMoney ?? resp.data?.consumeMoney),
+    consumeCoins: consumeNumber(resp.consumeCoins ?? resp.data?.consumeCoins),
   };
 }
 

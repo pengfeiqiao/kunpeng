@@ -94,3 +94,40 @@ test('adopting a different asset version does not silently change existing or le
   assert.equal(next.shots[0].imagePrompt, before.shots[0].imagePrompt);
   assert.equal(preserveLegacyReferenceDrafts(next, { ...next, characters: after.characters }).workspaceDrafts, next.workspaceDrafts);
 });
+
+function lockedVideoFixture() {
+  return migrateWorkshopProjectObjects({ ...emptyWorkshopData('refs-locked'),
+    characters: ['a', 'b'].map((id) => ({ id, name: id, appearance: '', personality: '', assetImagePath: `/${id}.png` })),
+    shots: [{ id: 's', shotNo: '1', description: '原描述', characterIds: ['a'],
+      workspaceReferenceProjection: {
+        image: [{ id: 'legacy:character:a:/a.png', type: 'image' as const, path: '/a.png', label: '角色 a', objectId: 'character:a' }],
+        video: [],
+        explicitEmpty: { video: true },
+      } }] }, 1);
+}
+
+test('agent ref edit carrying cleared explicitEmpty intent rebuilds the locked layer from cast', () => {
+  const before = lockedVideoFixture();
+  const shot = before.shots[0];
+  const intent = { ...shot.workspaceReferenceProjection, explicitEmpty: undefined };
+  const next = editLegacyShotReferences(before, '1', { characterIds: ['a', 'b'], workspaceReferenceProjection: intent });
+  const projection = next.shots[0].workspaceReferenceProjection;
+  assert.equal(projection?.explicitEmpty?.video, undefined, '视频层清空锁定被解除');
+  assert.deepEqual(projection?.video?.map((ref) => ref.path), ['/a.png', '/b.png'], '视频层按新选角整层重建');
+  assert.equal(next.workspaceDrafts!['shot:s::video'].references.length, 2);
+});
+
+test('ref edit without unlock intent keeps partial-rebuild behavior on the locked layer', () => {
+  const before = lockedVideoFixture();
+  const next = editLegacyShotReferences(before, '1', { characterIds: ['a', 'b'] });
+  // 兼容路径只在触及分组上做增量：新增的角色进入投影，但原有的 a 不会自动回补
+  assert.deepEqual(next.shots[0].workspaceReferenceProjection?.video?.map((ref) => ref.path), ['/b.png']);
+});
+
+test('prompt writes carrying promptNeedsRefresh:false clear the refresh flag through the shot edit path', () => {
+  const before = fixture();
+  const flagged = { ...before, shots: before.shots.map((s) => ({ ...s, promptNeedsRefresh: true })) };
+  const next = editLegacyShotReferences(flagged, '1', { imagePrompt: '重写后的图片词', promptNeedsRefresh: false });
+  assert.equal(next.shots[0].promptNeedsRefresh, false);
+  assert.equal(next.shots[0].imagePrompt, '重写后的图片词');
+});

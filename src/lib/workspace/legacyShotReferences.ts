@@ -58,10 +58,19 @@ export function editLegacyShotReferences(input: WorkshopData, shotNo: string, pa
   if (owner?.locked || owner?.archived) throw new Error('镜头已锁定或归档，未修改参考');
   // Apply facts/parameters first; prompt patches are handled against their explicitly supplied reference order below.
   let next = editWorkspaceShot(referenceData ?? input, shotNo, { ...patch, referenceRevision: (shot.referenceRevision ?? 0) + 1 }, now);
+  // Agent 解锁意图：patch 显式携带 projection 且清掉了某层的 explicitEmpty 标记时，
+  // 该层不能在被清空的残影上做增量替换（增量只覆盖触及的分组，甚至会把锁定标记打回去），
+  // 必须按新选角整层重建引用。
+  const unlockTypes = new Set((['image', 'video'] as const).filter((type) =>
+    patch.workspaceReferenceProjection !== undefined
+    && shot.workspaceReferenceProjection?.explicitEmpty?.[type] === true
+    && patch.workspaceReferenceProjection.explicitEmpty?.[type] !== true));
   for (const type of ['image', 'video'] as const) {
     const before = legacyShotDraft(input, shot, type, now);
     if (!before) continue;
-    let references = before.references;
+    let references = unlockTypes.has(type)
+      ? legacyReferences(next, next.shots.find((item) => item.shotNo === shotNo) ?? { ...shot, ...patch }, type)
+      : before.references;
     for (const group of groups) {
       const fields = Object.fromEntries(group.fields.map((key) => [key, patch[key as keyof WsShot] === undefined && !Object.prototype.hasOwnProperty.call(patch, key)
         ? shot[key as keyof WsShot] : patch[key as keyof WsShot]]));

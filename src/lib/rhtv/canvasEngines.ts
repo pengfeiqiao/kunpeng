@@ -200,7 +200,11 @@ export const CANVAS_VIDEO_ENGINES: RhtvCanvasEngine[] = [
     endpoint: 'bytedance/seedance-2.0-global-fast/multimodal-video',
     kind: 'video',
     mode: 'multimodal-video',
+    // 筷子 OpenAPI 分档矩阵：fast 档与 pro 同为 参考图≤9 / 视频≤3 / 音频≤3（v1.1）。
+    // 早期 rhart 渠道静默丢音频曾按"不支持"处理；现主通道为筷子 fast 档，按矩阵放开。
     imageParam: { key: 'imageUrls', multiple: true },
+    videoParam: { key: 'videoUrls', multiple: true },
+    audioParam: { key: 'audioUrls', multiple: true },
     fixedParams: { generateAudio: true, returnLastFrame: false, realPersonMode: true },
     params: [
       {

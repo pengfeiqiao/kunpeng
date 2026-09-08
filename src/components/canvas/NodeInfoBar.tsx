@@ -9,7 +9,8 @@ import { generateForNode } from '@/lib/canvasGen';
 import { classifyWan3LinkUrl } from '@/lib/videoRouter/wan3';
 import { useCanvasMention, type MentionItem } from '@/hooks/useCanvasMention';
 import { useSlashMenu } from '@/hooks/useSlashMenu';
-import { previewPrice, type PricePreview } from '@/lib/rhtv/pricePreview';
+import { previewPrice } from '@/lib/rhtv/pricePreview';
+import { estimateEngineCost, pricingCapsFromSettings } from '@/lib/pricing/estimate';
 import { useSelectedAssets, clearAssets, toggleAsset, type AttachedAsset } from '@/lib/canvas/selectedAssets';
 import { collectNodeReferences, selfUploadFallback, selfVideoFallback } from '@/lib/canvas/collectRefs';
 import CameraPresetPicker from './CameraPresetPicker';
@@ -284,9 +285,9 @@ function resizePromptTextarea(el: HTMLTextAreaElement): void {
   el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
 }
 
-/** 参考图样式生成按钮：深色胶囊 [¥估价 ⬤白圆钮] 一体 */
+/** 参考图样式生成按钮：深色胶囊 [估价文案 ⬤白圆钮] 一体 */
 function GenerateButton({ onClick, disabled, price, label }: {
-  onClick: () => void; disabled?: boolean; price: PricePreview | null; label?: string;
+  onClick: () => void; disabled?: boolean; price: { label: string; detail?: string } | null; label?: string;
 }) {
   return (
     <button
@@ -294,11 +295,10 @@ function GenerateButton({ onClick, disabled, price, label }: {
       disabled={disabled}
       className="group/gen flex items-center gap-2.5 pl-4 pr-1.5 py-1.5 rounded-full transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 shrink-0"
       style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
-      title={label ?? '生成'}
+      title={price?.detail ?? label ?? '生成'}
     >
       <span className="flex items-center gap-1 text-[13px] font-medium" style={{ color: 'rgba(255,255,255,0.62)' }}>
-        {price && !price.isFreeThisCall && <span className="text-[12px] opacity-70">¥</span>}
-        {price ? (price.isFreeThisCall ? '免费' : price.estimatedPrice) : (label ?? '生成')}
+        {price ? price.label : (label ?? '生成')}
       </span>
       <span
         className="w-9 h-9 rounded-full flex items-center justify-center transition-transform group-hover/gen:scale-105"
@@ -310,18 +310,40 @@ function GenerateButton({ onClick, disabled, price, label }: {
   );
 }
 
-/** 估价 hook：endpoint+params 变化 debounce 800ms 调 price-preview */
-function usePriceEstimate(endpoint: string | null, params: Record<string, unknown>): PricePreview | null {
-  const [price, setPrice] = useState<PricePreview | null>(null);
-  const paramsKey = JSON.stringify(params);
+/** 统一估价（与工作台 estimateWorkspacePrice 同一口径）：优先按渠道单价表预估
+ * （筷子官方按秒价/DMX 公示价/APIMart 定价 API），估不出再回退 RunningHub 实时报价。
+ * endpoint+params 变化 debounce 800ms 刷新。 */
+function useUnifiedPriceEstimate(args: {
+  engineId: string | null;
+  endpoint: string | null;
+  params: Record<string, unknown>;
+  imageRefs: number;
+  videoRefs: number;
+}): { label: string; detail?: string } | null {
+  const [price, setPrice] = useState<{ label: string; detail?: string } | null>(null);
+  const paramsKey = JSON.stringify(args.params);
+  const { engineId, endpoint, imageRefs, videoRefs } = args;
   useEffect(() => {
-    if (!endpoint) { setPrice(null); return; }
+    if (!engineId && !endpoint) { setPrice(null); return; }
     let alive = true;
     const t = setTimeout(() => {
-      void previewPrice(endpoint, JSON.parse(paramsKey)).then((p) => { if (alive) setPrice(p); });
+      void (async () => {
+        if (engineId) {
+          const estimate = await estimateEngineCost(engineId, JSON.parse(paramsKey),
+            { images: imageRefs, videos: videoRefs, audios: 0 },
+            pricingCapsFromSettings(useSettingsStore.getState()));
+          if (estimate) { if (alive) setPrice(estimate); return; }
+        }
+        if (endpoint) {
+          const preview = await previewPrice(endpoint, JSON.parse(paramsKey));
+          if (alive) setPrice(preview ? { label: preview.isFreeThisCall ? '免费' : `约 ¥${preview.estimatedPrice}` } : null);
+          return;
+        }
+        if (alive) setPrice(null);
+      })();
     }, 800);
     return () => { alive = false; clearTimeout(t); };
-  }, [endpoint, paramsKey]);
+  }, [engineId, endpoint, paramsKey, imageRefs, videoRefs]);
   return price;
 }
 
@@ -439,9 +461,48 @@ export default function NodeInfoBar() {
   const vidSlash = useSlashMenu('video');
   const attachedAssets = useSelectedAssets();
 
-  // ── 估价（RunningHub price-preview，参数变化 debounce 刷新）──
+  // ── 估价（统一口径：渠道单价表优先，RunningHub price-preview 兜底；参数变化 debounce 刷新）──
   const isVideoNode = node?.type === 'video';
   const isImageNode = node?.type === 'image';
+  // 统一估价系统的引擎 id 映射（与工作台引擎目录同一套 id）
+  const estimateEngineId = isImageNode
+    ? (imgSource === 'midjourney'
+      ? `midjourney-${mjVersion}`
+      : imgSource === 'gpt-image-2'
+        ? 'gpt-image-2'
+        : imgSource === 'seedream-v5-pro'
+          ? 'seedream-v5-pro'
+          : null) // 即梦走 Agent，无价表
+    : isVideoNode
+      ? (vModel === 'seedance-2.5'
+        ? 'dreamina-seedance-2.5'
+        : vModel === 'minimax-h3'
+        ? 'minimax-hailuo-h3'
+        : vModel === 'wan-3.0'
+        ? 'wan-3.0'
+        : vModel.startsWith('custom-media:') || vMode === 'omni'
+        ? null
+        : vModel.includes('mini')
+        ? (vMode === 't2v' ? 'seedance-2.0-mini-t2v' : 'seedance-2.0-mini-i2v')
+        : vMode === 'startend'
+          ? 'startend-v3.1-pro'
+          : vModel.includes('fast')
+            ? 'seedance-2.0-fast'
+            : 'seedance-2.0')
+      : null;
+  // 参考计数：DMX 输入图超免、H3 输入图超免、Seedance 有/无参考视频分档都要用
+  const imageRefCount = useCanvasStore((state) => {
+    const targetId = state.selectedNodeId;
+    if (!targetId) return 0;
+    return state.edges.filter((edge) => edge.target === targetId
+      && state.nodes.some((item) => item.id === edge.source && item.type === 'image')).length;
+  });
+  const videoRefCount = useCanvasStore((state) => {
+    const targetId = state.selectedNodeId;
+    if (!targetId) return 0;
+    return state.edges.filter((edge) => edge.target === targetId
+      && state.nodes.some((item) => item.id === edge.source && item.type === 'video')).length;
+  });
   const priceEndpoint = isImageNode
     ? (imgSource === 'midjourney'
       ? (mjVersion === 'v8.1' ? 'youchuan/text-to-image-v81' : null)
@@ -478,10 +539,14 @@ export default function NodeInfoBar() {
       // 万相 3.0：480P/720P/1080P 三档，时长 2-30
       ? { prompt: 'estimate', resolution: (['480P', '720P', '1080P'].includes(vResolution) ? vResolution : '720P'), aspectRatio: vRatio, duration: String(Math.min(30, Math.max(2, vDuration))) }
       : { prompt: 'estimate', resolution: fastClampRes, ratio: vRatio, duration: String(vDuration), generateAudio: vGenAudio };
-  const estPrice = usePriceEstimate(
-    genMode === 'api' && vMode !== 'dreamina' ? priceEndpoint : null,
-    priceParams,
-  );
+  const estimateEnabled = genMode === 'api' && vMode !== 'dreamina' && vMode !== 'omni';
+  const estPrice = useUnifiedPriceEstimate({
+    engineId: estimateEnabled ? estimateEngineId : null,
+    endpoint: estimateEnabled ? priceEndpoint : null,
+    params: priceParams,
+    imageRefs: imageRefCount,
+    videoRefs: videoRefCount,
+  });
   const [showCameraPicker, setShowCameraPicker] = useState(false);
   const [showStylePicker, setShowStylePicker] = useState(false);
   const [activeStyle, setActiveStyle] = useState<StylePreset | null>(null);

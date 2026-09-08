@@ -83,6 +83,8 @@
 .workspace-topbar nav button { border: 0; border-radius: 4px; background: transparent; padding: 6px 12px; white-space: nowrap; color: #aeb0b4; }
 .workspace-topbar nav button[aria-current=page] { color: #bfe1d9; background: #283330; }
 .workspace-spec-summary { max-width: 230px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 0; background: none; color: #aeb0b4 !important; font-size: 12px !important; }
+/* 项目累计花费 chip：跟随 spec-summary 的小字 muted 风格，不彩色不渐变 */
+.workspace-cost-chip { white-space: nowrap; color: #aeb0b4; font-size: 12px; flex-shrink: 0; }
 .workspace-export { border: 1px solid #679f96; background: #75b9af; color: #10201e !important; border-radius: 5px; padding: 4px 14px; white-space: nowrap; }
 .workspace-directory-toggle { display: none; }
 .workspace-columns { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: 0; flex: 1; position: relative; gap: 1px; background: #353638; }
@@ -232,6 +234,7 @@
   .workspace-assistant-column { position: absolute; z-index: 32; top: 0; bottom: 0; right: 0; width: min(360px, 100%); box-shadow: -12px 0 30px #0006; }
   .workspace-assistant-large { width: min(780px, 100%); }
   .workspace-spec-summary { display: none; }
+  .workspace-cost-chip { display: none; }
 }
 @media (max-width: 600px) { .workspace-topbar { gap: 4px; padding: 0 6px; } .workspace-topbar h1 { max-width: 74px; font-size: 13px; } .workspace-topbar nav { gap: 0; } .workspace-topbar nav button { padding: 6px; font-size: 12px; } .workspace-topbar .workspace-icon { width: 26px; flex-shrink: 0; } .workspace-export { padding: 4px 7px; font-size: 12px !important; } }
 .workspace-constraint-section { border-top: 1px solid #363a3d; margin-top: 12px; color: #e3e5e7; }

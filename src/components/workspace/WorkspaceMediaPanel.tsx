@@ -80,6 +80,23 @@ export default function WorkspaceMediaPanel(props: Props) {
     operations.current.forEach((controller) => controller.abort()); operations.current.clear();
   }; }, []);
   const setError = (id: string, message: string) => { if (mounted.current) setErrors((old) => ({ ...old, [id]: message })); };
+  // 自动估价：草稿的模型/参数/参考变化后静默刷新费用预估（失败静默，不打扰编辑）
+  const quoteKey = draft ? workspacePriceKey(draft) : '';
+  const quotesRef = useRef(quotes);
+  quotesRef.current = quotes;
+  const requestQuote = () => {
+    if (!draft || !props.onEstimate || quoting.has(quoteKey)) return;
+    const snapshot = cloneWorkspaceDraft(draft);
+    setQuoting((old) => new Set([...old, quoteKey]));
+    void props.onEstimate(snapshot).catch(() => ({ label: '暂时无法估价', detail: '查询失败不代表免费。' })).then((quote) => {
+      if (mounted.current) setQuotes((old) => ({ ...old, [quoteKey]: quote }));
+    }).finally(() => { if (mounted.current) setQuoting((old) => { const next = new Set(old); next.delete(quoteKey); return next; }); });
+  };
+  useEffect(() => {
+    if (!draft || !props.onEstimate || quotesRef.current[quoteKey]) return;
+    const timer = setTimeout(requestQuote, 350);
+    return () => clearTimeout(timer);
+  }, [quoteKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = (next: WorkspaceDraft) => {
     const saved = props.onSaveDraft(next);
     setError(next.id, saved ? '' : '内容已被修改或对象已锁定，本次改动未覆盖现有草稿。');
@@ -232,14 +249,7 @@ export default function WorkspaceMediaPanel(props: Props) {
         constraintContent={selected.kind === 'shot' ? props.renderConstraint?.(draft) : undefined}
         busy={busy.has(draft.id) || Boolean(pending)} error={errors[draft.id] || pendingMessage}
         estimatedCost={quotes[priceKey]?.label ?? props.estimatedCost} priceDetail={quotes[priceKey]?.detail} onConfigure={props.onConfigure}
-        estimating={quoting.has(priceKey)} onEstimate={props.onEstimate ? () => {
-          if (quoting.has(priceKey)) return;
-          const snapshot = cloneWorkspaceDraft(draft);
-          setQuoting((old) => new Set([...old, priceKey]));
-          void props.onEstimate!(snapshot).catch(() => ({ label: '暂时无法估价', detail: '查询失败不代表免费。' })).then((quote) => {
-            if (mounted.current) setQuotes((old) => ({ ...old, [priceKey]: quote }));
-          }).finally(() => { if (mounted.current) setQuoting((old) => { const next = new Set(old); next.delete(priceKey); return next; }); });
-        } : undefined}
+        estimating={quoting.has(priceKey)} onEstimate={props.onEstimate ? requestQuote : undefined}
         onChange={save} onClose={() => { setReferenceTarget(null); props.onViewState({ workspaceComposerOpen: false }); }}
         onAddReference={() => setReferenceTarget(cloneWorkspaceDraft(draft))}
         mentionCandidates={mentionCandidates}

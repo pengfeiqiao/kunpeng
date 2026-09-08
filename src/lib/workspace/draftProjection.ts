@@ -1,4 +1,4 @@
-import type { WorkshopData } from '../workshop/types.ts';
+import type { WorkshopData, WsShot } from '../workshop/types.ts';
 import type { WorkspaceDraft } from './types.ts';
 import { assetPromptField, patchWorkspaceAsset, workspaceAsset } from './assetDraftModel.ts';
 import { projectShotVideoSettings } from './shotDraftModel.ts';
@@ -19,18 +19,28 @@ export function projectWorkspacePrompt(data: WorkshopData, draft: WorkspaceDraft
   const outputKey: 'image' | 'video' = draft.outputType === 'image' ? 'image' : 'video';
   return { ...data, shots: data.shots.map((shot) => {
     if ((shot.id ?? shot.shotNo) !== owner.sourceId) return shot;
-    const explicitFlag = draft.references.length === 0
-      ? (explicitEmptyHint ?? shot.workspaceReferenceProjection?.explicitEmpty?.[outputKey])
-      : undefined;
+    const previousExplicitEmpty = shot.workspaceReferenceProjection?.explicitEmpty;
+    // 显式清空标记：references 为空时 hint=用户主动清空（有引用→无引用），保留/打标；
+    // references 非空时本层旧标记必然过期（否则出现"有投影+锁死"的自相矛盾状态），清除之。
+    // 仅在最终有标记时写入 explicitEmpty 键，避免污染结构比较。
+    let explicitEmpty: Partial<Record<'image' | 'video', boolean>> | undefined;
+    if (draft.references.length === 0) {
+      const explicitFlag = explicitEmptyHint ?? previousExplicitEmpty?.[outputKey];
+      explicitEmpty = explicitFlag === true
+        ? { ...previousExplicitEmpty, [outputKey]: true }
+        : previousExplicitEmpty ? { ...previousExplicitEmpty } : undefined;
+    } else if (previousExplicitEmpty) {
+      const rest = { ...previousExplicitEmpty };
+      delete rest[outputKey];
+      explicitEmpty = Object.keys(rest).length > 0 ? rest : undefined;
+    }
     return { ...(draft.outputType === 'video' ? projectShotVideoSettings(data, shot, draft) : shot), [field]: draft.prompt,
-      workspaceReferenceProjection: { ...shot.workspaceReferenceProjection,
-        [outputKey]: draft.references.map((ref) => ({ ...ref })),
-        // 显式清空标记：hint=用户主动清空（有引用→无引用）；仅在有标记时写入，避免污染结构比较
-        ...(explicitFlag === true
-          ? { explicitEmpty: { ...shot.workspaceReferenceProjection?.explicitEmpty, [outputKey]: true } }
-          : shot.workspaceReferenceProjection?.explicitEmpty
-            ? { explicitEmpty: { ...shot.workspaceReferenceProjection.explicitEmpty } }
-            : {}),
-      } };
+      workspaceReferenceProjection: (() => {
+        const projection: WsShot['workspaceReferenceProjection'] = { ...shot.workspaceReferenceProjection,
+          [outputKey]: draft.references.map((ref) => ({ ...ref })) };
+        if (explicitEmpty) projection.explicitEmpty = explicitEmpty;
+        else delete projection.explicitEmpty;
+        return projection;
+      })() };
   }) };
 }

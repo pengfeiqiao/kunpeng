@@ -117,7 +117,14 @@ export function validateSeedancePrompt(
     }
   }
 
-  if (/镜头\S+.*(?:推|拉|摇|移).*(?:推|拉|摇|移)/.test(prompt)) {
+  // 运镜词白名单：只统计明确的运镜术语，"焦点移到/视线切入/推移/推荐/拉近（关系）"
+  // 等正常措辞不算运镜。同一行（单个子镜头）出现 ≥2 种不同运镜词才告警。
+  const CAMERA_MOVE_PATTERN = /推近|推进|推镜|推轨|拉远|拉镜|摇镜|摇摄|横移|移镜|跟移|跟拍|升降|环绕|甩镜|手持/g;
+  const hasMultipleCameraMoves = prompt.split('\n').some((line) => {
+    if (!/镜头/.test(line)) return false;
+    return new Set(line.match(CAMERA_MOVE_PATTERN) ?? []).size >= 2;
+  });
+  if (hasMultipleCameraMoves) {
     warnings.push('单个镜头疑似包含多种运镜；Seedance 更稳定的写法是每个镜头只指定一种主要运镜');
   }
 

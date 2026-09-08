@@ -19,6 +19,8 @@ import {
   applyVideoPlanningReferencePrefixes,
   buildImageRefBindings,
   buildVideoRefBindings,
+  clearExplicitEmptyLocks,
+  findExtraRefAssetConflict,
   getSceneReferencePaths,
   numToCn,
   patchTouchesRefs,
@@ -27,6 +29,7 @@ import {
   stripDirectorConstraintMention,
   type ShotRefBinding,
 } from '@/lib/workshop/shotRefs';
+import { mergeAudioPrompts } from '@/lib/workshop/audioPrompts';
 import {
   classifyWorkshopEditScope,
   findUnsupportedPromptDialogue,
@@ -238,22 +241,6 @@ function uniqStrings(items: unknown[]): string[] {
   return [...new Set(items.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).map((x) => x.trim()))];
 }
 
-function mergeAudioPrompts(
-  existing: WsShot['audioPrompts'],
-  incoming: WsShot['audioPrompts'],
-): NonNullable<WsShot['audioPrompts']> {
-  const merged = (existing ?? []).map((item) => ({ ...item }));
-  for (const item of incoming ?? []) {
-    const characterId = typeof item?.characterId === 'string' ? item.characterId.trim() : '';
-    if (!characterId || typeof item?.prompt !== 'string') continue;
-    const next = { characterId, prompt: item.prompt };
-    const index = merged.findIndex((current) => current.characterId === characterId);
-    if (index >= 0) merged[index] = next;
-    else merged.push(next);
-  }
-  return merged;
-}
-
 function collectUnlinkedCharacterWarnings(
   shotNo: string,
   shot: WsShot,
@@ -381,7 +368,8 @@ async function applySinglePromptPatch(
     promptPatch.audioPrompts = mergeAudioPrompts(shot.audioPrompts, patch.audioPrompts);
   }
   if (normalizedImage !== undefined || normalizedVideo !== undefined) {
-    promptPatch.promptNeedsRefresh = validation.promptNeedsRefresh;
+    // 写入即刷新：软警告仍回报给调用方，但"建议重写"标记不再留在镜头上
+    promptPatch.promptNeedsRefresh = false;
   }
 
   if (options.dryRun) {
@@ -1504,6 +1492,29 @@ const updateShotRefsTool: Tool = {
       if (!p.assetImagePath) warnings.push(`道具"${p.name}"还没有资产图，加入后生成时仍可能缺参考图`);
       return null;
     };
+    const refCtx = {
+      scenes: data.scenes,
+      characters: data.characters,
+      props: data.props ?? [],
+      colorPalettes: data.colorPalettes ?? [],
+      globalColorPaletteId: data.globalColorPaletteId,
+    };
+    // 额外参考 vs 资产定版：path 归属的资产已绑定本镜时，旧版本图与定版图都不再
+    // 以 extra 重复占号（资产绑定本身已把定版图传入）。
+    const skipConflictingExtra = (path: string): boolean => {
+      const effectivePaletteId = colorPaletteId === '__none__' ? undefined : colorPaletteId ?? data.globalColorPaletteId;
+      const conflict = findExtraRefAssetConflict(path, data.projectObjects?.media, {
+        characterIds: charIds,
+        propIds,
+        sceneId: shot.sceneId,
+        paletteId: effectivePaletteId,
+      }, refCtx);
+      if (!conflict) return false;
+      warnings.push(conflict.reason === 'already-covered'
+        ? `已跳过额外参考 ${path}：已绑定资产「${conflict.name}」的定版图已随资产绑定传入，重复添加会多占一个 @图片N 编号`
+        : `已跳过额外参考 ${path}：该路径是已绑定资产「${conflict.name}」的旧版本图，本镜已通过资产绑定使用其定版图`);
+      return true;
+    };
     const addTarget = (kind: unknown, id: unknown, path: unknown) => {
       if (kind === 'character') {
         if (typeof id !== 'string' || !id.trim()) throw new Error('to_kind=character 需要 to_id');
@@ -1523,6 +1534,7 @@ const updateShotRefsTool: Tool = {
         changed.push('sceneImagePaths');
       } else if (kind === 'extra') {
         if (typeof path !== 'string' || !path.trim()) throw new Error('to_kind=extra 需要 to_path');
+        if (skipConflictingExtra(path.trim())) return;
         extraRefImages.add(path.trim());
         changed.push('extraRefImages');
       }
@@ -1598,6 +1610,7 @@ const updateShotRefsTool: Tool = {
         changed.push('sceneImagePaths');
       }
       uniqStrings(Array.isArray(params.add_extra_ref_images) ? params.add_extra_ref_images : []).forEach((path) => {
+        if (skipConflictingExtra(path)) return;
         extraRefImages.add(path);
         changed.push('extraRefImages');
       });
@@ -1642,6 +1655,11 @@ const updateShotRefsTool: Tool = {
     if (sceneImagePaths !== undefined) patch.sceneImagePaths = sceneImagePaths;
     if (storyboardBoards !== shot.storyboardBoards) patch.storyboardBoards = storyboardBoards;
     if (colorPaletteId !== shot.colorPaletteId) patch.colorPaletteId = colorPaletteId;
+    // 参考字段有变化时解除"显式清空"锁定：选角按新状态能产出引用的层清掉
+    // explicitEmpty 标记（projection 作为解锁意图经 draft 保存路径整层重建），
+    // 产出不了引用的层保留锁定。
+    const unlock = clearExplicitEmptyLocks(shot, { ...shot, ...patch }, refCtx);
+    if (unlock) patch.workspaceReferenceProjection = unlock.projection;
     const nextShot = { ...shot, ...patch };
     const refRemap = remapPromptRefsForShot(shot, nextShot, data);
     const finalPatch = { ...refRemap, ...patch };
@@ -1660,11 +1678,15 @@ const updateShotRefsTool: Tool = {
         error: `分镜 ${shotNo} 参考资产写入校验失败：${verifyFailures.join('、')} 保存后未生效。请刷新工坊状态后重试。`,
       };
     }
-    const latestBindings = buildShotRefBindings(latest, useWorkshopStore.getState().data!);
-    const summary = latestBindings.map((ref) => `@图片${numToCn(ref.index)}=${ref.label}`).join('；') || '无图片参考';
+    const formatRefs = (list: ShotRefBinding[]) => list.map((ref) => `@图片${numToCn(ref.index)}=${ref.label}`).join('；');
+    const imageSummary = formatRefs(buildImageRefBindings(latest, refCtx)) || '无图片参考';
+    const videoSummary = formatRefs(buildVideoRefBindings(latest, refCtx)) || '无视频参考';
+    const unlockNote = unlock
+      ? `\n已解除${unlock.unlocked.map((type) => (type === 'image' ? '图片' : '视频')).join('、')}参考层的清空锁定，按当前选角重建参考。`
+      : '';
     return {
       success: true,
-      output: `分镜 ${shotNo} 参考资产已更新：${uniqueChanged.join('、')}\n当前引用顺序：${summary}${warnings.length ? `\n提醒：${warnings.join('；')}` : ''}\n已按真实图片路径同步重排 @图片N；如画面语义也变了，请继续用 workshop_set_prompts 重写。`,
+      output: `分镜 ${shotNo} 参考资产已更新：${uniqueChanged.join('、')}\n图片参考层：${imageSummary}\n视频参考层：${videoSummary}${warnings.length ? `\n提醒：${warnings.join('；')}` : ''}${unlockNote}\n已按真实图片路径同步重排 @图片N；如画面语义也变了，请继续用 workshop_set_prompts 重写。`,
     };
   },
 };
@@ -1883,6 +1905,10 @@ imagePrompt 为中文（gpt-image-2），建议 80-220 中文字，必须写成�
           warningByShot.add(it.shotNo);
         }
       }
+      const emptyAudioSlots = (it.audioPrompts ?? []).filter((item) => typeof item?.prompt === 'string' && !item.prompt.trim()).length;
+      if (emptyAudioSlots > 0) {
+        warnings.push(`${it.shotNo}: ${emptyAudioSlots} 条配音提示词内容为空（空配音槽），已剔除不写入；需要占位时请先写具体配音文案`);
+      }
       for (const audioPrompt of it.audioPrompts ?? []) {
         if (!ws.data!.characters.some((character) => character.id === audioPrompt.characterId)) {
           warnings.push(`${it.shotNo}: 配音提示词引用了不存在的角色 ID “${audioPrompt.characterId}”，数据会保留并显示，但生成配音前需要改成有效角色 ID。`);
@@ -1969,7 +1995,8 @@ imagePrompt 为中文（gpt-image-2），建议 80-220 中文字，必须写成�
           : mergeAudioPrompts(currentShot.audioPrompts, it.audioPrompts);
       }
       if (it.imagePrompt !== undefined || it.videoPrompt !== undefined) {
-        patch.promptNeedsRefresh = warningByShot.has(it.shotNo);
+        // 写入即刷新：软警告仍回报给调用方，但"建议重写"标记不再留在镜头上
+        patch.promptNeedsRefresh = false;
       }
       if (Object.keys(patch).length > 0) {
         s.updateShot(it.shotNo, patch);

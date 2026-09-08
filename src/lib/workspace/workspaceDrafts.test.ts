@@ -125,3 +125,71 @@ test('repeated source paths do not bypass a single-reference model limit', () =>
     params: [], imageParam: { key: 'image', multiple: false } });
   assert.equal(changed.draft.references.length, 1);
 });
+
+test('video model switch preserves references across seedance/wan/minimax; start-end keeps first two frames', async () => {
+  const { WORKSPACE_ENGINES } = await import('./engineCatalog.ts');
+  const engine = (id: string) => WORKSPACE_ENGINES.find((item) => item.id === id)!;
+  const base = {
+    id: 'shot:s::video', projectId: 'P', objectId: 'shot:s', outputType: 'video' as const,
+    prompt: '@图片一 A @图片二 B @视频一 C @音频一 D', engineId: 'dreamina-seedance-2.5',
+    params: { ratio: '16:9', duration: '5', resolution: '720p' }, revision: 0, updatedAt: 0,
+    references: [
+      { id: 'i1', type: 'image' as const, path: '/a.png', label: '场景' },
+      { id: 'i2', type: 'image' as const, path: '/b.png', label: '角色' },
+      { id: 'v1', type: 'video' as const, path: '/c.mp4', label: '参考视频' },
+      { id: 'a1', type: 'audio' as const, path: '/d.wav', label: '参考音频' },
+    ],
+  };
+  // 2.5 → 2.0 多模态：全保留（用户报告的"切换丢参考"不得再发生）
+  assert.deepEqual(calibrateWorkspaceDraft(base, engine('seedance-2.0')).draft.references.map((ref) => ref.path),
+    ['/a.png', '/b.png', '/c.mp4', '/d.wav']);
+  // 2.5 → 万相 3.0 / MiniMax H3：全保留
+  for (const id of ['wan-3.0', 'minimax-hailuo-h3']) {
+    assert.deepEqual(calibrateWorkspaceDraft(base, engine(id)).draft.references.map((ref) => ref.path),
+      ['/a.png', '/b.png', '/c.mp4', '/d.wav'], id);
+  }
+  // 首尾帧/Mini 图生（start-end-video）：schema 无 imageParam 但支持 ≤2 张图，不得剥光；视频/音频按不支持移除
+  for (const id of ['startend-v3.1-pro', 'seedance-2.0-mini-i2v']) {
+    const changed = calibrateWorkspaceDraft(base, engine(id));
+    assert.deepEqual(changed.draft.references.map((ref) => ref.path), ['/a.png', '/b.png'], id);
+    assert.ok(changed.adjustments.some((message) => message.includes('不支持参考视频')), id);
+  }
+  // Fast：fast 档与 pro 同为 图≤9/视频≤3/音频≤3（筷子 OpenAPI 分档矩阵 v1.1），全保留
+  const fast = calibrateWorkspaceDraft(base, engine('seedance-2.0-fast'));
+  assert.deepEqual(fast.draft.references.map((ref) => ref.path), ['/a.png', '/b.png', '/c.mp4', '/d.wav']);
+  // 2.0 家族上限对齐 API 矩阵：图≤9 / 视频≤3 / 音频≤3
+  const many = { ...base, references: Array.from({ length: 12 }, (_, index) => (
+    { id: `i${index}`, type: 'image' as const, path: `/img-${index}.png`, label: `图${index}` })) };
+  const clamped = calibrateWorkspaceDraft(many, engine('seedance-2.0'));
+  assert.equal(clamped.draft.references.length, 9);
+  assert.ok(clamped.adjustments.some((message) => message.includes('9 个')));
+  // 首尾帧超过 2 张图时裁到 2 张并明示；Mini 图生（全能参考）按筷子 mini 档放宽到 9 张
+  const three = { ...base, references: base.references.filter((ref) => ref.type === 'image')
+    .concat([{ id: 'i3', type: 'image' as const, path: '/e.png', label: '道具' }]) };
+  const startend = calibrateWorkspaceDraft(three, engine('startend-v3.1-pro'));
+  assert.deepEqual(startend.draft.references.map((ref) => ref.path), ['/a.png', '/b.png']);
+  assert.ok(startend.adjustments.some((message) => message.includes('2 个')));
+  const miniKept = calibrateWorkspaceDraft(three, engine('seedance-2.0-mini-i2v'));
+  assert.deepEqual(miniKept.draft.references.map((ref) => ref.path), ['/a.png', '/b.png', '/e.png']);
+  const miniClamped = calibrateWorkspaceDraft(many, engine('seedance-2.0-mini-i2v'));
+  assert.equal(miniClamped.draft.references.length, 9);
+});
+
+test('saving non-empty references clears the stale explicit-empty mark; empty save with productive cast marks explicit empty', () => {
+  const data = fixture();
+  // 自相矛盾状态：投影有真实引用，却仍标着 explicitEmpty.image=true
+  const marked = { ...data, shots: data.shots.map((s) => (s.shotNo === '01'
+    ? { ...s, workspaceReferenceProjection: {
+        image: [{ id: 'r1', type: 'image' as const, path: '/road.png', label: '场景 公路' }],
+        explicitEmpty: { image: true } } }
+    : s)) };
+  const draft = initialWorkspaceDraft(marked, 'shot:a', 'image', 1)!;
+  assert.ok(draft.references.length > 0);
+  const saved = saveWorkspaceDraft(marked, draft, 0, 2)!;
+  assert.equal(saved.shots[0].workspaceReferenceProjection?.explicitEmpty, undefined, '有引用时旧清空标记必须清除');
+  assert.ok((saved.shots[0].workspaceReferenceProjection?.image ?? []).length > 0);
+  // references 为空 + 选角可产出 → 打标（既有行为不回归）
+  const stored = initialWorkspaceDraft(saved, 'shot:a', 'image', 3)!;
+  const emptied = saveWorkspaceDraft(saved, { ...stored, references: [] }, stored.revision, 4)!;
+  assert.equal(emptied.shots[0].workspaceReferenceProjection?.explicitEmpty?.image, true);
+});

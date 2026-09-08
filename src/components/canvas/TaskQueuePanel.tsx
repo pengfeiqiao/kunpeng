@@ -10,6 +10,9 @@ import { ListTodo, X, RotateCcw, Square, Trash2, Loader2, CheckCircle2, XCircle,
 import { useCanvasTaskStore, type CanvasTask } from '@/stores/canvasTaskStore';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { useWorkshopStore } from '@/stores/workshopStore';
+import { useCostLedgerStore } from '@/stores/costLedgerStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { estimateEngineCostSync, pricingCapsFromSettings, type PricingCaps } from '@/lib/pricing/estimate';
 import { generateForNode, abortCanvasTask, runGeneration } from '@/lib/canvasGen';
 import { collectNodeReferences, selfVideoFallback } from '@/lib/canvas/collectRefs';
 import { mergeCanvasNodeGenerationParams } from '@/lib/canvas/generationParams';
@@ -42,11 +45,32 @@ function StatusIcon({ task }: { task: CanvasTask }) {
   }
 }
 
-function TaskRow({ task }: { task: CanvasTask }) {
+function TaskRow({ task, pricingCaps }: { task: CanvasTask; pricingCaps: PricingCaps }) {
   const removeTask = useCanvasTaskStore((s) => s.removeTask);
   const setSelectedNodeId = useCanvasStore((s) => s.setSelectedNodeId);
   const isActive = ACTIVE_STATUSES.includes(task.status);
   const failure = task.error ? describeGenerationFailure(task.error) : null;
+  // 成本：账本里有记录（实账/已完成任务的预估）优先；否则给提交时的同步预估
+  // （筷子/DMX 静态单价表，APIMart 需联网这里不同步查）。预估一律带"预估"字样。
+  const ledgerRecord = useCostLedgerStore((s) => s.records.find((r) => r.taskId === task.id));
+  const fallbackEstimate = useMemo(() => {
+    if (ledgerRecord) return null;
+    // api: 开头的槽位路由 id 归一回引擎 id 才能命中单价表
+    const engineId = task.engineId.startsWith('api:')
+      ? (task.engineId.includes('seedream') ? 'seedream-v5-pro' : 'gpt-image-2')
+      : task.engineId;
+    try {
+      return estimateEngineCostSync(engineId, (task.params ?? {}) as Record<string, unknown>, {
+        images: task.referenceUrls?.length ?? 0,
+        videos: 0,
+        audios: 0,
+      }, pricingCaps);
+    } catch {
+      return null;
+    }
+  }, [ledgerRecord, task.engineId, task.params, task.referenceUrls, pricingCaps]);
+  const costText = ledgerRecord?.displayText ?? fallbackEstimate?.label ?? null;
+  const costDetail = ledgerRecord?.detail ?? fallbackEstimate?.detail;
 
   const handleRetry = () => {
     removeTask(task.id);
@@ -112,6 +136,9 @@ function TaskRow({ task }: { task: CanvasTask }) {
           {task.fallbackUsed && (
             <span className="text-[9px] px-1 rounded bg-amber-50 text-amber-600 border border-amber-200">降级</span>
           )}
+          {costText && (
+            <span className="text-[10px] text-[var(--canvas-text-2)] shrink-0" title={costDetail}>{costText}</span>
+          )}
         </div>
         <p className="text-[11px] text-[var(--canvas-text-2)] truncate">{task.prompt}</p>
         {task.progress && isActive && (
@@ -153,6 +180,9 @@ export default function TaskQueuePanel({ projectId, className }: { projectId?: s
     : allTasks, [allTasks, projectId]);
   const clearFinished = useCanvasTaskStore((s) => s.clearFinished);
   const [open, setOpen] = useState(false);
+  // 渠道可用性签名（只出布尔，不碰 key）；任务行的同步预估用它判定路由
+  const pricingCapsSignature = useSettingsStore((state) => JSON.stringify(pricingCapsFromSettings(state)));
+  const pricingCaps = useMemo(() => JSON.parse(pricingCapsSignature) as PricingCaps, [pricingCapsSignature]);
 
   const activeCount = tasks.filter((t) => ACTIVE_STATUSES.includes(t.status)).length;
   if (tasks.length === 0) return null;
@@ -182,7 +212,7 @@ export default function TaskQueuePanel({ projectId, className }: { projectId?: s
               </div>
             </div>
             <div className="overflow-y-auto">
-              {[...tasks].reverse().map((t) => <TaskRow key={t.id} task={t} />)}
+              {[...tasks].reverse().map((t) => <TaskRow key={t.id} task={t} pricingCaps={pricingCaps} />)}
             </div>
           </motion.div>
         )}
