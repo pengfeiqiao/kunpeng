@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { History, MoreHorizontal, Sparkles, FileUp, X } from 'lucide-react';
+import { History, MoreHorizontal, Sparkles, FileUp, X, LayoutGrid } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
+import { message as tauriMessage } from '@tauri-apps/api/dialog';
 import { useChatStore } from '@/stores';
 import { useWorkshopStore } from '@/stores/workshopStore';
 import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
@@ -25,7 +26,7 @@ import SettingsPanel from '@/components/Settings';
 import { useWorkspaceServices } from '@/lib/workspace/useWorkspaceServices';
 import { workspaceUnavailableReason } from '@/lib/workspace/services';
 import WorkspaceClassifyDialog from './WorkspaceClassifyDialog';
-import WorkspaceTaskStrip from './WorkspaceTaskStrip';
+import TaskQueuePanel from '@/components/canvas/TaskQueuePanel';
 import { transitionWorkspaceSubmission } from '@/lib/workspace/submissions';
 import { createUnclassifiedGeneration, createWorkspaceAsset, createWorkspaceShot, renameWorkspaceObject } from '@/lib/workspace/inbox';
 import { assignProfessionalCanvasMedia } from '@/lib/workspace/professionalCanvasRuntime';
@@ -45,7 +46,8 @@ import { PROFESSIONAL_DRAFT_REQUEST_EVENT, professionalDraftRequest } from '@/li
 import { workspaceMediaVersions } from '@/lib/workspace/mediaView';
 import { projectAssistantQueue } from '@/stores/projectAssistantQueueStore';
 import type { AssistantTarget } from '@/lib/workspace/projectAssistantQueue';
-import { buildAutoRunPrompt, buildExportPrompt } from '@/lib/workshop/workshopPrompts';
+import { buildAutoRunPrompt, buildExportPrompt, buildOptimizeShotPrompt, buildShotPromptsPrompt } from '@/lib/workshop/workshopPrompts';
+import { autoLoadWorkspaceToCanvas, sendMediaToCanvas } from '@/lib/workshop/canvasSync';
 
 const WorkspaceEditor = lazy(() => import('@/components/workspace/WorkspaceEditorSurface'));
 const WorkspaceCanvas = lazy(() => import('./WorkspaceCanvasSurface'));
@@ -216,11 +218,18 @@ export default function ProjectWorkspace(props: Props) {
           <button role="menuitem" onClick={() => { setMenuOpen(false); enqueueProjectAction('导出飞书',
             `[媒体工作台上下文：${JSON.stringify({ project_id: data.projectId, operation: 'export-feishu' })}]\n当前为用户明确发起的导出请求。`,
             buildExportPrompt('prompts')); }}><FileUp size={14} />导出飞书</button>
+          <button role="menuitem" onClick={() => { setMenuOpen(false); enqueueProjectAction('AI 分镜提示词',
+            `[媒体工作台上下文：${JSON.stringify({ project_id: data.projectId, operation: 'shot-prompts-batch' })}]\n当前为用户明确发起的全部分镜提示词生成（按剧本、拆解与调度批量编写）。`,
+            buildShotPromptsPrompt('', data.videoPromptTemplate ?? 'legacy')); }}><Sparkles size={14} />AI 生成全部分镜提示词</button>
           <button role="menuitem" onClick={() => { setSnapshotsOpen(true); setMenuOpen(false); }}><History size={14} />项目快照</button>
           {hiddenListIds.size > 0 && <button role="menuitem" onClick={() => { patchView({ workspaceHiddenObjectIds: [] }); setMenuOpen(false); }}>显示已移除的工坊对象（{hiddenListIds.size}）</button>}
           <button role="menuitem" onClick={() => { setMenuOpen(false); props.onLegacy(); }}>切回旧版</button></div>}
       </div>}
       content={<><ProjectContentList key={data.projectId} groups={visibleGroups} selectedId={selection.selected?.id} mediaSrc={mediaSrc}
+        headerAction={<button className="workspace-load-canvas" title="把工坊全部资产定版与分镜自动摆入画布并补齐关系连线"
+          onClick={() => { if (!ownsProject()) return; void autoLoadWorkspaceToCanvas().then((msg) => tauriMessage(msg, { title: '传入画布' }))
+            .then(() => patchView({ workspaceSurface: 'media', workspaceMediaView: 'canvas' })); }}>
+          <LayoutGrid size={14} />传入画布</button>}
         scriptActive={scriptProjectId === data.projectId} scriptExcerpt={project.sources.map((source) => source.name).join(' · ') || data.projectIntake?.brief}
         onScriptTools={() => { setProductionTarget(null); setScriptProjectId(data.projectId); patchView({ workspaceSurface: 'media', workspaceMediaView: 'list' }); }}
         onObjectMenu={(objectId, position) => setObjectMenu({ projectId: data.projectId, objectId, position })}
@@ -244,7 +253,9 @@ export default function ProjectWorkspace(props: Props) {
           {!versions.length && <span className="workspace-tree-empty">暂无生成素材</span>}
         </div>;
         }} />
-        <WorkspaceTaskStrip projectId={data.projectId} /></>}
+        <div className="relative shrink-0 canvas-dark"><TaskQueuePanel projectId={data.projectId}
+          className="absolute bottom-2 left-2 right-2 z-20 flex flex-col items-start gap-2" /></div>
+      </>}
       inspector={surface === 'media' && scriptProjectId === data.projectId ? <Suspense fallback={<p role="status">正在打开剧本工具</p>}>
         <WorkspaceScriptTools projectId={data.projectId} onClose={() => setScriptProjectId(null)} />
       </Suspense> : surface === 'media' && productionTarget?.projectId === data.projectId ? <Suspense fallback={<p role="status">正在打开资产工具</p>}>
@@ -263,8 +274,19 @@ export default function ProjectWorkspace(props: Props) {
             onCommand={(command) => applyWorkspaceProjectCommand(data.projectId, command)} onSave={updateWorkspaceDraft}
             onGenerate={generateWorkspaceDraft} onAddToChat={(id) => addToChat([id])}
             onAdopt={(id, versionId) => ownsProject() && useUnifiedProjectStore.getState().selectProjectAssetVersion(id, versionId)} />}
-          onSaveDraft={updateWorkspaceDraft} onGenerate={generateWorkspaceDraft} onOptimize={optimizeWorkspacePrompt}
-          onApplyStyle={restyleWorkspacePrompt}
+          onSaveDraft={updateWorkspaceDraft} onGenerate={generateWorkspaceDraft} onOptimize={optimizeWorkspacePrompt}          onApplyStyle={restyleWorkspacePrompt}
+          onSendToCanvas={(objectId, mediaId) => { if (ownsProject()) void sendMediaToCanvas(data.projectId, objectId, mediaId)
+            .then((msg) => tauriMessage(msg, { title: '传入画布' })); }}
+          onAgentPrompt={(draft, mode, template) => {
+            if (!ownsProject()) return;
+            const owner = data.projectObjects?.objects.find((item) => item.id === draft.objectId);
+            const shot = data.shots.find((item) => (item.id ?? item.shotNo) === owner?.sourceId);
+            if (!shot) return;
+            const lead = mode === 'write' ? `该分镜的提示词目前为空，请按剧本从零编写（视频版本遵循项目当前模板：${template ?? '项目默认'}）。\n` : '';
+            enqueueProjectAction(mode === 'write' ? 'AI 写分镜提示词' : 'AI 优化提示词',
+              `[媒体工作台上下文：${JSON.stringify({ project_id: data.projectId, operation: 'shot-prompts', shot_no: shot.shotNo })}]\n当前为用户从分镜 ${shot.shotNo} 明确发起的提示词${mode === 'write' ? '编写' : '优化'}任务；经 workshop_get_state / workshop_get_shot_refs 读取剧本事实与真实参考顺序，写入用 workshop_set_prompts。`,
+              lead + buildOptimizeShotPrompt(shot.shotNo));
+          }}
           onViewState={patchView} onAddToChat={(id, mediaId) => addToChat([id], mediaId)}
           onEditToChat={(objectId, mediaId) => {
             if (!ownsProject()) return;

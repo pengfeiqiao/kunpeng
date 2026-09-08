@@ -12,6 +12,8 @@ function elements(tree) {
   return [tree, ...[tree.props?.children].flat(Infinity).flatMap(elements)];
 }
 const byLabel = (tree, label) => elements(tree).find((node) => node.props?.['aria-label'] === label);
+// 组件级 aria（如 MentionPromptInput 的 ariaLabel prop）
+const byAriaLabel = (tree, label) => elements(tree).find((node) => node.props?.ariaLabel === label);
 const byClass = (tree, name) => elements(tree).find((node) => node.props?.className === name);
 
 // Compile the actual components; all side-effecting ports are absent from this runtime.
@@ -31,6 +33,8 @@ function runtime(file, extra = {}) {
     'lucide-react': {},
     '../canvas/StyleLibraryPicker': { default: 'style-picker' },
     './WorkspaceEngineMenu': { default: 'engine-menu' },
+    // 功能等价的最小 mock：保留 textarea 语义（aria-label/受控 onChange），不含 @ 选择器 UI
+    './MentionPromptInput': { default: (p) => jsx('textarea', { className: 'workspace-prompt', 'aria-label': p.ariaLabel, value: p.draft.prompt, disabled: p.disabled, spellCheck: false, onChange: (event) => p.onChange({ ...p.draft, prompt: event.target.value }) }) },
     '@/lib/workspace/drafts': drafts,
     ...extra,
   };
@@ -67,17 +71,17 @@ function composer(overrides = {}) {
 test('inline and expanded editors share the latest controlled draft including revisions', () => {
   const c = composer();
   let tree = c.render();
-  byLabel(tree, '完整提示词').props.onChange({ target: { value: '面板编辑' } });
+  byAriaLabel(tree, '完整提示词').props.onChange({ ...byAriaLabel(tree, '完整提示词').props.draft, prompt: '面板编辑' });
   tree = c.render();
   assert.equal(byLabel(tree, '大编辑器提示词').props.value, '面板编辑');
   byLabel(tree, '大编辑器提示词').props.onChange({ target: { value: '弹窗编辑' } });
   tree = c.render();
-  assert.equal(byLabel(tree, '完整提示词').props.value, '弹窗编辑');
+  assert.equal(byAriaLabel(tree, '完整提示词').props.draft.prompt, '弹窗编辑');
   assert.equal(c.changes[1].revision, 1);
   c.props.draft = { ...c.props.draft, prompt: '外部优化结果', revision: 10 };
   tree = c.render();
   assert.equal(byLabel(tree, '大编辑器提示词').props.value, '外部优化结果');
-  assert.equal(byLabel(tree, '完整提示词').props.value, '外部优化结果');
+  assert.equal(byAriaLabel(tree, '完整提示词').props.draft.prompt, '外部优化结果');
   assert.equal(c.run.slots.filter((value) => typeof value === 'string').length, 0);
 });
 
@@ -203,6 +207,7 @@ test('assistant action has visible text and retains its exact onEdit callback', 
   const run = runtime('./MediaInspector.tsx', {
     '@/lib/workspace/mediaView': { workspaceHistoricalParameters: () => '历史规格' },
     '@/lib/workspace/engineCatalog': { workspaceEngine: () => null },
+    'react-dom': { createPortal: (child) => child },
   });
   let edits = 0;
   const tree = run.render({ title: '素材', versions: [], selected: { ordinal: 1,

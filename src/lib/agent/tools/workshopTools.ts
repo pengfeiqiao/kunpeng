@@ -497,6 +497,12 @@ const getStateTool: Tool = {
               props: (s.data.props ?? []).map(slimAssetForState),
               colorPalettes: (s.data.colorPalettes ?? []).map(slimAssetForState),
               globalColorPaletteId: s.data.globalColorPaletteId,
+              // 绑定断链清单：没有定版图（assetImagePath 为空）的资产，agent 据此主动补图或采用候选
+              unboundAssets: [
+                ...s.data.characters.filter((c) => !c.assetImagePath).map((c) => `character:${c.id} ${c.name}（候选 ${c.candidates?.length ?? 0} 张）`),
+                ...s.data.scenes.filter((sc) => !sc.assetImagePath).map((sc) => `scene:${sc.id} ${sc.name}（候选 ${sc.candidates?.length ?? 0} 张）`),
+                ...(s.data.props ?? []).filter((p) => !p.assetImagePath).map((p) => `prop:${p.id} ${p.name}（候选 ${p.candidates?.length ?? 0} 张）`),
+              ],
             }
           : step === 'prompts' || step === 'generate'
             ? {

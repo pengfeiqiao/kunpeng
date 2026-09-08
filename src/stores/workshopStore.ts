@@ -1312,6 +1312,12 @@ export const useWorkshopStore = create<WorkshopState>((set, get, api) => ({
       shotCount: data.shots.length,
       shotsWithImage: data.shots.filter((s) => s.imagePath).length,
       shotsWithVideo: data.shots.filter((s) => s.videoPath).length,
+      // 资产绑定断链可见性：没有定版图的资产数量与清单（生成图未采用时 agent 能直接看到）
+      assetsWithoutImage: [
+        ...data.characters.filter((c) => !c.assetImagePath).map((c) => `角色 ${c.name}(${c.id})`),
+        ...data.scenes.filter((s) => !s.assetImagePath).map((s) => `场景 ${s.name}(${s.id})`),
+        ...(data.props ?? []).filter((p) => !p.assetImagePath).map((p) => `道具 ${p.name}(${p.id})`),
+      ],
       sources: project.sources.map((s) => s.name),
     });
   },

@@ -18,7 +18,7 @@ import { useRunStepStore } from '@/stores/runStepStore';
 import { useAskUserStore } from '@/stores/askUserStore';
 import { useToolConfirmStore } from '@/stores/toolConfirmStore';
 import { projectAssistantQueue as queue } from '@/stores/projectAssistantQueueStore';
-import { AssistantQueueFailure, assistantThreadKey, type AssistantTarget, type AssistantQueueItem } from '@/lib/workspace/projectAssistantQueue';
+import { AssistantQueueFailure, assistantThreadCore, assistantThreadKey, type AssistantTarget, type AssistantQueueItem } from '@/lib/workspace/projectAssistantQueue';
 import { buildWorkspaceAgentContext } from '@/lib/workspace/agentContext';
 import { workspaceSelection } from '@/lib/workspace/contentModel';
 import { ensureProjectSession } from '@/lib/projectSessions';
@@ -237,6 +237,7 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
 
   if (!data || !target) return null;
   const key = assistantThreadKey(target);
+  const coreKey = assistantThreadCore(key);
   const items = snapshot.items.filter((item) => item.target.projectId === projectId);
   const session = sessions.find((entry) => entry.id === sessionId);
   const currentItems = items.filter((item) => item.target.sessionId === sessionId);
@@ -247,7 +248,9 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
       || message.content === serializeWorkspaceAssistantMessage(item.target, item.prompt)
       || message.content === item.target.context + item.prompt || (message.content.endsWith(item.prompt) && message.content.includes(item.target.context.trim())))?.threadKey;
     const owner = currentItems.find((item) => item.messageIds?.includes(message.id));
-    if (session?.projectId === projectId && ((owner?.threadKey ?? messageThread) === key
+    // 线程归属比对用稳定核心（不含 context 文案），提示词措辞演进不会隐藏历史对话
+    const thread = owner?.threadKey ?? messageThread;
+    if (session?.projectId === projectId && ((thread !== undefined && assistantThreadCore(thread) === coreKey)
       || (!target.objectId && !owner && !messageThread))) visibleMessageIds.add(message.id);
   }
   const running = items.find((item) => item.status === 'running');

@@ -21,6 +21,8 @@ interface Props {
   onScriptTools?: () => void;
   scriptActive?: boolean;
   scriptExcerpt?: string;
+  /** 头部下方的醒目操作区（如"传入画布"） */
+  headerAction?: ReactNode;
 }
 
 function ContentExcerpt({ text, label }: { text: string; label: string }) {
@@ -120,6 +122,7 @@ export default function ProjectContentList(props: Props) {
     if (props.onBackgroundMenu) { event.preventDefault(); event.stopPropagation(); props.onBackgroundMenu({ x: event.clientX, y: event.clientY }); }
   }}>
     <header><h2>项目内容</h2><label className="workspace-content-search"><Search size={14} /><input aria-label="搜索项目内容" placeholder="搜索" value={query} onChange={(event) => setQuery(event.target.value)} /></label></header>
+    {props.headerAction}
     {selection.length > 0 && <div className="workspace-batch-bar" aria-label="多选工具"><span>已选 {selection.length} 项</span>
       <button className="workspace-icon" title="批量添加到对话" aria-label="批量添加到对话" onClick={() => props.onAddToChat(selection)}><MessageSquarePlus size={16} /></button>
       <button className="workspace-icon" title="取消多选" aria-label="取消多选" onClick={() => { setChecked([]); selectionAnchor.current = null; }}><X size={16} /></button></div>}

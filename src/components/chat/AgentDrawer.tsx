@@ -11,12 +11,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X, Square, Loader2, MessageSquare, ArrowUp, ChevronDown, EyeOff,
-  ShieldCheck, Zap, Paperclip, ImageIcon, Pencil, Trash2, RotateCcw, ListStart,
+  X, Square, Loader2, MessageSquare, ArrowUp, EyeOff,
+  Paperclip, ImageIcon, Pencil, Trash2, RotateCcw, ListStart,
 } from 'lucide-react';
 import { open as tauriOpen } from '@tauri-apps/api/dialog';
 import { useChatStore } from '@/stores';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { useSound } from '@/hooks/useSound';
 import { MarkdownRenderer } from '@/lib/markdown';
 import { stripHarnessPrefix } from '@/lib/agent/harnessDisplay';
@@ -26,6 +25,7 @@ import ArtifactPickerPanel from '../canvas/ArtifactPickerPanel';
 import type { ArtifactEntry } from '@/lib/artifacts';
 import RunStepTimeline from './RunStepTimeline';
 import WorkspaceAgentModelPicker from './WorkspaceAgentModelPicker';
+import ConfirmModeSelect from './ConfirmModeSelect';
 import type { AgentWorkspaceScope } from '@/lib/agent/modelCatalog';
 import { AskUserDecisionCard } from '../AskUserDialog';
 import { useAskUserStore, type AskUserRecord } from '@/stores/askUserStore';
@@ -1055,7 +1055,7 @@ export default function AgentDrawer({
                   >
                     <ImageIcon size={14} />
                   </button>}
-                  {!embedded && <ConfirmModeSelect variant={variant} compact />}
+                  <ConfirmModeSelect variant={variant} compact />
                   {modelScope && (
                     <div className="min-w-0 w-[88px] max-w-[104px] shrink sm:w-[112px] sm:max-w-[112px]">
                       <WorkspaceAgentModelPicker
@@ -1118,69 +1118,4 @@ export default function AgentDrawer({
   );
 }
 
-/** 确认模式下拉：手动确认 / 自动执行（全局设置，主聊天同享） */
-function ConfirmModeSelect({ variant = 'dark', compact = false }: { variant?: 'dark' | 'light'; compact?: boolean }) {
-  const t = variant === 'light' ? THEME_LIGHT : THEME_DARK;
-  const mode = useSettingsStore((s) => s.toolConfirmMode);
-  const setMode = useSettingsStore((s) => s.setToolConfirmMode);
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  const Icon = mode === 'manual' ? ShieldCheck : Zap;
-
-  return (
-    <div ref={ref} className="relative shrink-0">
-      <button
-        onClick={() => setOpen(!open)}
-        className={`flex h-7 items-center justify-center rounded-full text-[10.5px] transition-colors ${compact ? 'w-7 px-0' : 'gap-1 px-2'}`}
-        style={{ color: t.text2 }}
-        onMouseEnter={e => { e.currentTarget.style.color = t.text1; e.currentTarget.style.background = t.controlHoverBg; }}
-        onMouseLeave={e => { e.currentTarget.style.color = t.text2; e.currentTarget.style.background = 'transparent'; }}
-        title="工具执行确认模式"
-        aria-label={`工具执行确认模式：${mode === 'manual' ? '手动确认' : '自动执行'}`}
-      >
-        <Icon size={11} />
-        {!compact && <>{mode === 'manual' ? '手动确认' : '自动执行'}<ChevronDown size={9} className={`transition-transform ${open ? 'rotate-180' : ''}`} /></>}
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 4 }}
-            transition={{ duration: 0.12 }}
-            className="absolute bottom-full mb-1.5 left-0 w-[210px] rounded-xl py-1 z-50"
-            style={{ background: t.confirmBg, border: `1px solid ${t.confirmBorder}`, boxShadow: t.confirmShadow }}
-          >
-            {([
-              ['manual', ShieldCheck, '手动确认', '危险操作（生成花钱/写文件等）先弹窗'],
-              ['auto', Zap, '自动执行', '跳过确认直接执行，危险命令仍会被拦截'],
-            ] as const).map(([v, MIcon, label, desc]) => (
-              <button
-                key={v}
-                onClick={() => { setMode(v); setOpen(false); }}
-                className="w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors"
-                style={{ background: mode === v ? t.confirmActiveBg : 'transparent' }}
-                onMouseEnter={e => { if (mode !== v) e.currentTarget.style.background = t.confirmHoverBg; }}
-                onMouseLeave={e => { if (mode !== v) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <MIcon size={13} className="mt-0.5 shrink-0" style={{ color: mode === v ? t.text1 : t.text3 }} />
-                <span>
-                  <span className="block text-[11.5px] font-medium" style={{ color: mode === v ? t.text1 : t.text2 }}>{label}</span>
-                  <span className="block text-[9.5px] mt-0.5 leading-tight" style={{ color: t.text3 }}>{desc}</span>
-                </span>
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+/** 确认模式下拉已抽为共享组件：src/components/chat/ConfirmModeSelect.tsx（普通对话/画布/剪辑/文案/工坊共用） */

@@ -79,6 +79,7 @@ import {
   recordImageRouteMetric,
   type ImageRouteModel,
 } from '@/lib/imageRouter/metrics';
+import { errorText } from '@/lib/errorText';
 import { gptImageRouteExists } from '@/lib/imageRouter/gptRoute';
 import {
   isAmbiguousPaidSubmitStatus,
@@ -1224,7 +1225,7 @@ async function runApimartMidjourneyGeneration(
       providerTaskId: result.taskId,
     };
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
+    const reason = err instanceof Error ? err.message : errorText(err) || '未知错误';
     if (err instanceof DOMException && err.name === 'AbortError') {
       update({ status: 'failed', error: '已取消', finishedAt: Date.now() });
       return { success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'image', error: '已取消' };

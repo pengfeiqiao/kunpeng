@@ -36,7 +36,7 @@ export default function StyleLibraryPicker({
   const [selected, setSelected] = useState<string | null>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number; bottom: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -52,7 +52,7 @@ export default function StyleLibraryPicker({
   useEffect(() => {
     if (!open || !anchorRef.current) { setPos(null); return; }
     const rect = anchorRef.current.getBoundingClientRect();
-    setPos({ top: rect.top, left: rect.left, width: rect.width });
+    setPos({ top: rect.top, left: rect.left, width: rect.width, bottom: rect.bottom });
   }, [open]);
 
   useEffect(() => {
@@ -111,9 +111,17 @@ export default function StyleLibraryPicker({
             ...(presentation === 'dialog' ? {
               top: '12vh', left: 'max(12px, calc((100vw - 700px) / 2))',
               width: 'min(700px, calc(100vw - 24px))', maxHeight: '76vh', overflowY: 'auto' as const,
-            } : {
-              bottom: `${window.innerHeight - pos.top + 8}px`, left: `${pos.left}px`, width: `${Math.max(pos.width, 520)}px`,
-            }),
+            } : (() => {
+              // 锚定模式：上方空间不足时翻到下方，并限制高度 + 左右夹取，保证面板完整可见
+              const width = Math.max(pos.width, 520);
+              const left = Math.max(8, Math.min(pos.left, window.innerWidth - width - 8));
+              const above = pos.top > 480 || pos.top > window.innerHeight / 2;
+              return above
+                ? { bottom: `${window.innerHeight - pos.top + 8}px`, left: `${left}px`, width: `${width}px`,
+                    maxHeight: `${Math.max(240, pos.top - 16)}px`, overflowY: 'auto' as const }
+                : { top: `${pos.bottom + 8}px`, left: `${left}px`, width: `${width}px`,
+                    maxHeight: `${Math.max(240, window.innerHeight - pos.bottom - 16)}px`, overflowY: 'auto' as const };
+            })()),
             background: 'var(--canvas-panel, #262626)',
             border: '1px solid var(--canvas-node-border, #363636)',
             boxShadow: '0 8px 32px rgba(0,0,0,0.35)',

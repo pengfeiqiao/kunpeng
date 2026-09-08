@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, ChevronUp, ChevronDown, Download, FileText, FolderInput, Image as ImageIcon, Maximize2, MessageSquarePlus, MoreHorizontal, Pencil, RefreshCw } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Check, ChevronUp, ChevronDown, Download, FileText, FolderInput, Image as ImageIcon, LayoutGrid, Maximize2, MessageSquarePlus, MoreHorizontal, Pencil, RefreshCw, X } from 'lucide-react';
 import type { WorkspaceMediaVersion } from '@/lib/workspace/mediaView';
 import { workspaceHistoricalParameters } from '@/lib/workspace/mediaView';
 import { workspaceEngine } from '@/lib/workspace/engineCatalog';
@@ -27,6 +28,8 @@ interface Props {
   navigateLabel?: string;
   /** 画布同款媒体工具（高清放大/超分/帧率/人声分离等） */
   tools?: { id: string; label: string }[];
+  /** 单素材传入画布（待整理区） */
+  onSendToCanvas?: () => void;
   onTool?: (toolId: string) => void;
 }
 
@@ -58,6 +61,7 @@ export default function MediaInspector(props: Props) {
       {(media || props.onNavigate) && <div className="workspace-stage-tools">
         {media && media.mediaType !== 'audio' && <button title="放大预览" aria-label="放大预览" onClick={() => setFullscreen(true)}><Maximize2 size={14} /></button>}
         {media && <><button title="添加到对话" aria-label="添加到对话" onClick={props.onAddToChat}><MessageSquarePlus size={14} /></button>
+          {props.onSendToCanvas && <button title="传入画布" aria-label="传入画布" onClick={props.onSendToCanvas}><LayoutGrid size={14} /></button>}
           <a title="下载原文件" aria-label="下载原文件" href={props.mediaSrc(media.path)} download><Download size={14} /></a></>}
         {media?.purpose === 'unclassified' && props.onClassify && <button title="归类素材" aria-label="归类素材" onClick={props.onClassify}><FolderInput size={14} /></button>}
         {media && props.tools && props.tools.length > 0 && <button title="更多工具" aria-label="更多工具" aria-expanded={toolsOpen} onClick={() => setToolsOpen(!toolsOpen)}><MoreHorizontal size={14} /></button>}
@@ -74,11 +78,13 @@ export default function MediaInspector(props: Props) {
           : media?.mediaType === 'audio' ? <audio key={media.id} src={props.mediaSrc(media.path)} controls preload="metadata" />
             : <div className="workspace-media-empty"><ImageIcon size={28} /><span>尚未生成</span></div>}
     </div>
-    {fullscreen && media && media.mediaType !== 'audio' && <div className="workspace-media-fullscreen" role="dialog" aria-label="全屏预览" onClick={() => setFullscreen(false)}>
+    {fullscreen && media && media.mediaType !== 'audio' && createPortal(<div className="workspace-media-fullscreen" role="dialog" aria-label="全屏预览" onClick={() => setFullscreen(false)}>
+      <button type="button" className="workspace-media-fullscreen-close" aria-label="关闭全屏预览" title="关闭（Esc）"
+        onClick={(event) => { event.stopPropagation(); setFullscreen(false); }}><X size={18} /></button>
       {media.mediaType === 'video'
         ? <video src={props.mediaSrc(media.path)} controls autoPlay playsInline onClick={(event) => event.stopPropagation()} />
         : <img src={props.mediaSrc(media.path)} alt={props.title} />}
-    </div>}
+    </div>, document.body)}
     {versions.length > 0 && <div className="workspace-version-toolbar">
       <div className="workspace-version-strip" aria-label="媒体版本">
         {versions.map((item) => <button key={item.media.id} onClick={() => props.onSelect(item.media.id)}
@@ -91,6 +97,7 @@ export default function MediaInspector(props: Props) {
     </div>}
     {!props.composer && props.canGenerate !== false && <div className="workspace-inspector-actionbar">
       <button className="workspace-pill" onClick={props.onEdit} aria-label="让助手修改"><Pencil size={13} /><span>让助手修改</span></button>
+      {props.onSendToCanvas && <button className="workspace-pill" onClick={props.onSendToCanvas} aria-label="传入画布"><LayoutGrid size={13} /><span>传入画布</span></button>}
       <button className="workspace-pill workspace-pill-accent" onClick={props.onPrompt}><FileText size={13} />提示词</button>
       {props.onRegenerate && <button className="workspace-pill" onClick={props.onRegenerate} disabled={props.busy}><RefreshCw size={13} />{media ? '重新生成' : '生成'}</button>}
     </div>}

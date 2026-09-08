@@ -1,4 +1,5 @@
 import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
+import { errorText } from '@/lib/errorText';
 
 /**
  * APIMart is reachable through several equivalent gateway domains. Keep the
@@ -116,7 +117,7 @@ function raceHealthyBase(apiKey: string, excluded = new Set<string>()): Promise<
           resolve(healthy);
         })
         .catch((error) => {
-          failures.push(`${baseUrl}: ${error instanceof Error ? error.message : String(error)}`);
+          failures.push(`${baseUrl}: ${errorText(error) || '连接失败'}`);
         })
         .finally(() => {
           remaining -= 1;
@@ -195,7 +196,7 @@ export async function withApimartSubmitFailover<T>(
       return { baseUrl, value: await request(baseUrl) };
     } catch (error) {
       if (!isApimartPreConnectFailure(error)) throw error;
-      failures.push(`${baseUrl}: ${error instanceof Error ? error.message : String(error)}`);
+      failures.push(`${baseUrl}: ${errorText(error) || '连接失败'}`);
       invalidateApimartBaseUrl(baseUrl);
     }
   }
@@ -217,7 +218,7 @@ export async function withApimartGetFailover<T>(
     try {
       return await request(baseUrl);
     } catch (error) {
-      failures.push(`${baseUrl}: ${error instanceof Error ? error.message : String(error)}`);
+      failures.push(`${baseUrl}: ${errorText(error) || '连接失败'}`);
       invalidateApimartBaseUrl(baseUrl);
     }
   }

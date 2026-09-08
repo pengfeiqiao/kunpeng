@@ -516,3 +516,35 @@ test('reordering multi-angle scene images follows the image paths', () => {
 
   assert.equal(remapped.imagePrompt, '@图片二提供全景，@图片一提供近景，姮氏参考@图片三。');
 });
+
+test('empty projection is stale residue and recomputes from cast; explicit clear is honored', async () => {
+  const { buildImageRefPaths } = await import('./shotRefs.ts');
+  const staleShot: WsShot = { ...shot, workspaceReferenceProjection: { image: [] } };
+  // 未定版残影（无显式清空标记）：按选角重算
+  assert.ok(buildImageRefPaths(staleShot, ctx).length > 0);
+  // 用户显式清空：尊重空投影
+  const clearedShot: WsShot = { ...shot, workspaceReferenceProjection: { image: [], explicitEmpty: { image: true } } };
+  assert.deepEqual(buildImageRefPaths(clearedShot, ctx), []);
+});
+
+test('stale empty stored draft refreshes from cast unless explicitly cleared', async () => {
+  const { initialWorkspaceDraft, saveWorkspaceDraft } = await import('../workspace/drafts.ts');
+  const { emptyWorkshopData } = await import('./types.ts');
+  const { migrateWorkshopProjectObjects } = await import('../projectObjects/migrate.ts');
+  let data = migrateWorkshopProjectObjects({ ...emptyWorkshopData('stale-draft'),
+    characters: [{ id: 'char-1', name: '姮氏', appearance: '', personality: '', assetImagePath: '/assets/character.png' }],
+    scenes: [{ id: 'scene-1', name: '书房', description: '', assetImagePath: '/assets/scene.png' }],
+    shots: [{ id: 's', shotNo: '01', description: '看古图', characterIds: ['char-1'], sceneId: 'scene-1' }] }, 1);
+  const base = initialWorkspaceDraft(data, 'shot:s', 'image')!;
+  data = saveWorkspaceDraft(data, base, 0, 2)!;
+  // 显式清空（之前有引用 → 现在清空）→ 标记为有意清空
+  data = saveWorkspaceDraft(data, { ...base, references: [] }, 1, 3)!;
+  assert.equal(data.shots[0].workspaceReferenceProjection?.explicitEmpty?.image, true, '有引用后被清空即显式清空标记');
+  const refreshed = initialWorkspaceDraft(data, 'shot:s', 'image')!;
+  assert.deepEqual(refreshed.references, [], '显式清空后不回填');
+  // 残影路径：投影空且未标记 → 回填
+  const shadowed = { ...data, shots: data.shots.map((s) => ({ ...s,
+    workspaceReferenceProjection: { image: [] } })) };
+  const repaired = initialWorkspaceDraft(shadowed, 'shot:s', 'image')!;
+  assert.ok(repaired.references.length > 0, '残影应按选角重算回填');
+});

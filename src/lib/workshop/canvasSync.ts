@@ -13,6 +13,9 @@ import { importLegacyCanvasObjects } from '@/lib/workspace/legacyCanvasImport';
 import { applyWorkspaceProjectCommand } from '@/lib/workspace/runtime';
 import { projectLegacyCanvas } from '@/lib/workspace/legacyCanvasProjection';
 import { publishLegacyProjectCommand } from '@/lib/workspace/legacyProjectCommandRuntime';
+import { computePendingCanvasPositions } from '@/lib/workshop/canvasSyncModel';
+import { workspaceDraftKey } from '@/lib/workspace/drafts';
+import { stableProjectHash } from '@/lib/projectObjects/migrate';
 import type { WorkspaceReference } from '@/lib/workspace/types';
 
 export interface WorkshopRef {
@@ -59,6 +62,78 @@ async function projectToLegacyCanvas(scope: 'assets' | 'shots'): Promise<string>
 
 export async function syncAssetsToCanvas(): Promise<string> { return projectToLegacyCanvas('assets'); }
 export async function syncShotPromptsToCanvas(): Promise<string> { return projectToLegacyCanvas('shots'); }
+
+/**
+ * 一键自动加载画布：资产（角色/场景/道具/色卡定版图）+ 分镜（视频节点）全部投影到画布，
+ * 分镜与资产之间补选角/场景/道具/色卡关系连线。沿用兼容投影的全部冲突保护：
+ * 手工编辑、生成中、已被修改或输出未索引的节点一律保留不动；新节点进待整理区。
+ */
+export async function autoLoadWorkspaceToCanvas(): Promise<string> {
+  const result: { assets?: ReturnType<typeof projectLegacyCanvas>; shots?: ReturnType<typeof projectLegacyCanvas> } = {};
+  const displayPath = (path: string) => /^(https?:|data:|asset:)/.test(path) ? path : convertFileSrc(path);
+  try {
+    publishLegacyProjectCommand((state) => {
+      const assets = projectLegacyCanvas(state, 'assets', displayPath);
+      const shots = projectLegacyCanvas({ workshop: assets.workshop, canvas: assets.canvas }, 'shots', displayPath);
+      result.assets = assets; result.shots = shots;
+      return { workshop: shots.workshop, canvas: shots.canvas };
+    });
+    await useProjectStore.getState().flushActiveCanvas();
+    const assets = result.assets!; const shots = result.shots!;
+    const conflicts = assets.conflicts + shots.conflicts;
+    if (!assets.created && !assets.updated && !shots.created && !shots.updated && !conflicts) {
+      return '项目还没有可加载的资产或分镜。请先在工坊完成拆解与资产定版。';
+    }
+    return `自动加载完成：资产新建 ${assets.created}、更新 ${assets.updated}；分镜新建 ${shots.created}、更新 ${shots.updated}；`
+      + `保留 ${conflicts} 个冲突或不可写对象。未提交生成、复制文件或自动采用候选。`;
+  } catch (error) {
+    return `自动加载未完成：${error instanceof Error ? error.message : '保存失败'}。已发布的内存修改不会回滚，请检查保存状态。`;
+  }
+}
+
+/** 单素材传入画布：当前媒体生成画布节点（待整理区），已存在则仅选中定位。不复制文件、不复制参考。 */
+export async function sendMediaToCanvas(projectId: string, objectId: string, mediaId: string): Promise<string> {
+  let message = '未执行';
+  try {
+    publishLegacyProjectCommand((state) => {
+      if (state.workshop.projectId !== projectId) throw new Error('项目已切换，未传入');
+      const registry = state.workshop.projectObjects;
+      const media = registry?.media.find((item) => item.id === mediaId && !item.archived);
+      const owner = registry?.objects.find((item) => item.id === objectId && !item.archived);
+      if (!registry || !media || !owner) throw new Error('素材或对象已不存在，未传入');
+      const existing = state.canvas.nodes.find((node) => node.data.projectObjectId === objectId
+        && node.data.mediaObjectId === mediaId);
+      if (existing) {
+        message = '该素材已在画布中，已为你定位选中';
+        return { workshop: state.workshop, canvas: { nodes: state.canvas.nodes.map((node) => ({ ...node, selected: node.id === existing.id })),
+          edges: state.canvas.edges } };
+      }
+      const type = media.mediaType === 'video' ? 'video' : media.mediaType === 'audio' ? 'audio' : 'image';
+      const display = /^(https?:|data:|asset:)/.test(media.path) ? media.path : convertFileSrc(media.path);
+      const nodeId = `node-workspace-${stableProjectHash(`${projectId}:${mediaId}`)}`;
+      if (state.canvas.nodes.some((node) => node.id === nodeId)) throw new Error('节点已存在，未重复传入');
+      const node: Node = {
+        id: nodeId, type, position: computePendingCanvasPositions(state.canvas.nodes, 1)[0],
+        style: { width: 280, height: 220 },
+        data: {
+          description: state.workshop.workspaceDrafts?.[workspaceDraftKey(objectId, type)]?.prompt ?? media.label ?? '',
+          projectObjectId: objectId, mediaObjectId: media.id, versionObjectId: media.versionObjectId,
+          mediaPurpose: media.purpose === 'current-version' ? 'current-version' : undefined,
+          localPath: media.path,
+          ...(type === 'image' ? { generatedImageUrl: display } : type === 'video' ? { generatedVideoUrl: display } : { audioUrl: display }),
+          pendingOrganization: true,
+          workshopRef: { projectId, kind: owner.kind, id: owner.sourceId ?? owner.id, role: 'asset', objectId },
+        },
+      };
+      message = '已传入画布（待整理区）';
+      return { workshop: state.workshop, canvas: { nodes: [...state.canvas.nodes, node], edges: state.canvas.edges } };
+    });
+    await useProjectStore.getState().flushActiveCanvas();
+    return message;
+  } catch (error) {
+    return `传入画布未完成：${error instanceof Error ? error.message : '保存失败'}`;
+  }
+}
 
 /** Compatibility-only import, with no file copies, automatic adoption or edge-derived ownership. */
 export async function pullFromCanvas(): Promise<string> {

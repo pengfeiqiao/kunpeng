@@ -174,6 +174,53 @@ test('canvas generation registers aligned candidate versions without automatic r
   assert.equal(reopened.projectObjects!.media.filter((item) => result.mediaIds.includes(item.id)).length, 2);
 });
 
+test('first generated image of an unbound asset auto-adopts as v1 current-version', () => {
+  const migrated = migrateWorkshopProjectObjects({
+    ...emptyWorkshopData('project-auto-adopt'),
+    characters: [{ id: 'character-1', name: '新角色', personality: '', appearance: '' }],
+  }, 100);
+  const result = registerCanvasGeneration(migrated, {
+    nodeId: '', taskId: 'task-first', paths: ['/outputs/first.png'], mediaType: 'image',
+    ownerObjectId: 'character:character-1', prompt: '首图', engineId: 'image-engine',
+  }, 110);
+  const media = result.data.projectObjects!.media.find((item) => item.id === result.mediaIds[0])!;
+  const version = result.data.projectObjects!.versions.find((item) => item.id === result.versionIds[0])!;
+  assert.equal(media.purpose, 'current-version');
+  assert.equal(version.selected, true);
+  assert.equal(result.data.characters[0].assetImagePath, '/outputs/first.png');
+  // 第二张不再抢占定版
+  const second = registerCanvasGeneration(result.data, {
+    nodeId: '', taskId: 'task-second', paths: ['/outputs/second.png'], mediaType: 'image',
+    ownerObjectId: 'character:character-1', prompt: '候选', engineId: 'image-engine',
+  }, 120);
+  const secondMedia = second.data.projectObjects!.media.find((item) => item.id === second.mediaIds[0])!;
+  assert.equal(secondMedia.purpose, 'candidate-version');
+  assert.equal(second.data.characters[0].assetImagePath, '/outputs/first.png');
+});
+
+test('migration auto-adopts first candidate for assets that have images but no adopted version', () => {
+  const migrated = migrateWorkshopProjectObjects({
+    ...emptyWorkshopData('project-unbound-asset'),
+    characters: [{
+      id: 'role-1', name: '未采用角色', personality: '', appearance: '',
+      candidates: [{ path: '/candidates/first.png', source: 'generate', createdAt: 1 }, { path: '/candidates/second.png', source: 'generate', createdAt: 2 }],
+    }],
+  }, 100);
+  // 定版字段被自动采用为第一张候选
+  assert.equal(migrated.characters[0].assetImagePath, '/candidates/first.png');
+  const ownerMedia = migrated.projectObjects!.media.filter((item) => item.ownerObjectId === 'character:role-1');
+  const current = ownerMedia.filter((item) => item.purpose === 'current-version');
+  assert.equal(current.length, 1);
+  assert.equal(current[0].path, '/candidates/first.png');
+  const selected = migrated.projectObjects!.versions.filter((item) => item.ownerObjectId === 'character:role-1' && item.selected);
+  assert.equal(selected.length, 1);
+  // 幂等：二次迁移不重复创建、不改动已定版
+  const again = migrateWorkshopProjectObjects(migrated, 200);
+  assert.equal(again.projectObjects!.versions.filter((item) => item.ownerObjectId === 'character:role-1').length,
+    migrated.projectObjects!.versions.filter((item) => item.ownerObjectId === 'character:role-1').length);
+  assert.equal(again.characters[0].assetImagePath, '/candidates/first.png');
+});
+
 test('blank generation enters unclassified inbox; classification does not create global reference membership', () => {
   const result = registerCanvasGeneration(emptyWorkshopData('project-blank-output'), {
     nodeId: 'node-blank',

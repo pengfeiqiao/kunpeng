@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, List } from 'lucide-react';
+import { Check, LayoutGrid, List } from 'lucide-react';
+import { message as tauriMessage } from '@tauri-apps/api/dialog';
 import CanvasView from '@/components/canvas/CanvasView';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { useProjectStore } from '@/stores/projectStore';
@@ -15,6 +16,7 @@ import { PROJECT_AGENT_CONTEXT_EVENT, type ProjectAgentContextEventDetail } from
 import { captureCanvasAssistantTarget, canvasTargetOf, workspaceBindingForNode, selectCanvasNodes, readCanvasRegionRequest, validateCanvasAssistantTarget } from '@/lib/workspace/workspaceCanvasAgent';
 import { readDirectorAssistantRequest } from '@/lib/workspace/workspaceAssistantMessage';
 import { buildCanvasActionPrompt } from '@/lib/canvas/canvasAgentPrompt';
+import { autoLoadWorkspaceToCanvas } from '@/lib/workshop/canvasSync';
 import { resolveCanvasAgentMediaUrl } from '@/lib/canvas/canvasAgentMedia';
 export { workspaceBindingForNode } from '@/lib/workspace/workspaceCanvasAgent';
 
@@ -209,6 +211,11 @@ function CanvasSurface({ projectId, canvasProjectId, onAbort }: {
       }}><List size={16} /></button>
     </div>}
     <div className="flex-1 min-h-0 relative">
+      <div className="workspace-canvas-tools" style={{ zIndex: 6 }}>
+        <button type="button" aria-label="自动加载画布" title="把工坊全部资产定版与分镜自动摆入画布并补齐关系连线"
+          onClick={() => { if (!ownsCanvas(projectId, canvasProjectId)) return;
+            void autoLoadWorkspaceToCanvas().then((msg) => tauriMessage(msg, { title: '自动加载画布' })); }}><LayoutGrid size={14} />自动加载画布</button>
+      </div>
       <CanvasView embedded onSelectNode={selectNode} onSendMessage={sendToAssistant} onAbort={onAbort} />
     </div>
   </div>;

@@ -20,7 +20,6 @@ export const WORKSPACE_ENGINES: RhtvCanvasEngine[] = [
       { key: 'aspectRatio', label: '比例', type: 'list', default: '16:9', options: ratios },
       { key: 'stylize', label: '风格化', type: 'int', default: mj.stylize },
       { key: 'chaos', label: '混沌度', type: 'int', default: mj.chaos },
-      { key: 'raw', label: 'Raw', type: 'boolean', default: mj.raw },
     ],
   })),
   { id: 'dreamina-seedance-2.5', label: 'Seedance 2.5', endpoint: '', kind: 'video', mode: 'multimodal-video',

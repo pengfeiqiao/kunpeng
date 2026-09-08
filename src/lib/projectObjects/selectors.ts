@@ -66,6 +66,14 @@ export function registerCanvasGeneration(
   let ordinal = input.ownerObjectId
     ? Math.max(0, ...versions.filter((item) => item.ownerObjectId === input.ownerObjectId).map((item) => item.ordinal))
     : 0;
+  // 资产首图默认采用 v1：角色/场景/道具/色卡还没有定版时，第一张生成图自动成为当前版本。
+  // 修复"生成→候选"断链（assetImagePath 为空 → 分镜参考绑定为空 → @图片N 空引用）。
+  const autoAdoptOwner = input.ownerObjectId ? registry.objects.find((item) => item.id === input.ownerObjectId) : undefined;
+  const canAutoAdopt = Boolean(autoAdoptOwner && ['character', 'scene', 'prop', 'scene-asset'].includes(autoAdoptOwner.kind)
+    && !autoAdoptOwner.archived && !autoAdoptOwner.locked
+    && !registry.media.some((item) => item.ownerObjectId === autoAdoptOwner.id && !item.archived && item.purpose === 'current-version')
+    && !registry.versions.some((item) => item.ownerObjectId === autoAdoptOwner.id && !item.archived && item.selected));
+  let autoAdoptedPath: string | undefined;
 
   input.paths.filter(Boolean).forEach((path, index) => {
     const mediaId = `media-file:${stableProjectHash(`canvas\u0000${input.taskId}\u0000${path}`)}`;
@@ -80,6 +88,9 @@ export function registerCanvasGeneration(
       return;
     }
     mediaIds.push(mediaId);
+    // 资产首图自动采用：只取本批第一张，其余仍为候选
+    const autoAdopt = canAutoAdopt && !autoAdoptedPath;
+    if (autoAdopt) autoAdoptedPath = path;
 
     const versionId = input.ownerObjectId
       ? `asset-version:${stableProjectHash(`${input.ownerObjectId}\u0000${input.taskId}\u0000${index}`)}`
@@ -96,7 +107,7 @@ export function registerCanvasGeneration(
       updatedAt: now,
       path,
       mediaType: input.mediaType,
-      purpose: unclassified ? 'unclassified' : 'candidate-version',
+      purpose: unclassified ? 'unclassified' : autoAdopt ? 'current-version' : 'candidate-version',
       ownerObjectId: input.ownerObjectId,
       versionObjectId: versionId,
       canvasNodeId,
@@ -119,7 +130,7 @@ export function registerCanvasGeneration(
         ownerObjectId: input.ownerObjectId,
         mediaObjectId: mediaId,
         ordinal,
-        selected: false,
+        selected: autoAdopt,
         prompt: input.prompt,
         engineId: input.engineId,
         generationSnapshot: input.generationSnapshot ? {
@@ -132,9 +143,22 @@ export function registerCanvasGeneration(
     versionIds.push(versionId);
   });
 
+  // 自动采用同步旧资产字段（assetImagePath），分镜参考绑定与迁移链读的是它
+  const legacyPatched = autoAdoptedPath && autoAdoptOwner?.sourceId ? {
+    characters: autoAdoptOwner.kind === 'character'
+      ? data.characters.map((item) => item.id === autoAdoptOwner.sourceId ? { ...item, assetImagePath: autoAdoptedPath } : item) : data.characters,
+    scenes: autoAdoptOwner.kind === 'scene'
+      ? data.scenes.map((item) => item.id === autoAdoptOwner.sourceId ? { ...item, assetImagePath: autoAdoptedPath } : item) : data.scenes,
+    props: autoAdoptOwner.kind === 'prop'
+      ? (data.props ?? []).map((item) => item.id === autoAdoptOwner.sourceId ? { ...item, assetImagePath: autoAdoptedPath } : item) : data.props,
+    colorPalettes: autoAdoptOwner.kind === 'scene-asset'
+      ? (data.colorPalettes ?? []).map((item) => item.id === autoAdoptOwner.sourceId ? { ...item, assetImagePath: autoAdoptedPath } : item) : data.colorPalettes,
+  } : {};
+
   return {
     data: {
       ...data,
+      ...legacyPatched,
       projectObjects: {
         ...registry,
         objects,

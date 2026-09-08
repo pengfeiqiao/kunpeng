@@ -28,7 +28,7 @@ export const canvasProject=create(()=>({activeProjectId:null,switching:false,pro
 export const director=create(()=>({isOpen:false,projectId:null,activePlanId:null}));
 window.stores={workshop,chat,runs,unified,confirms};`;
 const mocks = {
-  '@/stores': `export {chat as useChatStore} from 'mock-stores';`,
+  '@/stores': `export {chat as useChatStore} from 'mock-stores'; export {settings as useSettingsStore} from 'mock-stores';`,
   '@/stores/chatStore': `export {chat as useChatStore} from 'mock-stores';`,
   '@/stores/workshopStore': `export {workshop as useWorkshopStore} from 'mock-stores';`,
   '@/stores/unifiedProjectStore': `export {unified as useUnifiedProjectStore} from 'mock-stores';`,

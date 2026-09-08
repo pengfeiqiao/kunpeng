@@ -103,14 +103,15 @@ try {
   await new Promise(r=>setTimeout(r,400)); await expandAll();
   const clickText = async text => page.evaluate(text => {const button=[...document.querySelectorAll('button')].find(el=>el.textContent.trim()===text);if(!button)throw new Error('Missing '+text);button.click();},text);
   const open = async shot => page.click(`[aria-label="打开镜头 ${shot}"]`);
-  const write = async text => {await page.$eval('[aria-label="完整提示词"]',el=>{el.focus();el.select();});await page.type('[aria-label="完整提示词"]',text);};
+  const write = async text => {await page.$eval('[aria-label="完整提示词"]',el=>{el.focus();const sel=window.getSelection();sel.selectAllChildren(el);});await page.type('[aria-label="完整提示词"]',text);};
+  const readPrompt = () => page.$eval('[aria-label="完整提示词"]',el=>el.value ?? el.innerText);
   await page.waitForSelector('[aria-label="媒体预览器"]');
   await clickText('配音与配色');
   assert.equal(await page.evaluate(()=>window.flowProductionObject),'shot:a');
   assert.equal(await page.evaluate(()=>window.flowCalls.length),0,'opening production tools must not generate');
   await clickText('提示词'); await write('A 保存后的提示词');
   await open('02'); await write('B 保存后的提示词'); await open('01');
-  assert.equal(await page.$eval('[aria-label="完整提示词"]',el=>el.value),'A 保存后的提示词');
+  assert.equal(await readPrompt(),'A 保存后的提示词');
   // 经典版/新版优化仅保留在视频提示词：切到视频 Tab 再测迟到结果归属与冲突保护
   await page.click('.workspace-output-tabs button:first-child');
   await page.waitForSelector('[aria-label="优化提示词"]');
@@ -118,14 +119,14 @@ try {
   await page.waitForFunction(()=>window.flowOptimize?.draft.objectId==='shot:a');
   await open('02'); await page.evaluate(()=>window.flowOptimized('A 优化返回'));
   await page.waitForFunction(()=>window.flowData.workspaceDrafts['shot:a::video']?.prompt==='A 优化返回');
-  assert.notEqual(await page.$eval('[aria-label="完整提示词"]',el=>el.value),'A 优化返回','late result must not land on shot B');
+  assert.notEqual(await readPrompt(),'A 优化返回','late result must not land on shot B');
   await open('01'); await page.select('[aria-label="优化提示词"]','legacy'); await write('A 人工新改动');
   await page.evaluate(()=>window.flowOptimized('A 迟到旧结果'));
   await page.waitForFunction(()=>document.body.textContent.includes('未覆盖现有草稿'));
-  assert.equal(await page.$eval('[aria-label="完整提示词"]',el=>el.value),'A 人工新改动');
+  assert.equal(await readPrompt(),'A 人工新改动');
   await page.click('.workspace-output-tabs button:nth-child(2)');
   await page.waitForFunction(()=>!document.querySelector('[aria-label="优化提示词"]'),{});
-  assert.equal(await page.$eval('[aria-label="完整提示词"]',el=>el.value),'A 保存后的提示词');
+  assert.equal(await readPrompt(),'A 保存后的提示词');
   await write('A 最终生成提示词'); await clickText('生成');
   await page.waitForSelector('[aria-label="模拟确认"]');
   assert.equal(await page.evaluate(()=>window.flowCalls.length),0);
@@ -134,7 +135,7 @@ try {
   await clickText('生成'); await page.waitForSelector('[aria-label="模拟确认"]'); await clickText('确认测试生成');
   await page.waitForFunction(()=>window.flowCalls.length===1); await open('02'); await page.evaluate(()=>window.flowComplete());
   await page.waitForFunction(()=>window.flowData.projectObjects.versions.some(v=>v.generationSnapshot));
-  assert.equal(await page.$eval('[aria-label="完整提示词"]',el=>el.value),'B 保存后的提示词');
+  assert.equal(await readPrompt(),'B 保存后的提示词');
   const outcome = await page.evaluate(()=>{
     const v=window.flowData.projectObjects.versions.find(v=>v.generationSnapshot);
     return {owner:v.ownerObjectId,selected:v.selected,prompt:v.generationSnapshot.prompt,path:window.flowData.shots[0].imagePath,calls:window.flowCalls.length};

@@ -44,12 +44,16 @@ export interface ShotRefBinding {
 }
 
 function workspaceImageBindings(shot: WsShot, type: 'image' | 'video'): ShotRefBinding[] | undefined {
-  return shot.workspaceReferenceProjection?.[type]?.filter((ref) => ref.type === 'image').map((ref, index) => {
+  const projected = shot.workspaceReferenceProjection?.[type]?.filter((ref) => ref.type === 'image').map((ref, index) => {
     const [kind, ...id] = (ref.objectId ?? '').split(':');
     const bindingKind: ShotRefBindingKind = ref.role === 'director-constraint' ? 'directorConstraintCard'
       : kind === 'character' || kind === 'scene' || kind === 'prop' ? kind : kind === 'scene-asset' ? 'palette' : 'extra';
     return { index: index + 1, kind: bindingKind, label: ref.label, path: ref.path, id: id.join(':') || ref.id };
   });
+  if (projected?.length) return projected;
+  // 空投影两种含义：用户显式清空（explicitEmpty=true，尊重，返回空）；
+  // 未定版时落盘的残影（未标记，回退到按选角实时计算，返回 undefined）。
+  return shot.workspaceReferenceProjection?.explicitEmpty?.[type] === true ? [] : undefined;
 }
 
 function bindingIdentityList(bindings: ShotRefBinding[]): string[] {

@@ -52,6 +52,19 @@ export function assistantThreadKey(target: AssistantTarget): string {
     ...(target.accessScope ? [target.accessScope] : [])]);
 }
 
+/**
+ * 线程身份的稳定核心：去掉 context（第 7 位）。上下文文案会随版本演进，
+ * 不能让提示词措辞变化把历史聊天隐藏掉。授权边界字段（accessScope 等）保留。
+ */
+export function assistantThreadCore(threadKey: string): string {
+  try {
+    const parts: unknown[] = JSON.parse(threadKey);
+    if (!Array.isArray(parts) || parts.length < 8) return threadKey;
+    parts.splice(7, 1);
+    return JSON.stringify(parts);
+  } catch { return threadKey; }
+}
+
 export function assistantSessionKey(projectId: string, sessionId: string | null, surface = 'media'): string {
   return JSON.stringify([projectId, sessionId, surface]);
 }

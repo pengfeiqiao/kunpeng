@@ -127,10 +127,22 @@ export function preserveLegacyReferenceDrafts(before: WorkshopData, after: Works
     for (const type of ['image', 'video'] as const) {
       if (JSON.stringify(legacyReferences(source, shot, type)) === JSON.stringify(legacyReferences(next, target, type))) continue;
       const draft = legacyShotDraft(source, shot, type, now);
-      if (!draft || source.workspaceDrafts?.[draft.id]) continue;
-      const saved = saveWorkspaceDraft(next, draft, 0, now);
-      if (!saved) throw new Error('受影响镜头已锁定，未更改其参考默认值');
-      next = saved;
+      if (!draft) continue;
+      const existing = next.workspaceDrafts?.[draft.id];
+      if (!existing) {
+        // 尚无草稿：用最新投影创建（原行为）
+        const saved = saveWorkspaceDraft(next, draft, 0, now);
+        if (!saved) throw new Error('受影响镜头已锁定，未更改其参考默认值');
+        next = saved;
+        continue;
+      }
+      // 只回填"创建时资产未定版导致引用为空"的草稿：资产后绑定图片时把当前投影灌进去。
+      // 已有引用的草稿遵循采用冻结——换定版图绝不静默改写既有参考（原设计契约）。
+      const afterRefs = legacyReferences(next, target, type);
+      if (existing.references.length > 0 || !afterRefs.length) continue;
+      const rebased = changeWorkspaceReferences(existing, afterRefs);
+      const saved = saveWorkspaceDraft(next, { ...existing, references: rebased.references, prompt: rebased.prompt }, existing.revision, now);
+      if (saved) next = saved; // 草稿并发修改/锁定时放弃本次自动回填，不覆盖
     }
   }
   return next;

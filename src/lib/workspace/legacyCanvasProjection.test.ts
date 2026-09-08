@@ -34,6 +34,27 @@ test('one pure canvas projection materializes visible draft with collector-exact
   assert.equal(replay.workshop.workspaceDrafts, next.workshop.workspaceDrafts);
 });
 
+test('shot projection adds cast relation edges to existing asset nodes; edges are non-reference and idempotent', () => {
+  const withAssets = projectLegacyCanvas(fixture(), 'assets', undefined, 2);
+  const assetNode = withAssets.canvas.nodes.find((node) => node.data.projectObjectId === 'character:a')!;
+  assert.ok(assetNode, 'asset node projected');
+  const next = projectLegacyCanvas(withAssets, 'shots', undefined, 3);
+  const shotNode = next.canvas.nodes.find((node) => node.data.projectObjectId === 'shot:s')!;
+  const castEdges = next.canvas.edges.filter((edge) => (edge.data as { relation?: string })?.relation === 'workshop-cast');
+  assert.equal(castEdges.length, 1);
+  assert.equal(castEdges[0].source, assetNode.id); assert.equal(castEdges[0].target, shotNode.id);
+  // 关系连线不参与参考收集：镜头节点收集到的参考与无连线时完全一致
+  const collected = collectReferencesFromSnapshot(shotNode.id, next.canvas);
+  assert.deepEqual([...collected.images, ...collected.videos, ...collected.audios].map((ref) => ref.submitUrl), ['/a.png', '/previs.mp4', '/a.wav']);
+  // 幂等：重复投影不重复加线
+  const replay = projectLegacyCanvas(next, 'shots', undefined, 4);
+  assert.equal(replay.canvas.edges.filter((edge) => (edge.data as { relation?: string })?.relation === 'workshop-cast').length, 1);
+  // 换角后旧线被重建替换，不留过时关系
+  replay.workshop.shots[0] = { ...replay.workshop.shots[0], characterIds: [] };
+  const recast = projectLegacyCanvas(replay, 'shots', undefined, 5);
+  assert.equal(recast.canvas.edges.filter((edge) => (edge.data as { relation?: string })?.relation === 'workshop-cast').length, 0);
+});
+
 test('renumbering reuses stable node identity and layout; new draft projects without altering media/task history', () => {
   const initial = projectLegacyCanvas(fixture(), 'shots', undefined, 2);
   const target = initial.canvas.nodes.find((node) => node.data.projectObjectId === 'shot:s')!;

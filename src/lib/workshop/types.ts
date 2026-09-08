@@ -275,7 +275,10 @@ export interface WsShot {
   videoPromptTemplate?: 'legacy' | 'universal';
   imagePrompt?: string;
   /** Read-only compatibility projection of workspaceDrafts; never edited independently. */
-  workspaceReferenceProjection?: Partial<Record<'image' | 'video', import('../workspace/types').WorkspaceReference[]>>;
+  workspaceReferenceProjection?: Partial<Record<'image' | 'video', import('../workspace/types').WorkspaceReference[]>> & {
+    /** 用户显式清空引用的标记：true 时空投影是有意清空（尊重）；未标记的空投影是未定版残影（按选角重算）。 */
+    explicitEmpty?: Partial<Record<'image' | 'video', boolean>>;
+  };
   /** Seedance 视频提示词：遵守 aigc-memory/prompt-templates/seedance/README.md */
   videoPrompt?: string;
   /** Seedance 2.5 专用提示词。与普通视频提示词分开保存，切换模型时互不覆盖。 */

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+
   X, Key, Eye, EyeOff, Boxes, RotateCcw, ArrowLeft,
   ScrollText, Settings2, Download, Upload, Image as ImageIcon,
   Film, Route, Cloud, Database, ChevronDown, ChevronRight, Gauge,
@@ -290,11 +291,14 @@ function GeneralTab() {
   } = useSettingsStore();
 
   const [configInfo, setConfigInfo] = useState('');
+  // 版本号直接读运行中应用的打包版本（tauri.conf.json），不再手写维护
+  const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
     invoke<string>('get_home_dir')
       .then((home) => setConfigInfo(`${home}/.kunpeng/settings.json`))
       .catch(() => setConfigInfo('~/.kunpeng/settings.json'));
+    import('@tauri-apps/api/app').then((app) => app.getVersion()).then(setAppVersion).catch(() => {});
   }, []);
 
   return (
@@ -379,7 +383,7 @@ function GeneralTab() {
             重新配置
           </button>
         </SettingRow>
-        <SettingRow title="版本"><span className="text-xs text-zinc-500">2.5.0</span></SettingRow>
+        <SettingRow title="版本"><span className="text-xs text-zinc-500">{appVersion || '…'}</span></SettingRow>
         <SettingRow title="配置文件">
           <span className="block max-w-[360px] truncate font-mono text-[11px] text-zinc-500" title={configInfo}>{configInfo}</span>
         </SettingRow>

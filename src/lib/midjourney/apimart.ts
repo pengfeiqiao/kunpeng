@@ -4,9 +4,11 @@ import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { rhtvDownloadAll } from '@/lib/rhtv/download';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveApiKey } from '@/lib/credentials';
+import { errorText } from '@/lib/errorText';
 import { withApimartGetFailover, withApimartSubmitFailover } from '@/lib/apimart/baseUrl';
 import {
   buildApimartMidjourneyPrompt,
+  midjourneyRawStyleAllowed,
   type MidjourneyPromptInput,
 } from './prompt';
 
@@ -89,13 +91,10 @@ function errorFrom(body: unknown): string {
   const root = body as Record<string, unknown> | undefined;
   const error = root?.error;
   if (typeof error === 'string') return error;
-  if (error && typeof error === 'object') {
-    const item = error as Record<string, unknown>;
-    return String(item.message ?? item.error ?? '');
-  }
+  if (error && typeof error === 'object') return errorText(error);
   const data = root?.data;
   const item = data && !Array.isArray(data) && typeof data === 'object' ? data as Record<string, unknown> : undefined;
-  return String(item?.fail_reason ?? item?.error ?? root?.fail_reason ?? root?.message ?? '').trim();
+  return (errorText(item?.fail_reason) || errorText(item?.error) || errorText(root?.fail_reason) || errorText(root?.message)).trim();
 }
 
 function collectResultUrls(body: unknown): string[] {
@@ -147,11 +146,14 @@ export async function submitApimartMidjourney(input: ApimartMidjourneyRequest): 
   const references = await Promise.all((input.referenceUrls ?? []).slice(0, 10).map(resolveReferenceUrl));
   const styleReferences = await Promise.all((input.styleReferenceUrls ?? []).slice(0, 1).map((source, index) => resolveReferenceUrl(source, index + references.length)));
   const prompt = buildApimartMidjourneyPrompt({ ...input, styleReferenceUrls: styleReferences }, references);
+  // v8.2 上游连 body 的 style 字段也拒收（实测 code=9 无效参数）：该版本静默丢弃 raw 并明示
+  const rawDropped = Boolean(input.raw) && !midjourneyRawStyleAllowed(input.version);
+  if (rawDropped) input.onProgress?.('v8.2 上游不接受 raw 风格参数，已按普通模式提交生成');
   const response = (await withApimartSubmitFailover(key, (baseUrl) => (
     tauriFetch(`${baseUrl}/v1/midjourney/generations`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: { type: 'Json', payload: { prompt, speed: input.speed ?? 'relax' } },
+      body: { type: 'Json', payload: { prompt, speed: input.speed ?? 'relax', ...(input.raw && !rawDropped ? { style: 'raw' } : {}) } },
       responseType: ResponseType.JSON,
       timeout: 120,
     })

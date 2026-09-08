@@ -141,7 +141,16 @@ try {
     await screenshot({ path: path.join(evidence, 'ux-prompt-dialog-' + width + '.png') });
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('dialog').open);
-    assert.equal(await page.$eval('.workspace-prompt', element => element.value), await page.evaluate(() => window.smokeDraft.prompt));
+    const readMentionPrompt = () => page.$eval('.workspace-prompt', (el) => { let out = '';
+      const walk = (node) => { if (node.nodeType === Node.TEXT_NODE) { out += node.textContent; return; }
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        if (node.dataset?.mention) { out += node.dataset.mention; return; }
+        if (node.tagName === 'BR') { out += '\n'; return; }
+        const block = node.tagName === 'DIV' || node.tagName === 'P';
+        if (block && out && !out.endsWith('\n')) out += '\n';
+        node.childNodes.forEach(walk); };
+      el.childNodes.forEach(walk); return out; });
+    assert.equal(await readMentionPrompt(), await page.evaluate(() => window.smokeDraft.prompt));
     assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), '展开大编辑器');
     assert.ok(await page.evaluate(() => {
       const r = document.querySelector('.workspace-primary').getBoundingClientRect();

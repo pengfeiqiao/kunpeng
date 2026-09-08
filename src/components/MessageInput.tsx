@@ -9,6 +9,7 @@ import { SkillBar, SkillPanelWrapper } from './skills';
 import { TouliuDataPanel } from './touliu';
 import ComposerModelPicker from './ComposerModelPicker';
 import DeepseekHarnessControl from './chat/DeepseekHarnessControl';
+import ConfirmModeSelect from './chat/ConfirmModeSelect';
 import type { SkillManifest } from '@/types/skill';
 
 interface MessageInputProps {
@@ -32,6 +33,7 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
   ));
   const isStreaming = isDisabled;
   const providerDefault = useSettingsStore((s) => s.providerDefault);
+  const appTheme = useSettingsStore((s) => s.theme);
 
   // 联网搜索开关（默认关闭；开启后 web_search 工具才暴露给模型）
   const webSearchEnabled = useSettingsStore((s) => s.webSearchEnabled);
@@ -368,6 +370,7 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
 
           <div className="flex-1 min-w-2" />
 
+          <ConfirmModeSelect variant={appTheme === 'dark' ? 'dark' : 'light'} compact />
           <DeepseekHarnessControl providerId={providerDefault} disabled={isDisabled} />
           <ComposerModelPicker disabled={isDisabled} />
 

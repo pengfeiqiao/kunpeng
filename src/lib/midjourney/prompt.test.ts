@@ -4,6 +4,7 @@ import {
   buildApimartMidjourneyPrompt,
   isMidjourneyEngineId,
   midjourneyProviderOrder,
+  midjourneyRawStyleAllowed,
   normalizeMidjourneyVersion,
 } from './prompt.ts';
 
@@ -40,7 +41,7 @@ test('reference images stay ahead of prompt content and controlled flags are rep
 
   assert.equal(
     prompt,
-    'https://cdn.example.com/a.png https://cdn.example.com/b.png cinematic portrait --v 8.2 --ar 16:9 --stylize 350 --chaos 100 --style raw',
+    'https://cdn.example.com/a.png https://cdn.example.com/b.png cinematic portrait --v 8.2 --ar 16:9 --stylize 350 --chaos 100',
   );
 });
 
@@ -52,6 +53,17 @@ test('v8.1 keeps quality and image references can carry an explicit weight', () 
     imageWeight: 1.25,
   }, ['https://cdn.example.com/ref.png']);
   assert.equal(prompt, 'https://cdn.example.com/ref.png weathered machine --v 8.1 --q 1 --iw 1.25');
+});
+
+test('v8.2 blocks the raw style parameter while other versions keep it', () => {
+  assert.equal(midjourneyRawStyleAllowed('v8.2'), false);
+  assert.equal(midjourneyRawStyleAllowed('8.2'), false);
+  assert.equal(midjourneyRawStyleAllowed('v8.1'), true);
+  assert.equal(midjourneyRawStyleAllowed('v7'), true);
+  assert.equal(midjourneyRawStyleAllowed('niji6'), true);
+  // 提示词里永不出现 --style raw（raw 只在受支持版本走 body 字段）
+  assert.equal(buildApimartMidjourneyPrompt({ prompt: 'portrait', version: 'v8.2', raw: true }).includes('--style raw'), false);
+  assert.equal(buildApimartMidjourneyPrompt({ prompt: 'portrait --style raw', version: 'v8.1', raw: true }).includes('--style raw'), false);
 });
 
 test('niji versions use the niji flag without also adding a v flag', () => {

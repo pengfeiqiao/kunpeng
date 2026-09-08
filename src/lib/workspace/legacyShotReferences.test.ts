@@ -71,6 +71,20 @@ test('scene reference defaults and global palette controls update shared drafts;
   assert.equal(setLegacySceneReferences(override, 'scene', ['/angle.png']).workspaceDrafts, undefined);
 });
 
+test('empty draft created before asset binding is backfilled when the asset image lands; adopted drafts stay frozen', () => {
+  const before = fixture();
+  // 先造一个引用为空的镜头草稿（模拟资产未定版时打开过编辑器）
+  const emptyDraft = legacyShotDraft(before, before.shots[0], 'image', 2)!;
+  const withEmpty = saveWorkspaceDraft(before, { ...emptyDraft, references: [] }, 0, 2)!;
+  const after = { ...withEmpty, characters: withEmpty.characters.map((character) => character.id === 'a' ? { ...character, assetImagePath: '/new-a.png' } : character) };
+  const next = preserveLegacyReferenceDrafts(withEmpty, after);
+  // 空引用草稿被回填：新绑定的资产图进入参考
+  assert.ok(next.workspaceDrafts!['shot:s::image'].references.some((ref) => ref.path === '/new-a.png'));
+  // 已有引用的草稿仍然冻结（采用不静默改写）
+  const frozen = preserveLegacyReferenceDrafts(before, { ...before, characters: after.characters });
+  assert.deepEqual(frozen.workspaceDrafts!['shot:s::image'].references.map((ref) => ref.path), ['/a.png', '/b.png']);
+});
+
 test('adopting a different asset version does not silently change existing or legacy generation references', () => {
   const before = fixture();
   const after = { ...before, characters: before.characters.map((character) => character.id === 'a' ? { ...character, assetImagePath: '/new-a.png' } : character) };

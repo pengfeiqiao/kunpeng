@@ -95,8 +95,46 @@
 .workspace-add-reference { border-style: dashed; color: #9a9aa5; display: inline-flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; }
 @media (prefers-reduced-motion: reduce) { .workspace-reference .workspace-reference-actions { transition: none; } }
 
-/* 参数统一抽屉（毛玻璃） */
-.workspace-params-root { position: relative; }
+/* ── @ 引用增强：单面 contenteditable 编辑器（芯片内联）+ 悬浮缩略图 + 项目图片选择器 ── */
+.workspace-mention-root { position: relative; display: block; flex: 1 0 100px; min-height: 100px; background: #18181a; border: 1px solid #343437; border-radius: 5px; }
+.workspace-mention-root:focus-within { border-color: #48484d; }
+.workspace-mention-editor { position: absolute; inset: 0; overflow: auto; padding: 10px 12px; outline: none;
+  color: #dedee2; font: inherit; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; caret-color: #dedee2; }
+.workspace-prompt.workspace-mention-editor { background: transparent; border: none; flex: none; min-height: 0; width: 100%; }
+.workspace-mention-editor:empty::before { content: attr(data-placeholder); color: #6b6b72; pointer-events: none; }
+.workspace-mention-editor::selection { background: rgba(126,166,255,0.32); }
+.workspace-mention-chip { display: inline-flex; align-items: center; gap: 4px; vertical-align: baseline; max-width: 100%;
+  padding: 1px 7px 1px 2px; margin: 0 1px; border-radius: 999px; background: rgba(126,166,255,0.14);
+  box-shadow: 0 0 0 1px rgba(126,166,255,0.32); color: #cdd9fb; cursor: default; user-select: none;
+  transition: background 130ms ease, box-shadow 130ms ease; }
+.workspace-mention-chip:hover { background: rgba(126,166,255,0.26); box-shadow: 0 0 0 1px rgba(126,166,255,0.55); }
+.workspace-mention-chip img { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; background: #101013; flex: none; }
+.workspace-mention-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-mention-picker { position: fixed; z-index: 9999; width: 268px; overflow: auto;
+  padding: 6px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(24,24,29,0.9);
+  -webkit-backdrop-filter: blur(20px) saturate(1.15); backdrop-filter: blur(20px) saturate(1.15);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55); animation: workspace-mention-in 150ms ease-out; }
+.workspace-mention-menu-section { padding: 7px 8px 3px; font-size: 10px; color: #8e8e96; user-select: none; }
+.workspace-mention-menu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 5px 8px; border: none; border-radius: 8px;
+  background: transparent; color: #dedee2; font-size: 12px; text-align: left; cursor: pointer; }
+.workspace-mention-menu-item:hover { background: rgba(255,255,255,0.07); }
+.workspace-mention-menu-item img { width: 36px; height: 36px; flex: none; border-radius: 6px; object-fit: cover; background: #101013; }
+.workspace-mention-menu-name { flex: none; color: #cdd9fb; font-size: 12px; }
+.workspace-mention-menu-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #9a9aa2; font-size: 11px; }
+.workspace-mention-menu-empty { padding: 14px 10px; text-align: center; font-size: 11px; color: #8e8e96; }
+.workspace-mention-tip { position: fixed; z-index: 60; transform: translate(-50%, calc(-100% - 10px)); display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 6px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); background: rgba(20,20,25,0.92);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); box-shadow: 0 10px 32px rgba(0,0,0,0.55);
+  pointer-events: none; animation: workspace-mention-tip-in 130ms ease-out; }
+.workspace-mention-tip img { width: 120px; height: 68px; object-fit: cover; border-radius: 6px; background: #101013; }
+.workspace-mention-tip span { font-size: 11px; color: #cfcfd6; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-mention-tip-below { transform: translate(-50%, 10px); animation-name: workspace-mention-tip-in-below; }
+@keyframes workspace-mention-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes workspace-mention-tip-in { from { opacity: 0; transform: translate(-50%, calc(-100% - 4px)); } to { opacity: 1; transform: translate(-50%, calc(-100% - 10px)); } }
+@keyframes workspace-mention-tip-in-below { from { opacity: 0; transform: translate(-50%, 4px); } to { opacity: 1; transform: translate(-50%, 10px); } }
+@media (prefers-reduced-motion: reduce) { .workspace-mention-picker, .workspace-mention-tip { animation: none; } .workspace-mention-chip { transition: none; } }
+
+/* 参数统一抽屉（毛玻璃） */.workspace-params-root { position: relative; }
 .workspace-params-trigger { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; background: rgba(255,255,255,0.05); color: #cfcfd6; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .workspace-params-trigger:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
 .workspace-params-drawer { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 40; min-width: 240px; max-height: 320px; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; background: rgba(24,24,29,0.85); -webkit-backdrop-filter: blur(20px) saturate(1.15); backdrop-filter: blur(20px) saturate(1.15); box-shadow: 0 12px 40px rgba(0,0,0,0.55); }

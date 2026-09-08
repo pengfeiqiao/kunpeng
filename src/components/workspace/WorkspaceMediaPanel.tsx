@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { FolderOpen, Image as ImageIcon, Library, Mic, Package, SlidersHorizontal, Video, X } from 'lucide-react';
+import { FolderOpen, Image as ImageIcon, Library, Mic, Package, SlidersHorizontal, Sparkles, Video, X } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/api/dialog';
 import type { WorkshopData } from '@/lib/workshop/types';
 import type { WorkspaceDraft, WorkspaceReference } from '@/lib/workspace/types';
@@ -42,6 +42,10 @@ interface Props {
   onConfigure?: () => void;
   onClassify?: (media: MediaFileRecord) => void;
   onProductionTools?: (objectId: string) => void;
+  /** 分镜提示词的 agent 通道（读剧本/分镜/调度写回）：optimize=按剧本优化，write=按剧本从零编写。 */
+  onAgentPrompt?: (draft: WorkspaceDraft, mode: 'write' | 'optimize', template?: 'legacy' | 'universal') => void;
+  /** 单素材传入画布（待整理区） */
+  onSendToCanvas?: (objectId: string, mediaId: string) => void;
   /** Resolve an uncertain submission after the user checked the original task, unblocking regeneration. */
   onResolveSubmission?: (submissionId: string) => void;
 }
@@ -166,19 +170,30 @@ export default function WorkspaceMediaPanel(props: Props) {
   const assetOwners = new Map((props.data.projectObjects?.objects ?? [])
     .filter((item) => !item.archived && ['character', 'scene', 'prop', 'scene-asset'].includes(item.kind))
     .map((item) => [item.id, item.label ?? item.id]));
+  // 只显示定版（current-version）资产图，候选版本不进入参考选择
+  const projectAssetItems = (props.data.projectObjects?.media ?? [])
+    .filter((item) => item.ownerObjectId && assetOwners.has(item.ownerObjectId) && !item.archived
+      && item.purpose === 'current-version' && ['image', 'video', 'audio'].includes(item.mediaType) && item.path)
+    .map((item) => ({ id: item.id, path: item.path, mediaType: item.mediaType,
+      label: `${assetOwners.get(item.ownerObjectId!) ?? '项目资产'}${item.label && item.label !== assetOwners.get(item.ownerObjectId!) ? ` · ${item.label}` : ''}` }));
   const pickerItems: Array<{ id: string; path: string; label: string; mediaType: string; ownerObjectId?: string; versionObjectId?: string }> =
     pickerSource === 'assets'
-      // 只显示定版（current-version）资产图，候选版本不进入参考选择
-      ? (props.data.projectObjects?.media ?? [])
-          .filter((item) => item.ownerObjectId && assetOwners.has(item.ownerObjectId) && !item.archived
-            && item.purpose === 'current-version' && ['image', 'video', 'audio'].includes(item.mediaType) && item.path)
-          .map((item) => ({ id: item.id, path: item.path, mediaType: item.mediaType,
-            label: `${assetOwners.get(item.ownerObjectId!) ?? '项目资产'}${item.label && item.label !== assetOwners.get(item.ownerObjectId!) ? ` · ${item.label}` : ''}` }))
+      ? projectAssetItems
       : pickerSource === 'artifacts'
         ? artifacts.slice(0, artifactCount).map((entry) => ({ id: `artifact:${entry.path}`, path: entry.path, mediaType: entry.type,
           label: entry.prompt || entry.path.split(/[\\/]/).pop() || '产物' }))
         : candidates.map((item) => ({ id: item.id, path: item.path, mediaType: item.mediaType,
           label: item.label ?? item.path.split(/[\\/]/).pop() ?? '素材', ownerObjectId: item.ownerObjectId, versionObjectId: item.versionObjectId }));
+  // @ 引用选择器候选：项目素材 + 资产定版（仅图片）；label 优先资产归属名，不退化为无意义文件名
+  const mentionCandidates = [...candidates, ...projectAssetItems]
+    .filter((item) => item.mediaType === 'image')
+    .map((item) => {
+      const file = item.path.split(/[\\/]/).pop() ?? '';
+      const ownerId = (item as { ownerObjectId?: string }).ownerObjectId;
+      const owner = ownerId ? assetOwners.get(ownerId) : undefined;
+      const base = item.label && item.label !== file ? item.label : undefined;
+      return { id: item.id, path: item.path, label: owner ? (base && base !== owner ? `${owner} · ${base}` : owner) : (base ?? '项目图片') };
+    });
   return <div className="workspace-media-panel">
     <div className="workspace-media-actions">
     {selected.kind === 'shot' && <div className="workspace-output-tabs" role="group" aria-label="镜头媒体类型">
@@ -191,6 +206,11 @@ export default function WorkspaceMediaPanel(props: Props) {
       {selected.kind === 'character' || selected.kind === 'shot' ? <Mic size={14} /> : <SlidersHorizontal size={14} />}
       {selected.kind === 'character' ? '角色与音色' : selected.kind === 'shot' ? '配音与配色' : '资产设置'}
     </button>}
+    {selected.kind === 'shot' && !draft.prompt.trim() && props.onAgentPrompt && <button className="workspace-production-entry"
+      title="调用项目助手按剧本、拆解与调度编写本镜提示词"
+      onClick={() => props.onAgentPrompt!(cloneWorkspaceDraft(draft), 'write')}>
+      <Sparkles size={14} />按剧本生成提示词
+    </button>}
     </div>
     <div className="workspace-media-panel-inspector">{pending?.status === 'uncertain' && props.onResolveSubmission && <div className="workspace-submission-resolve" role="alert">
       <span>上次提交结果待核实：请先在下方任务进度或任务中心核对原任务。确认原任务已失败或中断后，可标记失败再重新生成。</span>
@@ -202,6 +222,7 @@ export default function WorkspaceMediaPanel(props: Props) {
       onPrompt={() => props.onViewState({ workspaceComposerOpen: true })}
       onEdit={() => (props.onEditToChat ?? props.onAddToChat)(selected.id, media?.media.id)} onAddToChat={() => props.onAddToChat(selected.id, media?.media.id)}
       onClassify={media && props.onClassify ? () => props.onClassify!(media.media) : undefined}
+      onSendToCanvas={media && props.onSendToCanvas ? () => props.onSendToCanvas!(selected.id, media.media.id) : undefined}
       busy={busy.has(draft.id) || Boolean(pending)}
       onRegenerate={regenerate}
       tools={media ? workspaceMediaTools(media.media.mediaType) : []}
@@ -221,7 +242,13 @@ export default function WorkspaceMediaPanel(props: Props) {
         } : undefined}
         onChange={save} onClose={() => { setReferenceTarget(null); props.onViewState({ workspaceComposerOpen: false }); }}
         onAddReference={() => setReferenceTarget(cloneWorkspaceDraft(draft))}
+        mentionCandidates={mentionCandidates}
         onOptimize={(template) => {
+          // 分镜走 agent 通道：按剧本/分镜/调度写提示词（workshop_set_prompts 回写并同步草稿）；其余对象保持模板快改
+          if (selected.kind === 'shot' && props.onAgentPrompt) {
+            props.onAgentPrompt(cloneWorkspaceDraft(draft), 'optimize', template);
+            return;
+          }
           const snapshot = cloneWorkspaceDraft(draft);
           void operate(snapshot, async (signal) => {
             const prompt = await props.onOptimize(cloneWorkspaceDraft(snapshot), template, signal);

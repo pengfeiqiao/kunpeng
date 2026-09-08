@@ -86,6 +86,11 @@ export function stripMidjourneyControlledFlags(prompt: string): string {
     .trim();
 }
 
+/** v8.2 上游对 raw 风格参数 prompt flag 与 body 字段一律拒收（实测 upstream code=9 无效参数），该版本不下发。 */
+export function midjourneyRawStyleAllowed(version: string | undefined): boolean {
+  return normalizeMidjourneyVersion(version) !== 'v8.2';
+}
+
 export function buildApimartMidjourneyPrompt(
   input: MidjourneyPromptInput,
   resolvedReferences: string[] = [],
@@ -109,6 +114,7 @@ export function buildApimartMidjourneyPrompt(
   if (resolvedReferences.length > 0 && Number.isFinite(input.imageWeight)) {
     flags.push(`--iw ${Math.min(3, Math.max(0, Number(input.imageWeight)))}`);
   }
-  if (input.raw) flags.push('--style raw');
+  // raw 不再写进 prompt flag：v8.2 上游拒收 --style raw（"无效参数"）。
+  // raw 仅在不拒收的版本由提交层放到 body 的 style 字段（见 midjourneyRawStyleAllowed）。
   return [...resolvedReferences, stripMidjourneyControlledFlags(input.prompt), ...flags].filter(Boolean).join(' ');
 }

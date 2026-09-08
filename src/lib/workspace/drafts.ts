@@ -14,12 +14,12 @@ export function workspaceDraftKey(objectId: string, type: WorkspaceOutputType): 
 
 export function initialWorkspaceDraft(data: WorkshopData, objectId: string, outputType: WorkspaceOutputType, now = Date.now()): WorkspaceDraft | null {
   const key = workspaceDraftKey(objectId, outputType);
-  const stored = data.workspaceDrafts?.[key];
-  if (stored) return materializeWorkspaceDefaults(stored);
   const owner = workspaceTarget(data, objectId);
   if (!owner || owner.archived) return null;
   if (owner.kind === 'director-constraint') {
     if (outputType !== 'image') return null;
+    const storedCard = data.workspaceDrafts?.[key];
+    if (storedCard) return materializeWorkspaceDefaults(storedCard);
     const parentShot = data.shots.find((item) => item.directorConstraintCard?.id === owner.sourceId);
     const parentScene = data.scenes.find((item) => item.directorConstraintCard?.id === owner.sourceId);
     const card = parentShot?.directorConstraintCard ?? parentScene?.directorConstraintCard;
@@ -35,12 +35,7 @@ export function initialWorkspaceDraft(data: WorkshopData, objectId: string, outp
     : owner.kind === 'prop' ? data.props.find((item) => item.id === owner.sourceId)
     : owner.kind === 'scene-asset' ? data.colorPalettes.find((item) => item.id === owner.sourceId) : undefined;
   const ctx = { characters: data.characters, scenes: data.scenes, props: data.props, colorPalettes: data.colorPalettes, globalColorPaletteId: data.globalColorPaletteId };
-  const assetEngine = asset?.assetEngine ?? data.imageModel ?? data.projectSpec?.defaultImageModel ?? 'gpt-image-2';
-  const assetKind = owner.kind === 'scene-asset' ? 'colorPalette' : owner.kind;
-  const prompt = shot ? outputType === 'video' ? videoPromptForShot(shot, ctx, {
-    template: shot.videoPromptTemplate ?? data.videoPromptTemplate ?? 'legacy', includeStoryboardBoards: false,
-  }) : shot.imagePrompt ?? '' : asset ? readAssetPrompt(asset, assetPromptField(assetKind as 'character' | 'scene' | 'prop' | 'colorPalette', assetEngine)) ?? '' : '';
-  const references: WorkspaceReference[] = (shot ? (outputType === 'video' ? buildVideoRefPaths(shot, ctx) : buildImageRefPaths(shot, ctx)) : []).map((path, index) => {
+  const computeReferences = (): WorkspaceReference[] => (shot ? (outputType === 'video' ? buildVideoRefPaths(shot, ctx) : buildImageRefPaths(shot, ctx)) : []).map((path, index) => {
     const media = data.projectObjects?.media.find((item) => item.path === path);
     const card = outputType === 'video' && shot?.directorConstraintCard?.useInVideo && shot.directorConstraintCard.imagePath === path
       ? shot.directorConstraintCard : undefined;
@@ -49,13 +44,29 @@ export function initialWorkspaceDraft(data: WorkshopData, objectId: string, outp
     return { id: media?.id ?? `ref:${stableProjectHash(path)}`, type: 'image', path,
       label: media?.label ?? `图片${index + 1}`, objectId: media?.ownerObjectId, versionId: media?.versionObjectId };
   });
+  const stored = data.workspaceDrafts?.[key];
+  if (stored) {
+    // 陈旧空引用修复：草稿在资产未定版时落盘（references 为空且用户未显式清空）。
+    // 选角现在有图时按当前投影回填；已有引用或显式清空的草稿不动。
+    if (!stored.references.length && shot
+      && (outputType === 'audio' || shot.workspaceReferenceProjection?.explicitEmpty?.[outputType] !== true)) {
+      const fresh = computeReferences();
+      if (fresh.length) return materializeWorkspaceDefaults({ ...stored, references: fresh });
+    }
+    return materializeWorkspaceDefaults(stored);
+  }
+  const assetEngine = asset?.assetEngine ?? data.imageModel ?? data.projectSpec?.defaultImageModel ?? 'gpt-image-2';
+  const assetKind = owner.kind === 'scene-asset' ? 'colorPalette' : owner.kind;
+  const prompt = shot ? outputType === 'video' ? videoPromptForShot(shot, ctx, {
+    template: shot.videoPromptTemplate ?? data.videoPromptTemplate ?? 'legacy', includeStoryboardBoards: false,
+  }) : shot.imagePrompt ?? '' : asset ? readAssetPrompt(asset, assetPromptField(assetKind as 'character' | 'scene' | 'prop' | 'colorPalette', assetEngine)) ?? '' : '';
   const video = shotVideoSettings(data, shot);
   const engine = outputType === 'video' ? video.engineId
     : assetEngine;
   return materializeWorkspaceDefaults({ id: key, projectId: data.projectId, objectId, outputType, prompt,
     ...(shot && outputType === 'video' ? { promptTemplate: shot.videoPromptTemplate ?? data.videoPromptTemplate ?? 'legacy' } : {}),
     engineId: engine === 'minimax-h3' ? 'minimax-hailuo-h3' : engine === 'seedance-2.5' ? 'dreamina-seedance-2.5' : engine,
-    references, params: outputType === 'video'
+    references: computeReferences(), params: outputType === 'video'
       ? { ratio: video.ratio, duration: video.duration }
       : { aspectRatio: asset?.assetAspectRatio ?? data.projectSpec?.aspectRatio ?? '16:9',
         ...(asset?.assetResolution ? { resolution: asset.assetResolution } : {}) }, revision: 0, updatedAt: now });
@@ -81,7 +92,15 @@ export function saveWorkspaceDraft(data: WorkshopData, draft: WorkspaceDraft, ex
     ...draft, prompt, params: { ...draft.params }, references: draft.references.map((ref) => ({ ...ref })),
     revision: (old?.revision ?? 0) + 1, updatedAt: now,
   };
-  const projected = projectWorkspacePrompt(data, saved);
+  const projected = projectWorkspacePrompt(data, saved,
+    // 显式清空判定：选角计算当前能产出引用、用户仍保存空引用 = 有意清空（尊重）；
+    // 选角未定版导致的空引用不算清空（之后绑定可回填）
+    saved.references.length === 0 && owner.kind === 'shot' && (() => {
+      const shot = data.shots.find((item) => (item.id ?? item.shotNo) === owner.sourceId);
+      if (!shot) return false;
+      const castCtx = { characters: data.characters, scenes: data.scenes, props: data.props, colorPalettes: data.colorPalettes, globalColorPaletteId: data.globalColorPaletteId };
+      return (draft.outputType === 'video' ? buildVideoRefPaths(shot, castCtx) : buildImageRefPaths(shot, castCtx)).length > 0;
+    })() ? true : undefined);
   return { ...projected, workspaceDrafts: { ...data.workspaceDrafts, [draft.id]: saved },
     ...(data.projectObjects ? { projectObjects: { ...data.projectObjects, updatedAt: now,
       objects: data.projectObjects.objects.map((item) => item.id === owner.id ? { ...item, version: item.version + 1, updatedAt: now } : item),

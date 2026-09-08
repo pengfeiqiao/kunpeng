@@ -4,7 +4,7 @@
  * task-queue pattern from TapNow/LibTV: progress lives on the canvas, the
  * panel is the overview.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ListTodo, X, RotateCcw, Square, Trash2, Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { useCanvasTaskStore, type CanvasTask } from '@/stores/canvasTaskStore';
@@ -26,6 +26,13 @@ function retryEngineId(task: CanvasTask): string {
   return task.engineId;
 }
 
+/** 工作台任务的快照草稿重提（走工作台确认与幂等链，不碰画布节点参考收集）。 */
+function retryWorkspaceTask(task: CanvasTask): void {
+  const snapshot = task.workspaceBinding?.snapshot;
+  if (!snapshot) return;
+  void import('@/lib/workspace/runtime').then(({ generateWorkspaceDraft }) => generateWorkspaceDraft(structuredClone(snapshot)));
+}
+
 function StatusIcon({ task }: { task: CanvasTask }) {
   switch (task.status) {
     case 'succeeded': return <CheckCircle2 size={13} className="text-emerald-500" />;
@@ -43,6 +50,10 @@ function TaskRow({ task }: { task: CanvasTask }) {
 
   const handleRetry = () => {
     removeTask(task.id);
+    if (task.workspaceBinding) {
+      retryWorkspaceTask(task);
+      return;
+    }
     if (task.workshopStoryboardFrameId) {
       // 故事板格子任务：直接重跑该格子的生成，绝不能落到 generateShot——
       // 那会用分镜主提示词覆盖整镜首帧图（imagePath）。
@@ -134,8 +145,12 @@ function TaskRow({ task }: { task: CanvasTask }) {
   );
 }
 
-export default function TaskQueuePanel() {
-  const tasks = useCanvasTaskStore((s) => s.tasks);
+export default function TaskQueuePanel({ projectId, className }: { projectId?: string; className?: string }) {
+  const allTasks = useCanvasTaskStore((s) => s.tasks);
+  // 工作台挂载时按项目过滤（workspaceBinding 快照或任务自带 projectId）；画布不传，行为不变
+  const tasks = useMemo(() => projectId
+    ? allTasks.filter((t) => t.projectId === projectId || t.workspaceBinding?.snapshot.projectId === projectId)
+    : allTasks, [allTasks, projectId]);
   const clearFinished = useCanvasTaskStore((s) => s.clearFinished);
   const [open, setOpen] = useState(false);
 
@@ -144,7 +159,7 @@ export default function TaskQueuePanel() {
 
   return (
     // right-20 keeps clear of the CanvasChatBubble pinned at bottom-5 right-5
-    <div className="absolute bottom-4 right-20 z-20 flex flex-col items-end gap-2">
+    <div className={className ?? 'absolute bottom-4 right-20 z-20 flex flex-col items-end gap-2'}>
       <AnimatePresence>
         {open && (
           <motion.div

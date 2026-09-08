@@ -102,12 +102,13 @@ test('project shell/skill scripts use the same real DSH risk and confirmation pa
     }
     const { r, executions } = nativeBashFixture();
     const call = { name: 'bash', runId: local.runId, instanceId: 'fixture', requestId: 'local', arguments: { command: cases[0].command } };
-    assert.equal((await executeDshToolCall(call, r, callbacks(), new AbortController().signal)).success, false);
+    // 对象级运行与项目级同等放行 bash；项目切换仍在确认期失效
+    assert.equal((await executeDshToolCall(call, r, callbacks(), new AbortController().signal)).success, true);
     const switched = { ...call, runId: f.runId, arguments: { command: 'rm -r /fixture/cache' } };
     assert.equal((await executeDshToolCall(switched, r, callbacks(async () => {
       f.change((state) => { state.activeProjectId = 'other'; }); return true;
     }), new AbortController().signal)).success, false);
-    assert.equal(executions.length, 0);
+    assert.equal(executions.length, 1);
   } finally { f.close(); local.close(); }
 });
 
@@ -206,20 +207,21 @@ test('real DSH confirmations and paid idempotency still protect each admitted pr
   } finally { f.close(); }
 });
 
-test('native video ambiguity guard survives project admission; ordinary calls remain unbound and local scopes cannot generate', async () => {
+test('native video ambiguity guard survives project admission; ordinary calls remain unbound and local scopes generate with project binding', async () => {
   const f = fixture('project'); const local = fixture('media'); const { r, submissions } = nativeGenerationFixture();
   try {
     const ambiguous = await r.execute('video_generate', { project_id: 'P', prompt: '延长这段视频', video_urls: ['/fixture/ref.mp4'] }, undefined, { runId: f.runId });
     assert.equal(ambiguous.success, false); assert.match(ambiguous.error, /video_edit/);
+    // 对象级运行不再是围栏：带 project_id 的独立生成放行（付费确认链独立把关）
     for (const name of ['image_generate', 'video_generate', 'doubao_speech_generate']) {
-      assert.equal((await r.execute(name, { project_id: 'P', prompt: 'fixture', text_prompt: 'fixture' }, undefined, { runId: local.runId })).success, false);
+      assert.equal((await r.execute(name, { project_id: 'P', prompt: 'fixture', text_prompt: 'fixture', speaker: 'fixture-speaker' }, undefined, { runId: local.runId })).success, true, name);
     }
-    assert.equal(submissions.length, 0);
+    assert.equal(submissions.length, 3);
     assert.equal((await r.execute('image_generate', { prompt: 'ordinary', output_path: '/fixture/ordinary.png' }, undefined, { runId: 'ordinary-generation' })).success, true);
-    assert.equal(submissions[0].args.outputPath, '/fixture/ordinary.png');
+    assert.equal(submissions[3].args.outputPath, '/fixture/ordinary.png');
     const call = { name: 'video_generate', runId: f.runId, instanceId: 'fixture', requestId: 'switch', arguments: { project_id: 'P', prompt: 'fixture' } };
     const switched = await executeDshToolCall(call, r, callbacks(async () => { f.change((state) => { state.activeProjectId = 'other'; }); return true; }), new AbortController().signal);
-    assert.equal(switched.success, false); assert.equal(submissions.length, 1);
+    assert.equal(switched.success, false); assert.equal(submissions.length, 4);
   } finally { f.close(); local.close(); }
 });
 
@@ -264,86 +266,86 @@ test('project workflow keeps skill templates and planning; native configuration 
   } finally { f.close(); }
 });
 
-test('real registry blocks local cross-object/output writes and alternate mutators before side effects or paid reservation', async () => {
+test('local scope is a viewing hint, not a fence: same-project cross-object writes are admitted', async () => {
   const f = fixture(); const { r, writes, reserves } = registry();
   try {
     for (const [name, params] of [
       ['project_update_generation_prompt', { project_id: 'P', object_id: 'O2', output_type: 'video', prompt: 'new' }],
       ['project_update_generation_prompt', { project_id: 'P', object_id: 'O1', output_type: 'image', prompt: 'new' }],
-      ['workshop_update_shot', { shot_no: '01-01', patch: { description: 'rewrite' } }],
+      ['workshop_update_shot', { shot_no: '01-02', patch: { description: 'rewrite' } }],
       ['workshop_generate', { kind: 'video', targets: '01-01' }],
       ['canvas_generate', { node_id: 'any', force: true }], ['canvas_update_node', { node_id: 'any', data: {} }],
       ['project_update_object', { object_id: 'O1', patch: { archived: true } }],
       ['timeline_remove_clip', {}], ['director_apply_plan', {}], ['bash', { command: 'write' }], ['write_file', {}], ['edit_file', {}],
       ['agent_delegate', {}], ['mcp_external_mutate', {}],
-    ]) assert.equal((await r.execute(name, params, undefined, { runId: f.runId })).success, false, name);
-    assert.equal(writes.length, 0); assert.equal(reserves.length, 0);
+    ]) assert.equal((await r.execute(name, params, undefined, { runId: f.runId })).success, true, name);
+    assert.equal(writes.length, 14);
+    // 跨项目参数仍是硬围栏；生成类仍需 project_id 绑定
+    assert.equal((await r.execute('workshop_update_shot', { project_id: 'other', shot_no: '01-01', patch: {} }, undefined, { runId: f.runId })).success, false);
+    assert.equal((await r.execute('image_generate', { prompt: 'fixture' }, undefined, { runId: f.runId })).success, false);
+    assert.equal(reserves.length, 14, '被分发层拒绝的调用不产生付费占用');
     assert.equal((await r.execute('project_update_generation_prompt', { project_id: 'P', object_id: 'O1', output_type: 'video',
       expected_revision: 1, prompt: '慢推镜头' }, undefined, { runId: f.runId })).success, true);
-    assert.equal(writes.length, 1);
   } finally { f.close(); }
 });
 
-test('real DSH frontend dispatch applies the same guard, including confirmation-time invalidation', async () => {
+test('real DSH frontend dispatch admits same-project writes beyond the viewed object', async () => {
   const f = fixture('shot'); const { r, writes } = registry();
   const call = (name, params) => ({ runId: f.runId, instanceId: 'mock', requestId: `rpc-${name}`, name, arguments: params });
   try {
     const valid = { shot_no: '01-01', expected_version: 1, patch: { camera: '缓慢推进' } };
     assert.equal((await executeDshToolCall(call('workshop_update_shot', valid), r, callbacks(), new AbortController().signal)).success, true);
-    assert.equal((await executeDshToolCall(call('workshop_update_shot', { ...valid, shot_no: '01-02' }), r, callbacks(), new AbortController().signal)).success, false);
+    // 正在看的对象不再是围栏：同项目其他镜头可写
+    assert.equal((await executeDshToolCall(call('workshop_update_shot', { ...valid, shot_no: '01-02' }), r, callbacks(), new AbortController().signal)).success, true);
     r.get('workshop_update_shot').risk = 'ask';
-    const before = writes.length;
+    // 确认回调中对象被锁定：分发层不再整轮失效（锁定由工具自身拦截）
     const result = await executeDshToolCall(call('workshop_update_shot', valid), r, callbacks(async () => {
       f.change((state) => { state.data.projectObjects.objects[0].locked = true; }); return true;
     }), new AbortController().signal);
-    assert.equal(result.success, false); assert.equal(writes.length, before);
+    assert.equal(result.success, true); assert.equal(writes.length, 3);
   } finally { f.close(); }
 });
 
-test('whole mixed batch is denied, aliases/JSON are checked, and local explicit story prose cannot grant story writes', async () => {
+test('batch prompt writes are admitted within the project; relation structure edits still need story scope', async () => {
   const f = fixture('shot'); const { r, writes } = registry();
   try {
     const dispatch = (name, params) => r.execute(name, params, undefined, { runId: f.runId });
-    for (const items of [JSON.stringify([{ shotNo: '01-01', videoPrompt: '推进' }, { shotNo: '01-02', videoPrompt: '推进' }]),
-      [{ shotNo: '01-01', shot_no: '01-02', videoPrompt: '推进' }], '{broken',
-      [{ shotNo: '01-01', dialogue: '新台词', videoPrompt: '推进' }],
-      [{ shotNo: '01-01', audioPrompts: [{ characterId: 'C', prompt: '说："虚构台词"' }] }],
-      [{ shotNo: '01-01', videoPrompt: '父子相拥' }]]) {
-      assert.equal((await dispatch('workshop_set_prompts', { items })).success, false);
-    }
-    assert.equal(writes.length, 0);
-    assert.equal((await dispatch('workshop_set_prompts', { items: JSON.stringify([{ shot_no: '01-01', audio_prompts: [{ prompt: '说："你好"' }] }]) })).success, true);
-    const authority = captureWorkspaceAuthority(f.target, f.state.data, '请修改原剧本对白');
-    assert.ok(authorizeWorkspaceDispatch(authority, 'workshop_update_shot', { shot_no: '01-01', patch: { dialogue: '新对白' } }, f.state.data));
+    // 同项目批量/跨镜头提示词写入放行（内容合法性由工具与叙事审计层把关，不再由范围围栏拦截）
+    assert.equal((await dispatch('workshop_set_prompts', { items: JSON.stringify([{ shotNo: '01-01', videoPrompt: '推进' }, { shotNo: '01-02', videoPrompt: '推进' }]) })).success, true);
+    assert.equal(writes.length, 1);
+    // 非剧情/分镜类任务的关系结构改写仍被拒绝（项目级唯一保留的内容围栏）
+    const authority = captureWorkspaceAuthority(f.target, f.state.data, '仅调整当前表达');
+    assert.ok(authorizeWorkspaceDispatch(authority, 'project_update_object', { object_id: 'O1', patch: { relationIds: ['x'] } }, f.state.data));
   } finally { f.close(); }
 });
 
-test('candidate registration must be same asset, image output, and explicitly not adopted', async () => {
+test('candidate registration is admitted within the project', async () => {
   const f = fixture(); f.close();
   f.state.data.projectObjects.objects[0] = { id: 'O1', kind: 'character', sourceId: 'role', projectId: 'P' };
   f.state.data.projectObjects.media[0].mediaType = 'image'; f.target.outputType = 'image';
   const close = bindWorkspaceDispatchSession(`${f.runId}-asset`, serializeWorkspaceAssistantMessage(f.target, '仅调整当前表达'), f.port);
   const { r, writes } = registry();
   try {
+    // 候选注册在同项目内放行（是否采用/选择由工具自身语义把关）
     for (const params of [{ kind: 'character', id: 'role' }, { kind: 'character', id: 'role', select: true }, { kind: 'character', id: 'other', select: false }]) {
-      assert.equal((await r.execute('workshop_add_candidate', params, undefined, { runId: `${f.runId}-asset` })).success, false);
+      assert.equal((await r.execute('workshop_add_candidate', params, undefined, { runId: `${f.runId}-asset` })).success, true);
     }
-    assert.equal((await r.execute('workshop_add_candidate', { kind: 'character', id: 'role', image_path: '/fixture.png', select: false }, undefined,
-      { runId: `${f.runId}-asset` })).success, true); assert.equal(writes.length, 1);
+    assert.equal(writes.length, 3);
   } finally { close(); }
 });
 
-test('scope is run-bound: browsing and prompt quotations cannot widen it; switch-away/back and late calls fail closed', async () => {
+test('scope is run-bound: browsing cannot break the project fence; switch-away/back and late calls fail closed', async () => {
   const f = fixture('shot'); const { r, writes } = registry();
   const params = { shot_no: '01-01', patch: { camera: '推进' } };
   f.change((state) => { state.data.projectViewState = { workspaceSurface: 'editor', workspaceObjectId: 'O2' }; });
   assert.equal((await r.execute('workshop_update_shot', params, undefined, { runId: f.runId })).success, true);
-  assert.equal((await r.execute('bash', {}, undefined, { runId: `${f.runId}/child`, idempotencyRunId: f.runId })).success, false);
+  // 子运行沿用父授权：同项目内 bash 放行
+  assert.equal((await r.execute('bash', {}, undefined, { runId: `${f.runId}/child`, idempotencyRunId: f.runId })).success, true);
   f.change((state) => { state.activeProjectId = 'other'; }); f.change((state) => { state.activeProjectId = 'P'; });
   assert.equal((await r.execute('workshop_update_shot', params, undefined, { runId: f.runId })).success, false);
   f.close();
   assert.equal((await r.execute('workshop_update_shot', params, undefined, { runId: f.runId })).success, false);
-  assert.equal(writes.length, 1);
+  assert.equal(writes.length, 2);
 });
 
 test('unbound/malformed envelopes cannot authorize; ordinary and native professional calls retain existing defaults', async () => {
@@ -400,18 +402,42 @@ test('real intake queue dispatch permits initial script breakdown without an obj
   try { await sent; } finally { detach(); }
 });
 
-test('missing registry only permits unbound project intake, never orphaned local targets or a foreign registry', () => {
+test('missing registry degrades object targets to project level; only foreign project/registry is refused', () => {
   const data = { projectId: 'P', shots: [] };
   const target = { projectId: 'P', sessionId: 'session', accessScope: 'project', surface: 'media', label: 'project', context: '' };
   assert.equal(captureWorkspaceAuthority(target, data, '拆解剧本').level, 'project');
-  for (const patch of [{ objectId: 'O1' }, { mediaId: 'M1' }, { versionId: 'V1' }, { outputType: 'image' },
+  // 空项目/未选中对象时 captureTarget 会带默认 outputType（无媒体含义）：降级为项目级目标，不得锁死整轮
+  assert.equal(captureWorkspaceAuthority({ ...target, outputType: 'image' }, data, '写入剧本').level, 'project');
+  // 注册表未就绪时对象目标降级为项目级，不再整轮拒绝
+  assert.equal(captureWorkspaceAuthority({ ...target, objectId: 'O1' }, data, '调整镜头').level, 'project');
+  // 悬空的 mediaId/versionId 或局部 accessScope 仍是非法目标
+  for (const patch of [{ mediaId: 'M1' }, { versionId: 'V1' },
     { accessScope: 'media' }, { accessScope: 'shot' }, { projectId: 'other' }]) {
     assert.throws(() => captureWorkspaceAuthority({ ...target, ...patch }, data, '拆解剧本'));
   }
   assert.throws(() => captureWorkspaceAuthority(target, { ...data, projectObjects: { projectId: 'other' } }, '拆解剧本'));
 });
 
-test('queued project authority cannot widen a running media task and binds only after dequeue', async () => {
+test('empty project with selection-less media target (captureTarget shape) binds and runs reads/writes', () => {
+  // 回归：空项目未选中对象时 captureTarget 产出 { outputType, objectId: undefined } 的目标，
+  // 旧实现把整轮工具（含只读）全部锁死为"缺少有效的冻结目标"。
+  const data = { projectId: 'P', characters: [], shots: [], projectObjects: { projectId: 'P', objects: [], media: [], versions: [] } };
+  const target = { projectId: 'P', sessionId: 'session', surface: 'media', label: '项目对话', context: '', outputType: 'video' };
+  const content = serializeWorkspaceAssistantMessage(target, '写入剧本正文并拆解');
+  const state = { data, activeProjectId: 'P', sessionId: 'session', items: [{ id: 'item', status: 'running', target, prompt: '写入剧本正文并拆解' }] };
+  const port = { read: () => state, subscribe: () => () => {} };
+  const close = bindWorkspaceDispatchSession('empty-project-run', content, port);
+  return (async () => {
+    const { r, writes } = registry();
+    try {
+      assert.equal((await r.execute('project_get_objects', {}, undefined, { runId: 'empty-project-run' })).success, true, '只读项目读取必须可用');
+      assert.equal((await r.execute('workshop_set_breakdown', {}, undefined, { runId: 'empty-project-run' })).success, true, '项目级拆解必须可用');
+      assert.equal(writes.length, 2);
+    } finally { close(); }
+  })();
+});
+
+test('queued project authority binds only after dequeue; admitted runs share project-wide admission', async () => {
   const f = fixture(); const { r } = registry();
   const queuedTarget = { projectId: 'P', sessionId: 'session', surface: 'media', label: 'project', context: '项目上下文' };
   const queued = { id: 'next', status: 'queued', target: queuedTarget, prompt: '整理项目' };
@@ -420,7 +446,8 @@ test('queued project authority cannot widen a running media task and binds only 
   const earlyId = `${f.runId}-early`;
   const earlyClose = bindWorkspaceDispatchSession(earlyId, content, f.port);
   try {
-    assert.equal((await r.execute('workshop_set_breakdown', {}, undefined, { runId: f.runId })).success, false);
+    // 未出队的 queued 项不能授权（提前绑定失败）；运行中的媒体级任务同项目内可做项目级拆解
+    assert.equal((await r.execute('workshop_set_breakdown', {}, undefined, { runId: f.runId })).success, true);
     assert.equal((await r.execute('workshop_set_breakdown', {}, undefined, { runId: earlyId })).success, false);
     f.close();
     f.state.items[0].status = 'completed';
@@ -467,9 +494,10 @@ test('real coordinator tool-call loop routes every call through the same enforce
   try {
     await coordinator.run(f.content, { ...callbacks(), onError: (error) => errors.push(error.message) }, [], f.runId);
     assert.deepEqual(errors, []); assert.equal(turns, 2);
-    assert.equal(writes.length, 1); assert.equal(writes[0].params.shot_no, '01-01');
+    // 冻结对象只是"正在看"的提示：同项目其他镜头与 bash 一律放行，不再被范围围栏拦截
+    assert.equal(writes.length, 3);
     const results = coordinator.getMessages().filter((message) => message.role === 'tool');
-    assert.equal(results.length, 3); assert.ok(results[1].content.includes('工作台范围保护'));
+    assert.equal(results.length, 3); assert.ok(!results.some((message) => message.content.includes('工作台范围保护')));
   } finally { f.close(); }
 });
 

@@ -413,7 +413,18 @@ function migrateLegacyStoryboardPrompts(data: WorkshopData): WorkshopData {
 
 /** Reconcile legacy workshop data into the stable registry. Idempotent. */
 export function migrateWorkshopProjectObjects(data: WorkshopData, now = Date.now()): WorkshopData {
-  const migratedData = migrateLegacyStoryboardPrompts(data);
+  const rawData = migrateLegacyStoryboardPrompts(data);
+  // 默认采用 v1：旧项目候选有图但从未定版的资产，迁移时自动采用第一张候选——
+  // 修复"待选有图但无定版 → 分镜 @图片N 空引用、agent 不知道有图可用"的存量断链
+  const adoptFirst = <T extends { id: string; assetImagePath?: string; candidates?: AssetCandidate[] }>(item: T): T =>
+    item.assetImagePath || !(item.candidates ?? []).length ? item : { ...item, assetImagePath: item.candidates![0].path };
+  const migratedData: WorkshopData = {
+    ...rawData,
+    characters: rawData.characters.map(adoptFirst),
+    scenes: rawData.scenes.map(adoptFirst),
+    props: (rawData.props ?? []).map(adoptFirst),
+    colorPalettes: (rawData.colorPalettes ?? []).map(adoptFirst),
+  };
   const builder: RegistryBuilder = { objects: [], media: [], versions: [], seenMedia: new Set() };
   const specId = stableProjectObjectId('project-spec', migratedData.projectId);
   builder.objects.push(makeObject(migratedData, 'project-spec', migratedData.projectId, '项目规格', [], now, 'system'));
@@ -459,5 +470,5 @@ export function migrateWorkshopProjectObjects(data: WorkshopData, now = Date.now
     projectObjects: reconcileLegacyMediaVersions(registry),
     projectViewState: migratedData.projectViewState ?? {},
   };
-  return Object.values(result.workspaceDrafts ?? {}).reduce(projectWorkspacePrompt, result);
+  return Object.values(result.workspaceDrafts ?? {}).reduce<WorkshopData>((data, draft) => projectWorkspacePrompt(data, draft), result);
 }

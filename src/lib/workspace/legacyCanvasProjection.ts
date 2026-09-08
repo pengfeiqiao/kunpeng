@@ -1,4 +1,5 @@
-import type { Node } from 'reactflow';
+import type { Edge, Node } from 'reactflow';
+import type { WorkshopData } from '../workshop/types.ts';
 import type { ProjectCommandState } from '../projectObjects/projectCommands.ts';
 import { migrateWorkshopProjectObjects, stableProjectHash, stableProjectObjectId } from '../projectObjects/migrate.ts';
 import { computePendingCanvasPositions, pruneManagedShotReferences } from '../workshop/canvasSyncModel.ts';
@@ -8,8 +9,7 @@ import { initialWorkspaceDraft, saveWorkspaceDraft } from './drafts.ts';
 import { legacyShotDraft } from './legacyShotReferences.ts';
 import type { WorkspaceDraft } from './types.ts';
 
-/** Compatibility projection only. Professional edits/edges and in-flight nodes are conflicts, never overwritten. */
-export function projectLegacyCanvas(state: ProjectCommandState, scope: 'assets' | 'shots',
+/** Compatibility projection only. Professional edits/edges and in-flight nodes are conflicts, never overwritten. */export function projectLegacyCanvas(state: ProjectCommandState, scope: 'assets' | 'shots',
   displayPath: (path: string) => string = (path) => path, now = Date.now()) {
   let workshop = state.workshop.projectObjects ? state.workshop : migrateWorkshopProjectObjects(state.workshop, now);
   let canvas = state.canvas;
@@ -93,5 +93,45 @@ export function projectLegacyCanvas(state: ProjectCommandState, scope: 'assets' 
     }
     if (existing) updated++; else created++;
   }
+  // 分镜投影收尾：补齐分镜→选角/场景/道具/色卡的关系连线（纯展示，不参与参考收集）
+  if (scope === 'shots') canvas = addWorkshopCastEdges(workshop, canvas);
   return { workshop, canvas, created, updated, conflicts };
+}
+
+/**
+ * 分镜→选角/场景/道具/色卡的关系连线（"专业连线"）。
+ * relation='workshop-cast' 不在参考集合内（referencePolicy），collector 不收集，
+ * 连线只表达归属关系，不会让资产图变成生成参考。整体重建是幂等的：
+ * 该 relation 为投影保留字，用户手工连线不会带它，重建只删自己生成的旧线。
+ */
+export function addWorkshopCastEdges(workshop: WorkshopData, canvas: { nodes: Node[]; edges: Edge[] }): { nodes: Node[]; edges: Edge[] } {
+  const registry = workshop.projectObjects;
+  if (!registry) return canvas;
+  const nodeByObjectId = new Map<string, Node>();
+  for (const node of canvas.nodes) {
+    const objectId = (node.data as Record<string, unknown> | undefined)?.projectObjectId;
+    if (typeof objectId === 'string' && objectId) nodeByObjectId.set(objectId, node);
+  }
+  let edges = canvas.edges.filter((edge) => (edge.data as { relation?: unknown } | undefined)?.relation !== 'workshop-cast');
+  let changed = edges.length !== canvas.edges.length;
+  for (const shot of workshop.shots) {
+    const shotNode = nodeByObjectId.get(stableProjectObjectId('shot', shot.id ?? shot.shotNo));
+    if (!shotNode) continue;
+    const cast: Array<[string, string]> = [
+      ...(shot.characterIds ?? []).map((id): [string, string] => ['character', id]),
+      ...(shot.sceneId ? [['scene', shot.sceneId] as [string, string]] : []),
+      ...(shot.propIds ?? []).map((id): [string, string] => ['prop', id]),
+      ...(shot.colorPaletteId ? [['scene-asset', shot.colorPaletteId] as [string, string]] : []),
+    ];
+    for (const [kind, sourceId] of cast) {
+      const owner = registry.objects.find((item) => !item.archived && item.kind === kind && item.sourceId === sourceId);
+      const assetNode = owner ? nodeByObjectId.get(owner.id) : undefined;
+      if (!assetNode) continue;
+      const id = `edge-cast-${assetNode.id}-${shotNode.id}`;
+      if (edges.some((edge) => edge.id === id)) continue;
+      edges = [...edges, { id, source: assetNode.id, target: shotNode.id, data: { relation: 'workshop-cast' } }];
+      changed = true;
+    }
+  }
+  return changed ? { ...canvas, edges } : canvas;
 }

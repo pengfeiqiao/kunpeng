@@ -2,6 +2,7 @@ import { useId, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, ArrowRight, Check, Layers, Plus, Wand2, X, RefreshCw, Palette, Maximize2, SlidersHorizontal } from 'lucide-react';
 import StyleLibraryPicker from '../canvas/StyleLibraryPicker';
 import WorkspaceEngineMenu from './WorkspaceEngineMenu';
+import MentionPromptInput, { type MentionPromptInputHandle } from './MentionPromptInput';
 import type { StylePreset } from '@/lib/styleLibrary';
 import type { RhtvCanvasEngine } from '@/lib/rhtv/types';
 import type { WorkspaceDraft } from '@/lib/workspace/types';
@@ -28,6 +29,8 @@ interface Props {
   onGenerate: () => void;
   onClose: () => void;
   onAddReference: () => void;
+  /** @ 引用选择器的候选图片（项目素材 + 资产定版） */
+  mentionCandidates?: { id: string; path: string; label: string }[];
   onOptimize: (template: 'legacy' | 'universal') => void;
   onApplyStyle?: (style: StylePreset) => void;
 }
@@ -43,6 +46,7 @@ export default function GenerationComposer(props: Props) {
   const editor = useRef<HTMLDialogElement>(null);
   const editorInput = useRef<HTMLTextAreaElement>(null);
   const editorTrigger = useRef<HTMLButtonElement>(null);
+  const mentionInput = useRef<MentionPromptInputHandle>(null);
   const editorTitle = useId();
   const choice = engines.find((item) => item.engine.id === draft.engineId);
   const commonKeys = ['ratio', 'aspectRatio', 'resolution', 'duration'];
@@ -138,10 +142,11 @@ export default function GenerationComposer(props: Props) {
     <div className="workspace-composer-body">
       <div className="workspace-reference-label">本次参考</div>
       <div className="workspace-references" aria-label="本次生成参考素材">
-        {draft.references.map((ref, index) => <div className="workspace-reference" key={ref.id} title={ref.label}>
-          {ref.type === 'image' ? <img src={props.mediaSrc(ref.path)} alt={ref.label} loading="lazy" />
-            : <span className="workspace-reference-kind">{ref.type === 'video' ? '视频' : '音频'}</span>}
-          <span>{referenceMention(ref, draft.references)}</span>
+        {draft.references.map((ref, index) => <div className="workspace-reference" key={ref.id} title={`${ref.label} · 点击插入${referenceMention(ref, draft.references)}到提示词`}>
+          {ref.type === 'image' ? <img src={props.mediaSrc(ref.path)} alt={ref.label} loading="lazy"
+            onClick={() => mentionInput.current?.insertMention(ref)} />
+            : <span className="workspace-reference-kind" onClick={() => mentionInput.current?.insertMention(ref)}>{ref.type === 'video' ? '视频' : '音频'}</span>}
+          <span onClick={() => mentionInput.current?.insertMention(ref)}>{referenceMention(ref, draft.references)}</span>
           <div className="workspace-reference-actions">
             <button title={`前移${ref.label}`} aria-label={`前移${ref.label}`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowLeft size={12} /></button>
             <button title={`移除${ref.label}`} aria-label={`移除${ref.label}`} onClick={() => props.onChange(changeWorkspaceReferences(draft, draft.references.filter((item) => item.id !== ref.id)))}><X size={12} /></button>
@@ -150,8 +155,8 @@ export default function GenerationComposer(props: Props) {
         </div>)}
         <button className="workspace-add-reference" title="添加参考素材" aria-label="添加参考素材" onClick={props.onAddReference}><Plus size={20} /><span>添加</span></button>
       </div>
-      <textarea className="workspace-prompt" aria-label="完整提示词" value={draft.prompt}
-        onChange={(event) => props.onChange({ ...draft, prompt: event.target.value })} spellCheck={false} />
+      <MentionPromptInput ref={mentionInput} draft={draft} onChange={props.onChange} candidates={props.mentionCandidates ?? []}
+        mediaSrc={props.mediaSrc} ariaLabel="完整提示词" />
       {draft.outputType === 'video' && props.constraint && <button className="workspace-constraint" onClick={props.constraint.onOpen}>
         空间与调度 · {props.constraint.label}
       </button>}

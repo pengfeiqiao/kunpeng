@@ -1,4 +1,5 @@
 import type { RhtvCanvasEngine } from '@/lib/rhtv/types';
+import { errorText } from '../errorText.ts';
 import type { GenerationConfirmationPreference } from './types';
 import type { ToolRisk } from '../agent/types';
 
@@ -199,7 +200,7 @@ export function calibrateGenerationForEngine(
 }
 
 export function classifyGenerationFailure(error: unknown): GenerationFailureKind {
-  const message = error instanceof Error ? error.message : String(error ?? '');
+  const message = errorText(error);
   if (/余额|积分|insufficient|balance|credit/i.test(message)) return 'balance';
   if (/限流|频繁|rate.?limit|429/i.test(message)) return 'rate-limit';
   if (/超时|timed?\s*out|tcp|network|网络/i.test(message)) return 'network-timeout';
@@ -223,12 +224,12 @@ export function describeGenerationFailure(error: unknown): GenerationFailurePres
     case 'network-timeout':
       return { title: '连接中断，提交状态不明', remedy: '先到任务记录确认是否已经提交，避免重复扣费。', canRetry: false };
     case 'unsupported-params':
-      return { title: '当前参数不受支持', remedy: '调整时长、比例、分辨率或参考素材数量后再生成。', canRetry: false };
+      return { title: '当前参数不受支持', remedy: '调整时长、比例、分辨率或参考素材数量后再生成；Midjourney 8.2 不支持 raw 参数（已自动忽略，不需要手动去除）。', canRetry: false };
     case 'content-review':
       return { title: '内容审核未通过', remedy: '修改涉及真人、版权或敏感内容的描述后再生成。', canRetry: false };
     case 'task-query':
       return { title: '暂时无法确认任务结果', remedy: '任务可能仍在供应商侧运行，请稍后查询任务记录，不要重复提交。', canRetry: false };
     default:
-      return { title: '生成未完成', remedy: '查看详情并确认任务没有提交后，再决定是否重新生成。', canRetry: false };
+      return { title: '生成未完成', remedy: '查看详情并确认任务没有提交后，再决定是否重新生成；连续被拒可用 apimart_route_status 检查通道状态，或改用 Seedream 5 Pro / GPT Image 2 通道。', canRetry: false };
   }
 }
