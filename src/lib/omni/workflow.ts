@@ -121,8 +121,8 @@ export async function runMgTextFallbackForCanvasNode(
     nodeId,
     kind: 'video',
     engineId: 'mg-text-fallback-seedance-mini',
-    engineLabel: 'MG文字兜底 · GPT-Image-2 + Seedance Mini',
-    endpoint: 'gpt-image-2 -> kuaizi-lz/seedance-2.0-mini',
+    engineLabel: 'MG文字兜底 · GPT-Image-2.5 + Seedance Mini',
+    endpoint: 'gpt-image-2.5 -> kuaizi-lz/seedance-2.0-mini',
     prompt,
     params: { aspectRatio, ratio: aspectRatio, resolution: '720p', duration: String(safeDuration), mode: 'mini' },
     inFlight: true,
@@ -140,14 +140,14 @@ export async function runMgTextFallbackForCanvasNode(
 
   try {
     const plate = await generateImage({
-      model: 'gpt-image-2',
+      model: 'gpt-image-2.5',
       prompt: textPlatePrompt(prompt, aspectRatio, styleName),
       aspectRatio,
       size: aspectRatio === '9:16' ? '1152x2048' : '2048x1152',
       quality: 'high',
     });
     if (!plate.success || !plate.imagePath) {
-      throw new Error(`文字定版图生成失败：${plate.error || 'GPT-Image-2 未返回图片'}`);
+      throw new Error(`文字定版图生成失败：${plate.error || 'GPT-Image-2.5 未返回图片'}`);
     }
     patchTask({
       status: 'running',
@@ -224,8 +224,8 @@ export async function runMgTextFallbackStandalone(args: {
     nodeId: args.nodeId ?? '',
     kind: 'video',
     engineId: 'mg-text-fallback-seedance-mini',
-    engineLabel: args.label ?? 'MG文字兜底 · GPT-Image-2 + Seedance Mini',
-    endpoint: 'gpt-image-2 -> kuaizi-lz/seedance-2.0-mini',
+    engineLabel: args.label ?? 'MG文字兜底 · GPT-Image-2.5 + Seedance Mini',
+    endpoint: 'gpt-image-2.5 -> kuaizi-lz/seedance-2.0-mini',
     prompt,
     params: { aspectRatio, ratio: aspectRatio, resolution: '720p', duration: String(safeDuration), mode: 'mini' },
     inFlight: true,
@@ -236,17 +236,17 @@ export async function runMgTextFallbackStandalone(args: {
       args.onProgress?.(message);
       patchTask({ progress: message });
     };
-    patchTask({ status: 'uploading', progress: '启动文字兜底：先生成 GPT-Image-2 文字定版图…' });
-    say('启动文字兜底：先生成 GPT-Image-2 文字定版图…');
+    patchTask({ status: 'uploading', progress: '启动文字兜底：先生成 GPT-Image-2.5 文字定版图…' });
+    say('启动文字兜底：先生成 GPT-Image-2.5 文字定版图…');
     const plate = await generateImage({
-      model: 'gpt-image-2',
+      model: 'gpt-image-2.5',
       prompt: textPlatePrompt(prompt, aspectRatio, args.styleName),
       aspectRatio,
       size: aspectRatio === '9:16' ? '1152x2048' : '2048x1152',
       quality: 'high',
     });
     if (!plate.success || !plate.imagePath) {
-      throw new Error(`文字定版图生成失败：${plate.error || 'GPT-Image-2 未返回图片'}`);
+      throw new Error(`文字定版图生成失败：${plate.error || 'GPT-Image-2.5 未返回图片'}`);
     }
     patchTask({ status: 'running', referenceUrls: [plate.imagePath] });
     say('文字定版图已生成，交给筷子 Seedance 2.0 Mini 做图生视频…');
@@ -303,7 +303,7 @@ export async function runMgTextFallbackForEditorSegment(
     aspectRatio,
     duration: plan.duration,
     styleName,
-    label: '剪辑MG文字兜底 · GPT-Image-2 + Seedance Mini',
+    label: '剪辑MG文字兜底 · GPT-Image-2.5 + Seedance Mini',
   });
   if (result.success && result.resultPaths[0]) {
     const duration = await probeDuration(result.resultPaths[0]).catch(() => plan.duration);
@@ -521,7 +521,7 @@ export async function runSeedanceMiniMgForCanvasNode(
     kind: 'video',
     engineId: 'seedance-2.0-mini-i2v',
     engineLabel: 'Seedance Mini · MG 参考帧工作流',
-    endpoint: 'gpt-image-2 -> kuaizi-lz/seedance-2.0-mini',
+    endpoint: 'gpt-image-2.5 -> kuaizi-lz/seedance-2.0-mini',
     prompt,
     referenceUrls: [...sourceImageRefs, ...videoRefs],
     params: { aspectRatio, ratio: aspectRatio, resolution: '720p', duration: String(duration), mode: 'mini' },
@@ -675,7 +675,7 @@ export async function runMinimaxH3MgForCanvasNode(
     kind: 'video',
     engineId: 'minimax-hailuo-h3',
     engineLabel: 'MiniMax H3 · MG 参考帧工作流',
-    endpoint: 'gpt-image-2 -> minimax/hailuo-h3/multimodal-to-video',
+    endpoint: 'gpt-image-2.5 -> minimax/hailuo-h3/multimodal-to-video',
     prompt,
     referenceUrls: [...sourceImageRefs, ...videoRefs],
     params: { aspectRatio, ratio: aspectRatio, resolution: '2K', duration: String(duration) },

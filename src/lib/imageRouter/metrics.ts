@@ -9,12 +9,12 @@ import {
 export type ImageRouteMode = 'text-to-image' | 'image-to-image';
 export type ImageRouteTier = 'cheap' | 'standard';
 export type ImageRouteSortMode = 'cheap-first' | 'speed-first';
-export type ImageRouteModel = 'gpt-image-2' | 'seedream-v5-pro';
+export type ImageRouteModel = 'gpt-image-2.5' | 'seedream-v5-pro';
 
 export interface ImageRouteDefinition {
   id: string;
   label: string;
-  provider: 'runninghub' | 'dmxapi' | 'aihubmix' | 'zexapi' | 'dreamina' | 'apimart';
+  provider: 'runninghub' | 'dmxapi' | 'zexapi' | 'dreamina' | 'apimart';
   mode: ImageRouteMode;
   tier: ImageRouteTier;
   model: ImageRouteModel;
@@ -66,7 +66,6 @@ function defaultRouteRank(route: ImageRouteDefinition): number {
   const modeOffset = route.mode === 'text-to-image' ? 0 : 100;
   if (route.provider === 'zexapi') return modeOffset + 0;
   if (route.provider === 'dmxapi' && route.tier === 'standard') return modeOffset + 10;
-  if (route.provider === 'aihubmix') return modeOffset + 20;
   if (route.provider === 'dmxapi' && route.tier === 'cheap') return modeOffset + 30;
   if (route.provider === 'runninghub' && route.tier === 'standard') return modeOffset + 40;
   if (route.provider === 'runninghub' && route.tier === 'cheap') return modeOffset + 50;
@@ -147,8 +146,8 @@ export function getImageRouteDefinitions(): ImageRouteDefinition[] {
   const slots = discoverConfiguredImageSlots(settings);
   const apiRoutes = slots
     .flatMap<ImageRouteDefinition>((slot) => {
-      const provider = slot.provider ?? (slot.baseUrl.includes('aihubmix') ? 'aihubmix' : slot.baseUrl.includes('zexapi') ? 'zexapi' : 'dmxapi');
-      const providerLabel = provider === 'aihubmix' ? 'AiHubMix' : provider === 'zexapi' ? 'ZexAPI' : 'DMX';
+      const provider = slot.provider ?? (slot.baseUrl.includes('zexapi') ? 'zexapi' : 'dmxapi');
+      const providerLabel = provider === 'zexapi' ? 'ZexAPI' : 'DMX';
       const gptCombos: Array<{ mode: ImageRouteMode; tier: ImageRouteTier }> = provider === 'dmxapi'
         ? [
             { mode: 'text-to-image', tier: 'cheap' },
@@ -156,14 +155,9 @@ export function getImageRouteDefinitions(): ImageRouteDefinition[] {
             { mode: 'text-to-image', tier: 'standard' },
             { mode: 'image-to-image', tier: 'standard' },
           ]
-        : provider === 'zexapi'
-          ? [
-              { mode: 'text-to-image', tier: 'cheap' },
-              { mode: 'image-to-image', tier: 'cheap' },
-            ]
         : [
-            { mode: 'text-to-image', tier: 'standard' },
-            { mode: 'image-to-image', tier: 'standard' },
+            { mode: 'text-to-image', tier: 'cheap' },
+            { mode: 'image-to-image', tier: 'cheap' },
           ];
       const gptRoutes = gptCombos.map(({ mode, tier }) => {
         const tierLabel = tier === 'cheap' ? '低价' : '普通';
@@ -174,7 +168,7 @@ export function getImageRouteDefinitions(): ImageRouteDefinition[] {
           provider,
           mode,
           tier,
-          model: 'gpt-image-2' as const,
+          model: 'gpt-image-2.5' as const,
           slotId: slot.id,
         };
       });
@@ -227,26 +221,26 @@ export function getImageRouteDefinitions(): ImageRouteDefinition[] {
         },
       ]
     : [];
-  // APIMart GPT-Image-2（异步任务接口，与生图槽位同池容灾；多域名线路由
+  // APIMart GPT-Image-2.5（异步任务接口，与生图槽位同池容灾；多域名线路由
   // apimart/client 的并行健康检测挑选）。
   const apimartGptImage2Routes: ImageRouteDefinition[] = apimartKey
     ? [
         {
-          id: `api:${APIMART_GPT_IMAGE2_SLOT_ID}:gpt-image-2:text-to-image`,
-          label: 'APIMart GPT-Image-2 文生',
+          id: `api:${APIMART_GPT_IMAGE2_SLOT_ID}:gpt-image-2.5:text-to-image`,
+          label: 'APIMart GPT-Image-2.5 文生',
           provider: 'apimart',
           mode: 'text-to-image',
           tier: 'standard',
-          model: 'gpt-image-2',
+          model: 'gpt-image-2.5',
           slotId: APIMART_GPT_IMAGE2_SLOT_ID,
         },
         {
-          id: `api:${APIMART_GPT_IMAGE2_SLOT_ID}:gpt-image-2:image-to-image`,
-          label: 'APIMart GPT-Image-2 图生',
+          id: `api:${APIMART_GPT_IMAGE2_SLOT_ID}:gpt-image-2.5:image-to-image`,
+          label: 'APIMart GPT-Image-2.5 图生',
           provider: 'apimart',
           mode: 'image-to-image',
           tier: 'standard',
-          model: 'gpt-image-2',
+          model: 'gpt-image-2.5',
           slotId: APIMART_GPT_IMAGE2_SLOT_ID,
         },
       ]
@@ -400,7 +394,7 @@ function weightedPick(routes: string[]): string {
   return selected;
 }
 
-export function pickNextHealthyChannel(mode: ImageRouteMode, excludeIds: Set<string>, model: ImageRouteModel = 'gpt-image-2'): string | null {
+export function pickNextHealthyChannel(mode: ImageRouteMode, excludeIds: Set<string>, model: ImageRouteModel = 'gpt-image-2.5'): string | null {
   const all = getImageRouteDefinitions()
     .filter((r) => r.model === model && r.mode === mode && !excludeIds.has(r.id))
     .map((r) => r.id);
@@ -414,12 +408,13 @@ export function pickNextHealthyChannel(mode: ImageRouteMode, excludeIds: Set<str
 
 export function chooseGptImageChannel(requestedEngineId: string, hasReference: boolean): string {
   const mode: ImageRouteMode = hasReference ? 'image-to-image' : 'text-to-image';
-  // GPT Image 2 candidates come exclusively from configured image API slots.
+  // GPT Image 2.5 candidates come exclusively from configured image API slots.
   const apiRoutes = getImageRouteDefinitions()
-    .filter((r) => r.model === 'gpt-image-2' && r.mode === mode)
+    .filter((r) => r.model === 'gpt-image-2.5' && r.mode === mode)
     .map((r) => r.id);
   if (apiRoutes.length === 0) return requestedEngineId;
 
+  // startsWith 兼容存量数据里的旧引擎 id（gpt-image-2 / gpt-image-2-i2i）。
   if (requestedEngineId.startsWith('gpt-image-2')) {
     const explore = dailyExploreCount() < 5 && Math.random() < 0.35;
     if (explore) {

@@ -25,7 +25,7 @@ function makeImageGenerateMessage() {
           startTime: 1,
           result: {
             success: true,
-            output: '图片生成完成。\n模型：gpt-image-2\n画幅：16:9\n通道：dmx\n文件：/Users/test/Desktop/cat.png',
+            output: '图片生成完成。\n模型：gpt-image-2.5\n画幅：16:9\n通道：dmx\n文件：/Users/test/Desktop/cat.png',
             media: [
               { type: 'image', source: { type: 'base64', media_type: 'image/png', data: BASE64_DATA } },
             ],

@@ -6,7 +6,7 @@ export interface GenerationLogEntry {
   timestamp: string;
   director: string;
   taskType: 'text-to-image' | 'image-to-video' | 'text-to-video';
-  engine: 'gpt-image-2' | 'seedance' | 'kling' | 'other';
+  engine: 'gpt-image-2.5' | 'seedance' | 'kling' | 'other';
   prompt: string;
   outputPath: string;
   outputPaths?: string[];

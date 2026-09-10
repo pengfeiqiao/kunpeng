@@ -203,6 +203,8 @@ function dmxImageEstimate(
 interface ApimartModelPricing {
   resolutionPrices: Record<string, number>;
   actionPrices: Record<string, number>;
+  /** 新格式：size_quality_prices[宽高比][质量]（美元/张），如 { "16:9": { high: 0.03234 } }。 */
+  sizeQualityPrices: Record<string, Record<string, number>>;
   defaultPrice?: number;
 }
 
@@ -228,9 +230,17 @@ function parseApimartPricing(raw: unknown): ApimartModelPricing | null {
   if (!raw || typeof raw !== 'object') return null;
   const body = raw as Record<string, unknown>;
   const data = (body.data && typeof body.data === 'object' ? body.data : body) as Record<string, unknown>;
+  const sizeQualityPrices: Record<string, Record<string, number>> = {};
+  if (data.size_quality_prices && typeof data.size_quality_prices === 'object') {
+    for (const [ratio, qualities] of Object.entries(data.size_quality_prices as Record<string, unknown>)) {
+      const table = numericRecord(qualities);
+      if (Object.keys(table).length > 0) sizeQualityPrices[ratio] = table;
+    }
+  }
   const pricing: ApimartModelPricing = {
     resolutionPrices: numericRecord(data.resolution_prices),
     actionPrices: numericRecord(data.action_prices),
+    sizeQualityPrices,
   };
   // effective_rates / rates 里的兜底单价（不同线路字段名都试）
   for (const key of ['effective_rates', 'rates']) {
@@ -247,7 +257,8 @@ function parseApimartPricing(raw: unknown): ApimartModelPricing | null {
   }
   if (pricing.defaultPrice === undefined
     && Object.keys(pricing.resolutionPrices).length === 0
-    && Object.keys(pricing.actionPrices).length === 0) return null;
+    && Object.keys(pricing.actionPrices).length === 0
+    && Object.keys(pricing.sizeQualityPrices).length === 0) return null;
   return pricing;
 }
 
@@ -297,10 +308,17 @@ async function apimartEstimate(
     if (!pricing) return null;
     usd = lookupCaseInsensitive(pricing.actionPrices, 'imagine') ?? pricing.defaultPrice;
   } else if (engineId.startsWith('gpt-image')) {
-    const pricing = await fetchApimartPricing('gpt-image-2');
+    const pricing = await fetchApimartPricing('gpt-image-2.5-flare');
     if (!pricing) return null;
+    const aspectRatio = String(params.aspectRatio ?? '16:9');
     const resolution = String(params.resolution ?? '2k').toLowerCase();
-    usd = lookupCaseInsensitive(pricing.resolutionPrices, resolution)
+    // 新格式优先：size_quality_prices[宽高比].high（应用默认发 quality:'high'）；
+    // fallback：resolution_prices["宽高比@分辨率"]（值是 max 质量价）→ 兜底单价。
+    const qualityTable = pricing.sizeQualityPrices[aspectRatio]
+      ?? Object.entries(pricing.sizeQualityPrices).find(([k]) => k.toLowerCase() === aspectRatio.toLowerCase())?.[1];
+    usd = qualityTable ? lookupCaseInsensitive(qualityTable, 'high') : undefined;
+    usd ??= lookupCaseInsensitive(pricing.resolutionPrices, `${aspectRatio}@${resolution}`)
+      ?? lookupCaseInsensitive(pricing.resolutionPrices, resolution)
       ?? lookupCaseInsensitive(pricing.resolutionPrices, '2k')
       ?? pricing.defaultPrice;
   } else if (engineId === 'minimax-hailuo-h3' || engineId === 'minimax-h3') {

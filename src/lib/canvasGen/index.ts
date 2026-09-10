@@ -6,7 +6,7 @@
  * images fall back to the dmxapi slot chain (lib/imageGen/client.ts) — videos
  * have no fallback. Canvas (generateForNode) and Workshop (workshopStore)
  * both call it, sharing the same MAX 3 task queue.
- * GPT-Image-2 has an image route manager; Midjourney uses APIMart first (with
+ * GPT-Image-2.5 has an image route manager; Midjourney uses APIMart first (with
  * a RunningHub V8.1 fallback), while Seedance keeps its dedicated routes.
  *
  * generateForNode() wraps it with canvas-node semantics: version-tree derive,
@@ -245,7 +245,7 @@ function isSeedreamProImageEngine(engineId: string): boolean {
 }
 
 function imageRouteModelForEngine(engineId: string): ImageRouteModel {
-  return isSeedreamProImageEngine(engineId) ? 'seedream-v5-pro' : 'gpt-image-2';
+  return isSeedreamProImageEngine(engineId) ? 'seedream-v5-pro' : 'gpt-image-2.5';
 }
 
 function seedreamSizeFor(aspectRatio: unknown, resolution: unknown): { width: number; height: number } {
@@ -323,7 +323,7 @@ export function resolveGenEngine(
   // chooseGptImageChannel 会返回 api: 路由）。绝不能静默换成其他模型扣费。
   if (!baseEngine && req.engineId.startsWith('gpt-image')) {
     return {
-      error: '未配置可用的 GPT Image 2 图片 API 槽位。请在「设置 → 图片模型」配置 DMXAPI / AiHubMix / ZexAPI / APIMart，或改用 Seedream 5.0 Pro。',
+      error: '未配置可用的 GPT Image 2.5 图片 API 槽位。请在「设置 → 图片模型」配置 DMXAPI / ZexAPI / APIMart，或改用 Seedream 5.0 Pro。',
     };
   }
   const engine: RhtvCanvasEngine | undefined =
@@ -911,7 +911,7 @@ async function runApiCompatibleImageGeneration(req: CoreGenRequest, routeId: str
     engineLabel: route?.label ?? '兼容生图接口',
     endpoint: route?.provider === 'dreamina'
       ? 'dreamina-cli/seedream-5.0-pro'
-      : routeModel === 'seedream-v5-pro' ? 'seedream-v5-pro-compatible' : 'gpt-image-2-compatible',
+      : routeModel === 'seedream-v5-pro' ? 'seedream-v5-pro-compatible' : 'gpt-image-2.5-compatible',
     prompt: req.prompt,
     referenceUrls: refs.length > 0 ? refs : undefined,
     params: req.params,
@@ -2727,7 +2727,7 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
       timestamp: new Date().toISOString(),
       director: '',
       taskType: generationTaskType(engine, refs.length),
-      engine: engine.id.startsWith('gpt-image') ? 'gpt-image-2' : engine.id.startsWith('seedance') ? 'seedance' : 'other',
+      engine: engine.id.startsWith('gpt-image') ? 'gpt-image-2.5' : engine.id.startsWith('seedance') ? 'seedance' : 'other',
       prompt: req.prompt,
       outputPath: paths[0],
       outputPaths: paths,
@@ -2858,7 +2858,7 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
       timestamp: new Date().toISOString(),
       director: '',
       taskType: generationTaskType(engine, refs.length),
-      engine: engine.id.startsWith('gpt-image') ? 'gpt-image-2' : engine.id.startsWith('seedance') ? 'seedance' : 'other',
+      engine: engine.id.startsWith('gpt-image') ? 'gpt-image-2.5' : engine.id.startsWith('seedance') ? 'seedance' : 'other',
       prompt: req.prompt,
       outputPath: '',
       outputPaths: [],
@@ -3265,7 +3265,8 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
   // the generic RunningHub canvas engine registry. Do not reject it before
   // runGeneration() can hand it to the dedicated APIMart implementation.
   //
-  // gpt-image-2* 同样不在引擎注册表（海外 RunningHub 节点 2026-08 退役），
+  // gpt-image-2*（现役 gpt-image-2.5 与旧 gpt-image-2 别名）同样不在引擎注册表
+  // （海外 RunningHub 节点 2026-08 退役），
   // 真实渠道由 runGeneration 内的 chooseGptImageChannel 路由到生图槽位
   // (api:/dreamina:)。预校验只要存在对应模式的路由就放行；没有路由时仍走
   // resolveGenEngine，报出准确的「未配置 GPT 槽位」错误。

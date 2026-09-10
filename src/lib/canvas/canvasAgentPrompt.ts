@@ -58,7 +58,7 @@ export function buildCanvasContext(snapshot: { nodes: Node[]; edges: Edge[] }, t
     const sharedContext = buildProjectConversationReferenceContext(
       references,
     );
-    const prefix = `[用户正在画布视图中操作。生成图片/视频优先使用 canvas_generate 工具（按模型走对应渠道并自动更新节点）；GPT Image 2 使用「设置 → 图片模型」中的 API 槽位。如果用户看过 MG/视频结果后说“不满意/文字还是错/有错字/乱码/字幕不对/字不对/文案不对/还是不行”，优先调用 mg_text_fallback_generate 做二次兜底：GPT-Image-2 生成文字定版图，再用筷子 Seedance 2.0 Mini 图生视频；不要继续反复调 Omni。其他画布操作用 canvas_add_node / canvas_update_node / canvas_connect。语音转写/字幕/口播剪辑用 canvas_transcribe（豆包 ASR，长素材免分段）。画布识图纪律：调用 image_recognition 前先用 bash 的 ls/file 确认图片存在且为常见格式（png/jpg）；识图失败不盲目重试，超过 2 次立即换策略——用 canvas_get_state 读节点状态、canvas_capture_node 重新截取，或把图片绝对路径给用户目检、用 ask_user_question 让用户确认画面（用户目检最准）。生成成功但用户看不到画布结果时：先 bash 确认文件有效（尺寸/大小/格式正常）→ canvas_get_state 确认节点是否已回填 → 未回填用 canvas_update_node 重新绑定图片地址 → canvas_capture_node 刷新核验 → 仍不行就把图片绝对路径直接给用户。${canvasCtx}${focusCtx}${sharedContext}]\n\n`;
+    const prefix = `[用户正在画布视图中操作。生成图片/视频优先使用 canvas_generate 工具（按模型走对应渠道并自动更新节点）；GPT Image 2.5（gpt-image-2.5，图像模型）使用「设置 → 图片模型」中的 API 槽位。「GPT 生图」一律指 gpt-image-2.5 图像模型，与视频模型 Seedance 2.5 名称相似但完全不同，不要混淆。如果用户看过 MG/视频结果后说“不满意/文字还是错/有错字/乱码/字幕不对/字不对/文案不对/还是不行”，优先调用 mg_text_fallback_generate 做二次兜底：GPT-Image-2.5 生成文字定版图，再用筷子 Seedance 2.0 Mini 图生视频；不要继续反复调 Omni。其他画布操作用 canvas_add_node / canvas_update_node / canvas_connect。语音转写/字幕/口播剪辑用 canvas_transcribe（豆包 ASR，长素材免分段）。画布识图纪律：调用 image_recognition 前先用 bash 的 ls/file 确认图片存在且为常见格式（png/jpg）；识图失败不盲目重试，超过 2 次立即换策略——用 canvas_get_state 读节点状态、canvas_capture_node 重新截取，或把图片绝对路径给用户目检、用 ask_user_question 让用户确认画面（用户目检最准）。生成成功但用户看不到画布结果时：先 bash 确认文件有效（尺寸/大小/格式正常）→ canvas_get_state 确认节点是否已回填 → 未回填用 canvas_update_node 重新绑定图片地址 → canvas_capture_node 刷新核验 → 仍不行就把图片绝对路径直接给用户。${canvasCtx}${focusCtx}${sharedContext}]\n\n`;
     return prefix;
 }
 
@@ -77,7 +77,7 @@ export async function buildCanvasActionPrompt(node: Node, pending: CanvasAgentAc
       case 'ai-generate-image': {
         const imgData = data as Record<string, unknown>;
         const desc = actionPrompt || (imgData.description as string) || '';
-        const engine = (imgData.imageModel as string) || 'gpt-image-2';
+        const engine = (imgData.imageModel as string) || 'gpt-image-2.5';
         const ar = (imgData.aspectRatio as string) || '16:9';
         if (engine === 'dreamina') {
           const res = (imgData.resolution as string) || '4k';
@@ -89,7 +89,7 @@ export async function buildCanvasActionPrompt(node: Node, pending: CanvasAgentAc
             ? 'midjourney-v81'
             : isMidjourney
               ? 'midjourney-v82'
-              : 'gpt-image-2';
+              : 'gpt-image-2.5';
           const mjParams = isMidjourney
             ? `${version ? `,"version":"${version}"` : ''}${Number.isFinite(imgData.midjourneyStylize) ? `,"stylize":${imgData.midjourneyStylize}` : ''}${Number.isFinite(imgData.midjourneyChaos) ? `,"chaos":${imgData.midjourneyChaos}` : ''}${typeof imgData.midjourneyRaw === 'boolean' ? `,"raw":${imgData.midjourneyRaw}` : ''}${Number.isFinite(imgData.midjourneyWeird) ? `,"weird":${imgData.midjourneyWeird}` : ''}`
             : '';
@@ -102,7 +102,7 @@ export async function buildCanvasActionPrompt(node: Node, pending: CanvasAgentAc
       case 'ai-image-to-image': {
         const imgUrl = (data.generatedImageUrl || data.referenceImage) as string || '';
         prompt = `请基于节点 ${nodeId} 的参考图进行图生图，生成风格相似但有变化的新图片。
-直接调用 canvas_generate 工具：engine="gpt-image-2"，reference_urls=["${imgUrl}"]（本地 asset URL 可直接传，工具会自动上传）。`;
+直接调用 canvas_generate 工具：engine="gpt-image-2.5"，reference_urls=["${imgUrl}"]（本地 asset URL 可直接传，工具会自动上传）。`;
         break;
       }
       case 'ai-generate-video': {

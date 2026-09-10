@@ -62,7 +62,7 @@ export function buildAssetPromptsPrompt(styleSection = ''): string {
 1. 先 workshop_get_state（detail:"step"）查看角色/场景档案——**注意每个资产的 assetEngine 字段，引擎决定提示词语言和格式**：
    - 若 bibles 已存在，资产提示词必须继承 director/character/scene/continuity 里的稳定规则
 
-【GPT-Image-2】（默认引擎）→ **中文段落式**，参考结构：
+【GPT-Image-2.5】（默认引擎，GPT 生图 = 图像模型 gpt-image-2.5；勿与视频模型 Seedance 2.5 混淆）→ **中文段落式**，参考结构：
    - **角色 = 三视图组合图（固定格式）**：「${WORKSHOP_CHARACTER_TEMPLATE_ZH}」
    - 角色示例：「角色设计三视图组合图：画面左侧为林风的正脸肖像大图——28岁男性，面部轮廓分明，眼神冷静。画面右侧为同一角色的三视图——正面、侧面、背面全身视图并排，瘦高身材，黑色短发，深灰色风衣，完整展示服装结构与体态。背景统一为纯色浅灰。柔和顶光，低饱和冷色调。超高细节，电影级角色设计图格式，画面无任何文字。」
    - 场景 = 无人物空景：主体描述 → 布光色调 → 约束（画面无任何文字）
@@ -105,7 +105,7 @@ ${templateRule}
 3. 如果发现某镜需要新增/删除/替换参考图（例如换角色图、删除 @图片七、把某个已有角色加入本镜），必须先调用 workshop_update_shot_refs 修改真实资产引用；不要只在提示词里删字或保留空 @图片 编号。
 4. 调用 workshop_set_prompts 批量写入（每批 ≤15 条）：
 
-   - imagePrompt（中文，gpt-image-2 生分镜图）：本镜首帧画面。
+   - imagePrompt（中文，gpt-image-2.5 生分镜图）：本镜首帧画面。
      **必须用 @图片N 引用场景和角色参考图**（编号规则同 videoPrompt：以 workshop_get_state 返回的 referenceOrder 为准；默认只有最终场景资产占用 @图片一；仅用户明确启用多角度参考时，多张场景图才会连续占用 @图片一/@图片二/@图片三…，角色/道具从后续编号开始）。
      必须继承 bibles 中的导演、角色、场景、连续性规则。
      强调「复刻参考图中的人物形象，保持人脸、服饰、体态高度一致」。

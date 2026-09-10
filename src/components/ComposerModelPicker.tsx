@@ -8,7 +8,7 @@ import { CHAT_MODELS, CHAT_PROVIDER_LABELS } from '@/lib/agent/modelCatalog';
 type ModelTab = 'chat' | 'image' | 'video';
 
 const IMAGE_MODELS = [
-  { value: 'gpt-image-2', label: 'GPT Image 2', detail: '文字、设计与综合生图' },
+  { value: 'gpt-image-2.5', label: 'GPT Image 2.5', detail: '文字、设计与综合生图' },
   { value: 'seedream-v5-pro', label: '豆包 5 Pro', detail: 'Seedream 5.0 Pro' },
   { value: 'midjourney-v82', label: 'Midjourney V8.2', detail: 'APIMart · 新版审美 · 4 张候选' },
   { value: 'midjourney-v81', label: 'Midjourney V8.1', detail: 'APIMart 通道 · 4 张候选' },

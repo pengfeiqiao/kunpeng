@@ -239,6 +239,6 @@ export function describeGenerationFailure(error: unknown): GenerationFailurePres
     case 'task-query':
       return { title: '暂时无法确认任务结果', remedy: '任务可能仍在供应商侧运行，请稍后查询任务记录，不要重复提交。', canRetry: false };
     default:
-      return { title: '生成未完成', remedy: '查看详情并确认任务没有提交后，再决定是否重新生成；连续被拒可用 apimart_route_status 检查通道状态，或改用 Seedream 5 Pro / GPT Image 2 通道。', canRetry: false };
+      return { title: '生成未完成', remedy: '查看详情并确认任务没有提交后，再决定是否重新生成；连续被拒可用 apimart_route_status 检查通道状态，或改用 Seedream 5 Pro / GPT Image 2.5 通道。', canRetry: false };
   }
 }

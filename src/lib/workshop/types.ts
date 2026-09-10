@@ -426,7 +426,7 @@ export interface WorkshopData {
   videoRatio?: string;
   /** 全局视频模型：'seedance-2.0' | 'seedance-2.0-mini' | 'minimax-h3'，默认 'seedance-2.0' */
   videoModel?: string;
-  /** 全局生图模型：默认走 'gpt-image-2' 智能路由池；可选自定义图片插件 custom-media:{id}（issue #7） */
+  /** 全局生图模型：默认走 'gpt-image-2.5' 智能路由池；可选自定义图片插件 custom-media:{id}（issue #7）。旧值 'gpt-image-2' 在读取层按别名解析为 2.5 */
   imageModel?: string;
   /** 全局视频提示词模板；默认 legacy，分镜可单独覆盖。 */
   videoPromptTemplate?: 'legacy' | 'universal';

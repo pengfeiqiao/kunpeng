@@ -10,6 +10,9 @@ const draft: WorkspaceDraft = { id: 'shot:a::video', objectId: 'shot:a', project
   prompt: '私人剧情正文', engineId: 'minimax-hailuo-h3', references: [], params: { duration: '8', ratio: '16:9', resolution: '2K' }, revision: 0, updatedAt: 1 };
 
 test('model availability follows configured executor channels, not presence of an unrelated key', () => {
+  assert.ok(workspaceUnavailableReason('gpt-image-2.5', { ...caps, runninghub: true }));
+  assert.equal(workspaceUnavailableReason('gpt-image-2.5', { ...caps, gpt: true }), undefined);
+  // 旧 id 别名：存量数据里的 'gpt-image-2' 走同一 gpt 能力门禁
   assert.ok(workspaceUnavailableReason('gpt-image-2', { ...caps, runninghub: true }));
   assert.equal(workspaceUnavailableReason('gpt-image-2', { ...caps, gpt: true }), undefined);
   assert.ok(workspaceUnavailableReason('midjourney-v8.2', { ...caps, runninghub: true }));
@@ -33,7 +36,7 @@ test('price quote calls the existing endpoint using parameters, without prompt t
 });
 
 test('missing quote support never calls provider and is not labelled free', async () => {
-  for (const [engineId, configured] of [['gpt-image-2', true], ['midjourney-v8.2', true], ['minimax-hailuo-h3', false]] as const) {
+  for (const [engineId, configured] of [['gpt-image-2.5', true], ['midjourney-v8.2', true], ['minimax-hailuo-h3', false]] as const) {
     const price = await estimateWorkspacePrice({ ...draft, engineId }, configured, async () => { throw new Error('must not call'); });
     assert.equal(price.label, '费用以渠道结算为准');
   }

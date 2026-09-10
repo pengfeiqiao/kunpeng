@@ -1,6 +1,6 @@
 /**
  * TS 生图客户端 — 直接调 API，不走 Agent
- * 按 provider (dmxapi / aihubmix / zexapi) 分路调用，多 slot 降级
+ * 按 provider (dmxapi / zexapi) 分路调用，多 slot 降级
  */
 
 import { fetch, ResponseType } from '@tauri-apps/api/http';
@@ -100,11 +100,11 @@ function getSlots(params: GenerateImageParams | undefined, model: string): Image
       tier: 'standard',
     });
   }
-  if (model === 'gpt-image-2' && apimartKey) {
-    // APIMart GPT-Image-2 走异步任务接口（docs.apimart.ai），与槽位同池容灾。
+  if (model.startsWith('gpt-image-2') && apimartKey) {
+    // APIMart GPT-Image-2.5 走异步任务接口（docs.apimart.ai），与槽位同池容灾。
     slots.push({
       id: APIMART_GPT_IMAGE2_SLOT_ID,
-      label: 'APIMart GPT-Image-2',
+      label: 'APIMart GPT-Image-2.5',
       provider: 'dmxapi',
       baseUrl: APIMART_BASE_URL,
       apiKey: apimartKey,
@@ -126,7 +126,7 @@ async function gptImage2ApimartGen(
   const imageUrls = refs.map((ref) => bytesToDataUrl(ref.binary, ref.mime || 'image/png'));
   const taskId = await submitApimartTask({
     path: '/v1/images/generations',
-    label: 'APIMart GPT-Image-2',
+    label: 'APIMart GPT-Image-2.5',
     payload: buildApimartGptImage2Payload({
       prompt: params.prompt,
       imageUrls,
@@ -140,7 +140,7 @@ async function gptImage2ApimartGen(
   const state = await pollApimartTask({
     taskId,
     kind: 'image',
-    label: 'APIMart GPT-Image-2',
+    label: 'APIMart GPT-Image-2.5',
     signal: params.signal,
   });
   return { url: state.urls[0] };
@@ -187,7 +187,7 @@ async function getOutputPath(): Promise<string> {
   }
 }
 
-/** 压缩图片到指定最大边长，返回 JPEG Uint8Array。参考图不能压得太小，否则 GPT-Image-2 会明显丢身份/结构信息。 */
+/** 压缩图片到指定最大边长，返回 JPEG Uint8Array。参考图不能压得太小，否则 GPT-Image-2.5 会明显丢身份/结构信息。 */
 async function compressImage(raw: Uint8Array, maxDim = 1536, quality = 0.85): Promise<Uint8Array> {
   try {
     const blob = new Blob([raw as BlobPart]);
@@ -274,18 +274,18 @@ async function getEditReferences(params: GenerateImageParams, compress = false):
     });
   }
 
-  console.log(`🖼️ GPT-Image-2 edit 参考图准备完成: ${refs.length} 张，${compress ? '已压缩，' : '原图，'}总大小 ${(refs.reduce((sum, r) => sum + r.binary.byteLength, 0) / 1024 / 1024).toFixed(2)}MB`);
+  console.log(`🖼️ GPT-Image-2.5 edit 参考图准备完成: ${refs.length} 张，${compress ? '已压缩，' : '原图，'}总大小 ${(refs.reduce((sum, r) => sum + r.binary.byteLength, 0) / 1024 / 1024).toFixed(2)}MB`);
   return refs;
 }
 
-// ── GPT Image 2: 文生图（两家格式一样）────────────────────────────────────
+// ── GPT Image 2.5: 文生图（两家格式一样）───────────────────────────────────
 
 async function gptImage2Gen(
   baseUrl: string, apiKey: string,
   prompt: string, size: string, quality: string,
-  model = 'gpt-image-2',
+  model = 'gpt-image-2.5-flare',
 ): Promise<{ b64?: string; url?: string }> {
-  const resp = await paidSubmit('GPT Image 2', () => fetch(`${baseUrl}/v1/images/generations`, {
+  const resp = await paidSubmit('GPT Image 2.5', () => fetch(`${baseUrl}/v1/images/generations`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: { type: 'Json', payload: { model, prompt, n: 1, size, quality } },
@@ -293,11 +293,11 @@ async function gptImage2Gen(
     timeout: 300,
   }));
   if (!resp.ok) {
-    if (isAmbiguousPaidSubmitStatus(resp.status)) throw new PaidSubmissionUnknownError('GPT Image 2', `HTTP ${resp.status}`);
-    throw new Error(`GPT Image 2: ${resp.status} ${JSON.stringify(resp.data)}`);
+    if (isAmbiguousPaidSubmitStatus(resp.status)) throw new PaidSubmissionUnknownError('GPT Image 2.5', `HTTP ${resp.status}`);
+    throw new Error(`GPT Image 2.5: ${resp.status} ${JSON.stringify(resp.data)}`);
   }
   const item = (resp.data as any)?.data?.[0];
-  if (!item?.b64_json && !item?.url) throw new PaidSubmissionUnknownError('GPT Image 2', '成功响应没有可用图片');
+  if (!item?.b64_json && !item?.url) throw new PaidSubmissionUnknownError('GPT Image 2.5', '成功响应没有可用图片');
   return { b64: item.b64_json, url: item.url };
 }
 
@@ -327,7 +327,7 @@ async function gptImage2ZexapiAsync(
   refs: EditReference[],
 ): Promise<{ b64?: string; url?: string }> {
   const payload: Record<string, unknown> = {
-    model: 'gpt-image-2',
+    model: 'gpt-image-2.5',
     prompt,
   };
   if (size && size !== 'auto') payload.size = size;
@@ -337,7 +337,7 @@ async function gptImage2ZexapiAsync(
   } else if (refs.length > 1) {
     payload.images = refs.slice(0, 5).map((ref) => bytesToDataUrl(ref.binary, ref.mime || 'image/png'));
   }
-  const submitResp = await paidSubmit('ZexAPI gpt-image-2', () => fetch(`${baseUrl}/v1/videos`, {
+  const submitResp = await paidSubmit('ZexAPI gpt-image-2.5', () => fetch(`${baseUrl}/v1/videos`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: { type: 'Json', payload },
@@ -345,13 +345,13 @@ async function gptImage2ZexapiAsync(
     timeout: 180,
   }));
   if (!submitResp.ok) {
-    if (isAmbiguousPaidSubmitStatus(submitResp.status)) throw new PaidSubmissionUnknownError('ZexAPI gpt-image-2', `HTTP ${submitResp.status}`);
-    throw new Error(`ZexAPI gpt-image-2: ${submitResp.status} ${JSON.stringify(submitResp.data)}`);
+    if (isAmbiguousPaidSubmitStatus(submitResp.status)) throw new PaidSubmissionUnknownError('ZexAPI gpt-image-2.5', `HTTP ${submitResp.status}`);
+    throw new Error(`ZexAPI gpt-image-2.5: ${submitResp.status} ${JSON.stringify(submitResp.data)}`);
   }
   const submitted = submitResp.data as any;
-  if (submitted?.error) throw new Error(`ZexAPI gpt-image-2: ${submitted.error.message || JSON.stringify(submitted.error)}`);
+  if (submitted?.error) throw new Error(`ZexAPI gpt-image-2.5: ${submitted.error.message || JSON.stringify(submitted.error)}`);
   const taskId = submitted?.id || submitted?.task_id;
-  if (!taskId) throw new PaidSubmissionUnknownError('ZexAPI gpt-image-2', `成功响应未返回 task_id：${JSON.stringify(submitted).slice(0, 300)}`);
+  if (!taskId) throw new PaidSubmissionUnknownError('ZexAPI gpt-image-2.5', `成功响应未返回 task_id：${JSON.stringify(submitted).slice(0, 300)}`);
 
   try {
     const started = Date.now();
@@ -373,7 +373,7 @@ async function gptImage2ZexapiAsync(
     }
     throw new Error('查询超时');
   } catch (err) {
-    throw new PaidTaskCreatedError('ZexAPI gpt-image-2', taskId, err instanceof Error ? err.message : String(err));
+    throw new PaidTaskCreatedError('ZexAPI gpt-image-2.5', taskId, err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -422,7 +422,7 @@ async function seedreamProDmxapiGen(
   throw new PaidSubmissionUnknownError('DMX Seedream 5 Pro', `成功响应没有可用图片：${JSON.stringify(data).slice(0, 300)}`);
 }
 
-// ── GPT Image 2 Edit: dmxapi ─────────────────────────────────────────────
+// ── GPT Image 2.5 Edit: dmxapi ───────────────────────────────────────────
 // curl multipart form-data（-F 参数），按 dmxapi 文档
 
 /**
@@ -458,7 +458,7 @@ async function gptImage2EditDmxapi(
   baseUrl: string, apiKey: string,
   prompt: string, size: string, quality: string,
   refs: EditReference[],
-  model = 'gpt-image-2',
+  model = 'gpt-image-2.5-flare',
 ): Promise<{ b64?: string; url?: string }> {
   const { writeBinaryFile, createDir } = await import('@tauri-apps/api/fs');
   const { homeDir } = await import('@tauri-apps/api/path');
@@ -491,65 +491,14 @@ async function gptImage2EditDmxapi(
 
   if (result.code !== 0 || !result.stdout.trim()) {
     const errMsg = result.stderr.trim() || result.stdout.trim() || `exit code ${result.code}`;
-    throw new PaidSubmissionUnknownError('DMXAPI GPT Image 2 编辑', errMsg.slice(0, 300));
+    throw new PaidSubmissionUnknownError('DMXAPI GPT Image 2.5 编辑', errMsg.slice(0, 300));
   }
 
   let data: any;
-  try { data = JSON.parse(result.stdout); } catch { throw new PaidSubmissionUnknownError('DMXAPI GPT Image 2 编辑', `非 JSON 响应：${result.stdout.slice(0, 200)}`); }
+  try { data = JSON.parse(result.stdout); } catch { throw new PaidSubmissionUnknownError('DMXAPI GPT Image 2.5 编辑', `非 JSON 响应：${result.stdout.slice(0, 200)}`); }
   if (data.error) throw new Error(`dmxapi edit: ${data.error.message || JSON.stringify(data.error)}`);
   const item = data?.data?.[0];
-  if (!item?.b64_json && !item?.url) throw new PaidSubmissionUnknownError('DMXAPI GPT Image 2 编辑', '成功响应没有可用图片');
-  return { b64: item.b64_json, url: item.url };
-}
-
-// ── GPT Image 2 Edit: aihubmix ──────────────────────────────────────────
-// curl multipart form-data，不带 quality
-
-async function gptImage2EditAihubmix(
-  baseUrl: string, apiKey: string,
-  prompt: string, size: string,
-  refs: EditReference[],
-  model = 'gpt-image-2',
-): Promise<{ b64?: string; url?: string }> {
-  const { writeBinaryFile, createDir } = await import('@tauri-apps/api/fs');
-  const { homeDir } = await import('@tauri-apps/api/path');
-  const home = await homeDir();
-  const tmpDir = `${home}.kunpeng/tmp`;
-  await createDir(tmpDir, { recursive: true }).catch(() => {});
-  const tmpPaths: string[] = [];
-  for (const [i, ref] of refs.entries()) {
-    const tmpPath = `${tmpDir}/ref-${Date.now()}-${i}.${ref.ext || 'png'}`;
-    await writeBinaryFile(tmpPath, ref.binary);
-    tmpPaths.push(tmpPath);
-  }
-
-  const args = [
-    '-s', '--max-time', '300',
-    '-X', 'POST', `${baseUrl}/v1/images/edits`,
-    '-F', `model=${model}`,
-    '-F', `prompt=${prompt}`,
-    '-F', 'n=1',
-    '-F', `size=${size}`,
-  ];
-  for (const [i, ref] of refs.entries()) {
-    const field = refs.length > 1 ? 'image[]' : 'image';
-    args.push('-F', `${field}=@${tmpPaths[i]};type=${ref.mime || 'image/png'}`);
-  }
-  console.log(`🖼️ [aihubmix] multipart ${refs.length > 1 ? 'image[]' : 'image'} 字段: ${refs.length} 张`);
-  const result = await runCurlWithAuthKey(args, apiKey);
-
-  import('@tauri-apps/api/fs').then(fs => tmpPaths.forEach(p => fs.removeFile(p).catch(() => {})));
-
-  if (result.code !== 0 || !result.stdout.trim()) {
-    const errMsg = result.stderr.trim() || result.stdout.trim() || `exit code ${result.code}`;
-    throw new PaidSubmissionUnknownError('AiHubMix GPT Image 2 编辑', errMsg.slice(0, 300));
-  }
-
-  let data: any;
-  try { data = JSON.parse(result.stdout); } catch { throw new PaidSubmissionUnknownError('AiHubMix GPT Image 2 编辑', `非 JSON 响应：${result.stdout.slice(0, 200)}`); }
-  if (data.error) throw new Error(`aihubmix edit: ${data.error.message || JSON.stringify(data.error)}`);
-  const item = data?.data?.[0];
-  if (!item?.b64_json && !item?.url) throw new PaidSubmissionUnknownError('AiHubMix GPT Image 2 编辑', '成功响应没有可用图片');
+  if (!item?.b64_json && !item?.url) throw new PaidSubmissionUnknownError('DMXAPI GPT Image 2.5 编辑', '成功响应没有可用图片');
   return { b64: item.b64_json, url: item.url };
 }
 
@@ -624,11 +573,7 @@ async function tryGenerate(
   let lastError = '';
 
   for (const slot of slots) {
-    let baseUrl = slot.baseUrl.replace(/\/+$/, '');
-    // aihubmix.com 大陆不可达，自动替换为备用域名
-    if (baseUrl.includes('aihubmix.com')) {
-      baseUrl = baseUrl.replace('aihubmix.com', 'api.inferera.com');
-    }
+    const baseUrl = slot.baseUrl.replace(/\/+$/, '');
     const apiKey = resolveSlotApiKey(useSettingsStore.getState(), slot);
     const provider = slot.provider || 'dmxapi';
     let paidResultReceived = false;
@@ -637,21 +582,20 @@ async function tryGenerate(
       const t1 = Date.now();
       let result: { b64?: string; url?: string } = undefined!;
 
-      if (model === 'gpt-image-2') {
+      if (model.startsWith('gpt-image-2')) {
         if (slot.id === APIMART_GPT_IMAGE2_SLOT_ID) {
           const editRefs = hasRef ? await getEditReferences(params, compress) : [];
-          console.log(`🎨 [${slot.label}] 尝试 gpt-image-2 async (apimart)${compress ? ' [压缩重试]' : ''}...`);
+          console.log(`🎨 [${slot.label}] 尝试 gpt-image-2.5 async (apimart)${compress ? ' [压缩重试]' : ''}...`);
           result = await gptImage2ApimartGen(params, editRefs);
         } else {
         const tier = params.forceTier ?? slot.tier ?? 'standard';
         if (provider === 'zexapi') {
           const editRefs = hasRef ? await getEditReferences(params, compress) : [];
-          console.log(`🎨 [${slot.label}] 尝试 gpt-image-2 async (zexapi)${compress ? ' [压缩重试]' : ''}...`);
+          console.log(`🎨 [${slot.label}] 尝试 gpt-image-2.5 async (zexapi)${compress ? ' [压缩重试]' : ''}...`);
           result = await gptImage2ZexapiAsync(baseUrl, apiKey, params.prompt, requestSize, params.aspectRatio, editRefs);
         } else {
-          const modelsToTry = provider === 'dmxapi'
-            ? (tier === 'cheap' ? ['gpt-image-2-03'] as const : ['gpt-image-2'] as const)
-            : ['gpt-image-2'] as const;
+          // DMXAPI 档位模型：cheap 档固定次价的 -cdx，标准档 gpt-image-2.5-flare。
+          const modelsToTry = tier === 'cheap' ? ['gpt-image-2.5-flare-cdx'] as const : ['gpt-image-2.5-flare'] as const;
 
           let editRefs: EditReference[] = [];
           if (hasRef) {
@@ -665,11 +609,7 @@ async function tryGenerate(
             try {
               console.log(`🎨 [${slot.label}] 尝试 ${m} (${provider})${compress ? ' [压缩重试]' : ''}...`);
               if (hasRef && editRefs.length > 0) {
-                if (provider === 'aihubmix') {
-                  result = await gptImage2EditAihubmix(baseUrl, apiKey, params.prompt, requestSize, editRefs, m);
-                } else {
-                  result = await gptImage2EditDmxapi(baseUrl, apiKey, params.prompt, requestSize, params.quality || 'high', editRefs, m);
-                }
+                result = await gptImage2EditDmxapi(baseUrl, apiKey, params.prompt, requestSize, params.quality || 'high', editRefs, m);
               } else {
                 result = await gptImage2Gen(baseUrl, apiKey, params.prompt, requestSize, params.quality || 'high', m);
               }
@@ -754,14 +694,14 @@ async function tryGenerate(
 
 export async function generateImage(params: GenerateImageParams): Promise<ImageResult> {
   const hasRef = !!(params.referenceImageUrls?.length || params.referenceImageUrl || params.referenceImageB64);
-  const model = params.model || 'gpt-image-2';
+  const model = params.model || 'gpt-image-2.5';
   const slots = getSlots(params, model);
   if (slots.length === 0) {
     return { success: false, modelUsed: '', apiUsed: '', error: '未配置生图 API 端点，请在设置 → API 密钥 → 生图 API 中添加' };
   }
 
   const outputPath = params.outputPath || await getOutputPath();
-  const requestSize = model === 'gpt-image-2'
+  const requestSize = model.startsWith('gpt-image-2')
     ? normalizeGptImage2Size(params.size, params.aspectRatio)
     : model === 'seedream-v5-pro'
       ? normalizeSeedreamProSize(params.size, params.aspectRatio, params.resolution)

@@ -156,7 +156,7 @@ export default function ImageNodeToolbar({ nodeId, imageUrl }: ImageNodeToolbarP
     setSelectedNodeId(newId);
     void generateForNode({
       nodeId: newId,
-      engineId: isMidjourney && midjourneyVersion === 'v8.1' ? 'midjourney-v81' : isMidjourney ? 'midjourney-v82' : 'gpt-image-2',
+      engineId: isMidjourney && midjourneyVersion === 'v8.1' ? 'midjourney-v81' : isMidjourney ? 'midjourney-v82' : 'gpt-image-2.5',
       prompt,
       referenceUrls: [imageUrl],
       params: {
@@ -221,7 +221,7 @@ export default function ImageNodeToolbar({ nodeId, imageUrl }: ImageNodeToolbarP
           usagePrompt,
           assetImagePath: savedPath,
           candidates: [{ path: savedPath, source: 'canvas', prompt: assetPrompt, createdAt: Date.now() }],
-          assetEngine: 'gpt-image-2',
+          assetEngine: 'gpt-image-2.5',
           source: 'canvas',
           createdAt: Date.now(),
         });
@@ -256,7 +256,7 @@ export default function ImageNodeToolbar({ nodeId, imageUrl }: ImageNodeToolbarP
     setSelectedNodeId(newId);
     void generateForNode({
       nodeId: newId,
-      engineId: 'gpt-image-2',
+      engineId: 'gpt-image-2.5',
       prompt,
       referenceUrls: [imageUrl],
       params: { aspectRatio: '16:9' },

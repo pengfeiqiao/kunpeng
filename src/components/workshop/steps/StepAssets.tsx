@@ -28,7 +28,7 @@ import { encodeReferenceTransfer, projectTransferReferences, PROJECT_REFERENCE_M
 import { stableProjectObjectId } from '@/lib/projectObjects/migrate';
 
 const DEFAULT_VOICE_SAMPLE_LINE = '你好，很高兴认识你。';
-const GPT_ENGINE: ImageEngineOption = { value: 'gpt-image-2', label: 'GPT', title: 'GPT-Image-2 智能生图通道' };
+const GPT_ENGINE: ImageEngineOption = { value: 'gpt-image-2.5', label: 'GPT', title: 'GPT-Image-2.5 智能生图通道' };
 const SEEDREAM_ENGINE: ImageEngineOption = { value: 'seedream-v5-pro', label: '豆包', title: '豆包 Seedream 5.0 Pro' };
 const MIDJOURNEY_V82_ENGINE: ImageEngineOption = { value: 'midjourney-v82', label: 'MJ 8.2', title: 'Midjourney V8.2（APIMart，新版审美，一次返回 4 张候选）' };
 const MIDJOURNEY_V81_ENGINE: ImageEngineOption = { value: 'midjourney-v81', label: 'MJ 8.1', title: 'Midjourney V8.1（APIMart 通道，一次返回 4 张候选）' };
@@ -371,7 +371,7 @@ export function AssetCard({
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const activeEngine = engine ?? 'gpt-image-2';
+  const activeEngine = engine ?? 'gpt-image-2.5';
   const isMj = activeEngine.startsWith('midjourney');
   const activeResolution = assetResolution ?? '2k';
   const activeAspectRatio = assetAspectRatio ?? '16:9';

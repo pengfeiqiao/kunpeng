@@ -1314,7 +1314,7 @@ export default function DirectorStage({ onClose, onSendMessage, onAbort }: {
     }
   }, [plan, elements, origin, onDirectorExportProgress, exportInSec, exportOutSec, exportOutputPath]);
 
-  const renderFinalImages = useCallback(async (options: { engineId: 'gpt-image-2' | 'seedream-v5-pro'; resolution: '1k' | '2k' | '4k'; scope: 'current' | 'all'; writeBack: boolean; placeOnCanvas: boolean }) => {
+  const renderFinalImages = useCallback(async (options: { engineId: 'gpt-image-2.5' | 'seedream-v5-pro'; resolution: '1k' | '2k' | '4k'; scope: 'current' | 'all'; writeBack: boolean; placeOnCanvas: boolean }) => {
     if (!engineRef.current || !plan || !shot) return;
     setGenerationDialog(null);
     setExporting(true);
@@ -2571,12 +2571,12 @@ function PlanProposalDialog({ plans, onClose, onConfirm }: { plans: DirectorPlan
 function GenerationConfirmDialog({ mode, onClose, onImageConfirm, onVideoConfirm, onStillConfirm, onPrevisConfirm }: {
   mode: 'still' | 'previs' | 'image' | 'video';
   onClose: () => void;
-  onImageConfirm: (options: { engineId: 'gpt-image-2' | 'seedream-v5-pro'; resolution: '1k' | '2k' | '4k'; scope: 'current' | 'all'; writeBack: boolean; placeOnCanvas: boolean }) => void;
+  onImageConfirm: (options: { engineId: 'gpt-image-2.5' | 'seedream-v5-pro'; resolution: '1k' | '2k' | '4k'; scope: 'current' | 'all'; writeBack: boolean; placeOnCanvas: boolean }) => void;
   onVideoConfirm: (options: { writeBack: boolean; placeOnCanvas: boolean }) => void;
   onStillConfirm: (options: { scope: 'current' | 'all'; writeBack: boolean; placeOnCanvas: boolean }) => void;
   onPrevisConfirm: (options: { writeBack: boolean; placeOnCanvas: boolean }) => void;
 }) {
-  const [engineId, setEngineId] = useState<'gpt-image-2' | 'seedream-v5-pro'>('gpt-image-2');
+  const [engineId, setEngineId] = useState<'gpt-image-2.5' | 'seedream-v5-pro'>('gpt-image-2.5');
   const [resolution, setResolution] = useState<'1k' | '2k' | '4k'>('2k');
   const [scope, setScope] = useState<'current' | 'all'>('current');
   const [writeBack, setWriteBack] = useState(true);
@@ -2586,8 +2586,8 @@ function GenerationConfirmDialog({ mode, onClose, onImageConfirm, onVideoConfirm
       <div className="w-[420px] rounded-xl border border-white/10 bg-[#191a1e] p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between"><div><div className="text-[13px] font-semibold">{mode === 'image' ? '渲染正式分镜' : mode === 'video' ? '确认 Seedance 生成' : mode === 'still' ? '回传白模截图' : '回传白模视频'}</div><div className="mt-1 text-[9px] text-white/35">{mode === 'image' ? '白模只控制构图，正式资产在提交时临时读取' : mode === 'video' ? '将先导出白模 MP4，再作为参考视频付费生成' : '只有勾选后才会写入来源，不覆盖正式产物'}</div></div><button onClick={onClose} className="director-icon-btn"><X size={14} /></button></div>
         {mode === 'image' && <div className="space-y-3">
-          <label className="block"><span className="director-label">模型</span><select value={engineId} onChange={(event) => setEngineId(event.target.value as typeof engineId)} className="director-input"><option value="gpt-image-2">GPT</option><option value="seedream-v5-pro">豆包</option></select></label>
-          <div className="grid grid-cols-2 gap-3"><label><span className="director-label">范围</span><select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className="director-input"><option value="current">当前镜头</option><option value="all">全部镜头</option></select></label><label><span className="director-label">分辨率</span><select value={resolution} onChange={(event) => setResolution(event.target.value as typeof resolution)} className="director-input"><option value="1k">1K</option><option value="2k">2K</option>{engineId === 'gpt-image-2' && <option value="4k">4K</option>}</select></label></div>
+          <label className="block"><span className="director-label">模型</span><select value={engineId} onChange={(event) => setEngineId(event.target.value as typeof engineId)} className="director-input"><option value="gpt-image-2.5">GPT</option><option value="seedream-v5-pro">豆包</option></select></label>
+          <div className="grid grid-cols-2 gap-3"><label><span className="director-label">范围</span><select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className="director-input"><option value="current">当前镜头</option><option value="all">全部镜头</option></select></label><label><span className="director-label">分辨率</span><select value={resolution} onChange={(event) => setResolution(event.target.value as typeof resolution)} className="director-input"><option value="1k">1K</option><option value="2k">2K</option>{engineId === 'gpt-image-2.5' && <option value="4k">4K</option>}</select></label></div>
         </div>}
         {mode === 'still' && <label className="block"><span className="director-label">范围</span><select value={scope} onChange={(event) => setScope(event.target.value as typeof scope)} className="director-input"><option value="current">当前镜头</option><option value="all">全部镜头</option></select></label>}
         <div className="mt-4 space-y-2 border-t border-white/[0.07] pt-4"><label className="flex items-center gap-2 text-[10px] text-white/60"><input type="checkbox" checked={writeBack} onChange={(event) => setWriteBack(event.target.checked)} className="accent-white" />写回来源位置</label><label className="flex items-center gap-2 text-[10px] text-white/60"><input type="checkbox" checked={placeOnCanvas} onChange={(event) => setPlaceOnCanvas(event.target.checked)} className="accent-white" />同时放到画布来源节点旁边</label><div className="flex items-center gap-2 text-[9px] text-white/30"><Check size={11} />产物始终保存到产物库</div></div>

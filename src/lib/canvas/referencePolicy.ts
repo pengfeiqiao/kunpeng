@@ -14,6 +14,18 @@ export function isNonReferenceEdgeData(data: unknown): boolean {
 }
 
 /**
+ * Only an explicit user-placed image may be used as a node's implicit
+ * image-edit input. generatedImageUrl/localPath 在生成完成后指向产物——
+ * 产物隐式回灌会让反复生图逐轮退化（重 roll 自吞），故只认 isUploadedImage。
+ * 要拿产物继续编辑：显式连线到目标节点，或用裁剪/涂抹等显式工具。
+ */
+export function explicitSelfImageSource(data: Record<string, unknown>): string {
+  if (data.isUploadedImage !== true) return '';
+  const value = data.referenceImage || data.generatedImageUrl || data.localPath;
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
  * Only an explicit user-selected source may be used as a node's implicit
  * video-edit input. generatedVideoUrl/localPath are intentionally ignored:
  * after generation they point at an output, not an asset.

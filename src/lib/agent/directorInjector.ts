@@ -145,7 +145,7 @@ ${matched.content}`;
 （结构风格、主题母题、特色手法）
 
 ## 常用参数
-（针对 GPT-Image-2 / Seedance / Kling 的推荐参数）
+（针对 GPT-Image-2.5 / Seedance / Kling 的推荐参数）
 
 请确保所有生成输出严格遵循上述风格特征。`;
 }

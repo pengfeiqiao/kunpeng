@@ -13,7 +13,7 @@ import { selectProjectVersionCommand } from '../projectObjects/projectCommands.t
 function fixture() {
   const migrated = migrateWorkshopProjectObjects({ ...emptyWorkshopData('asset-generation'), characters: [{ id: 'driver', name: '司机',
     appearance: '灰衣', personality: '沉稳', assetImagePath: '/adopted.png', assetPrompt: '只调整衣袖，不修改人脸',
-    assetPromptMj: 'cinematic driver', assetEngine: 'gpt-image-2', assetAspectRatio: '9:16' }],
+    assetPromptMj: 'cinematic driver', assetEngine: 'gpt-image-2.5', assetAspectRatio: '9:16' }],
   }, 1);
   migrated.projectSpec = { ...migrated.projectSpec!, generationConfirmation: 'always-confirm' };
   return migrated;

@@ -29,7 +29,7 @@ function palette(id: string, name: string, description: string, colors: PaletteC
     colors,
     assetPrompt: buildColorPalettePrompt(name, description, colors),
     usagePrompt: buildPaletteUsagePrompt(name, colors),
-    assetEngine: 'gpt-image-2',
+    assetEngine: 'gpt-image-2.5',
     source,
     createdAt: 0,
   };

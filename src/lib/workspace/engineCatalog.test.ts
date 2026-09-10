@@ -8,9 +8,13 @@ import { migrateWorkshopProjectObjects } from '../projectObjects/migrate.ts';
 
 test('workspace exposes dedicated GPT/MJ/Seedance25 routes without adding them to RH or losing aliases', () => {
   assert.equal(new Set(WORKSPACE_ENGINES.map((engine) => engine.id)).size, WORKSPACE_ENGINES.length);
-  for (const id of ['gpt-image-2', 'midjourney-v8.2', 'midjourney-v82', 'dreamina-seedance-2.5', 'minimax-h3']) {
+  for (const id of ['gpt-image-2.5', 'midjourney-v8.2', 'midjourney-v82', 'dreamina-seedance-2.5', 'minimax-h3']) {
     assert.equal(workspaceEngine(id)?.id, id);
   }
+  // 旧 id 'gpt-image-2' 是 'gpt-image-2.5' 的读取层别名（存量草稿/任务记录不许显示"模型不可用"）
+  const legacy = workspaceEngine('gpt-image-2');
+  assert.equal(legacy?.id, 'gpt-image-2');
+  assert.equal(legacy?.label, 'GPT Image 2.5');
   assert.equal(workspaceEngine('unregistered'), undefined);
   const seedance = workspaceEngine('dreamina-seedance-2.5')!;
   assert.equal(seedance.params.find((param) => param.key === 'duration')!.options!.length, 27);

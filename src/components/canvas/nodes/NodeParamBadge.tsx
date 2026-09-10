@@ -3,7 +3,8 @@
  * bottom of a node card, e.g. "GPT · 16:9 · 2K". Fields degrade gracefully.
  */
 const ENGINE_SHORT: Record<string, string> = {
-  'gpt-image-2': 'GPT',
+  'gpt-image-2.5': 'GPT',
+  'gpt-image-2': 'GPT', // 旧 id 别名：存量节点 modelVersion 不迁移数据文件
   'midjourney': 'MJ',
   'midjourney-v81': 'MJ',
   'dreamina': '即梦',

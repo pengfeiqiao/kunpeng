@@ -74,7 +74,7 @@ test('free nodes and runtime-only output updates retain legacy behavior; identit
 test('stale revisions, dirty prompt/engine/params and references refuse any partial write', () => {
   for (const data of [{ workspaceProjection: { revision: 0 } }, { description: '另一词' }, { imageModel: 'midjourney' },
     { aspectRatio: '1:1' }, { referenceImages: [{ url: '/unknown.png' }] }, { params: { aspectRatio: '1:1' } },
-    { engineId: 'gpt-image-2', imageModel: 'midjourney' }]) {
+    { engineId: 'gpt-image-2.5', imageModel: 'midjourney' }]) {
     const state = fixture(); state.canvas.nodes[0].data = { ...state.canvas.nodes[0].data, ...data };
     const bytes = JSON.stringify(state);
     assert.throws(() => editProfessionalCanvasCommand(state, 'n', { description: '覆盖' }), /冲突|已改变/);
@@ -99,7 +99,7 @@ test('projectObjectId never falls back to legacy identity; locked, archived, act
 test('unsupported specialized settings, invalid values, mixed output writes and conflicting aliases fail closed', () => {
   for (const patch of [{ midjourneyWeird: 10 }, { params: { unknown: true } }, { aspectRatio: 'wrong' },
     { description: 'a', imagePrompt: 'b' }, { description: 'a', generatedImageUrl: '/new.png' },
-    { imageModel: 'custom-media:unknown' }, { imageModel: 'midjourney', engineId: 'gpt-image-2' },
+    { imageModel: 'custom-media:unknown' }, { imageModel: 'midjourney', engineId: 'gpt-image-2.5' },
     { params: { aspectRatio: '1:1' }, aspectRatio: '9:16' }, { midjourneyStyleId: 'style' }]) {
     const state = fixture(); const bytes = JSON.stringify(state);
     assert.throws(() => editProfessionalCanvasCommand(state, 'n', patch));

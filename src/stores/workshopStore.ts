@@ -1095,7 +1095,7 @@ export const useWorkshopStore = create<WorkshopState>((set, get, api) => ({
       ...palette,
       assetPrompt: palette.assetPrompt ?? buildColorPalettePrompt(palette.name, palette.description ?? 'cinematic color system', palette.colors ?? []),
       usagePrompt: palette.usagePrompt ?? buildPaletteUsagePrompt(palette.name, palette.colors ?? []),
-      assetEngine: palette.assetEngine ?? 'gpt-image-2',
+      assetEngine: palette.assetEngine ?? 'gpt-image-2.5',
       createdAt: palette.createdAt || Date.now(),
     };
     set({

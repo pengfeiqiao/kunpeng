@@ -74,7 +74,7 @@ export default function ImageRoutePanel() {
     const isI2I = route.mode === 'image-to-image';
     const engineId = route.model === 'seedream-v5-pro'
       ? (isI2I ? 'seedream-v5-pro-i2i' : 'seedream-v5-pro')
-      : (isI2I ? 'gpt-image-2-i2i' : 'gpt-image-2');
+      : (isI2I ? 'gpt-image-2.5-i2i' : 'gpt-image-2.5');
     await runGeneration({
       engineId,
       forceChannel: routeId,

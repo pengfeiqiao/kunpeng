@@ -26,8 +26,8 @@ const BASE = 'https://www.dmxapi.cn';
 /**
  * 内置 API 统一密钥来源：凭证注册表（'dmx' 引用）→ settings.dmxApiKey →
  * 首个可用的 **dmxapi** 槽位（槽位自身也先解析其 credentialId）。
- * 槽位必须按 provider 过滤：这里的请求固定发往 dmxapi.cn，借用 aihubmix
- * 等其他 provider 的 key 只会得到 401。
+ * 槽位必须按 provider 过滤：这里的请求固定发往 dmxapi.cn，借用其他
+ * provider 的 key 只会得到 401。
  */
 export function getDmxApiKey(): string {
   const s = useSettingsStore.getState();

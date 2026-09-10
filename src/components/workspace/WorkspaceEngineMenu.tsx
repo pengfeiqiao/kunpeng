@@ -9,7 +9,7 @@ const MERGE_GROUPS: Array<{ label: string; ids: string[] }> = [
   { label: 'Seedance 2.0 Mini', ids: ['seedance-2.0-mini-i2v', 'seedance-2.0-mini-t2v'] },
 ];
 
-const IMAGE_ORDER = ['gpt-image-2', 'seedream-v5-pro', 'midjourney-v8.2', 'midjourney-v8.1'];
+const IMAGE_ORDER = ['gpt-image-2.5', 'seedream-v5-pro', 'midjourney-v8.2', 'midjourney-v8.1'];
 const IMAGE_MORE = ['midjourney-v7', 'midjourney-v6.1', 'midjourney-v5.2', 'midjourney-v5.1', 'midjourney-niji7', 'midjourney-niji6'];
 const VIDEO_ORDER = ['dreamina-seedance-2.5', 'seedance-2.0', 'seedance-2.0-fast', 'seedance-2.0-mini-i2v', 'wan-3.0', 'minimax-hailuo-h3'];
 

@@ -3,6 +3,7 @@ import { fitSeedreamProPixelSize } from '../imageGen/size.ts';
 export type ApimartTaskKind = 'image' | 'video' | 'music';
 
 export const APIMART_SEEDREAM_SLOT_ID = 'apimart-seedream-v5-pro';
+// 槽位/endpoint id 保持稳定：画布恢复按 endpoint 字符串对在途任务取回。
 export const APIMART_GPT_IMAGE2_SLOT_ID = 'apimart-gpt-image-2';
 export const APIMART_GPT_IMAGE2_ENDPOINT = 'apimart/gpt-image-2';
 export const APIMART_SUNO_ENDPOINT = 'apimart/suno';
@@ -156,14 +157,14 @@ export function parseApimartTask(body: unknown, kind: ApimartTaskKind): ApimartT
 
 const SEEDREAM_RATIOS = new Set(['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']);
 const H3_RATIOS = new Set(['adaptive', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16']);
-// APIMart GPT-Image-2 支持的 15 种比例（docs.apimart.ai GPT-Image-2 文档）。
+// APIMart GPT-Image-2.5 支持的 15 种比例（docs.apimart.ai GPT-Image-2.5 文档）。
 const GPT_IMAGE2_RATIOS = new Set([
   'auto', '1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5',
   '16:9', '9:16', '2:1', '1:2', '3:1', '1:3', '21:9', '9:21',
 ]);
 
 /**
- * APIMart GPT-Image-2（/v1/images/generations，异步任务）。
+ * APIMart GPT-Image-2.5（/v1/images/generations，异步任务）。
  * size 直接吃比例字符串；resolution 只有 1k/2k/4k 三档（按档计费）；
  * 参考图最多 16 张，URL 与 base64 data URI 可混填。
  */
@@ -175,7 +176,7 @@ export function buildApimartGptImage2Payload(input: {
   resolution?: string;
 }): Record<string, unknown> {
   if ((input.imageUrls?.length ?? 0) > 16) {
-    throw new Error(`APIMart GPT-Image-2 最多支持 16 张参考图，当前 ${input.imageUrls!.length} 张。`);
+    throw new Error(`APIMart GPT-Image-2.5 最多支持 16 张参考图，当前 ${input.imageUrls!.length} 张。`);
   }
   const requestedSize = String(input.size || input.aspectRatio || 'auto');
   const size = GPT_IMAGE2_RATIOS.has(requestedSize) || /^\d{3,5}x\d{3,5}$/i.test(requestedSize)
@@ -186,7 +187,7 @@ export function buildApimartGptImage2Payload(input: {
     ? resolutionRaw
     : resolutionRaw === '8k' ? '4k' : '2k';
   const payload: Record<string, unknown> = {
-    model: 'gpt-image-2',
+    model: 'gpt-image-2.5-flare',
     prompt: input.prompt,
     n: 1,
     size,

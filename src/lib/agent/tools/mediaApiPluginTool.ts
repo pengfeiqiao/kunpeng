@@ -35,7 +35,7 @@ export const mediaApiPluginTool: Tool = {
         kind: { type: 'string', enum: ['image', 'video'], description: 'add 必填：图片或视频模型' },
         label: { type: 'string', description: '显示名称，如「XX 网关 GPT-Image」' },
         base_url: { type: 'string', description: 'API 基础地址，如 https://api.example.com（不要带 /v1/images/generations 这类具体路径）' },
-        model_id: { type: 'string', description: '模型 ID，如 gpt-image-2 / wan3.0-video' },
+        model_id: { type: 'string', description: '模型 ID，如 gpt-image-2.5 / wan3.0-video' },
         api_key: { type: 'string', description: 'API Key。用户没主动给 key 时不要编造' },
         protocol: { type: 'string', enum: ['openai-images', 'apimart-async'], description: '接口协议，默认 apimart-async' },
         enabled: { type: 'boolean', description: '是否启用，默认 true' },

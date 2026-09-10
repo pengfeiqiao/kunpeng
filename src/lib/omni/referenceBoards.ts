@@ -280,7 +280,7 @@ export async function generateMgReferenceBoards(args: {
     sourceReferenceCount: sourceRefs.length,
   });
   const master = await generateImage({
-    model: 'gpt-image-2',
+    model: 'gpt-image-2.5',
     prompt: masterPrompt,
     aspectRatio: args.aspectRatio,
     size,
@@ -302,7 +302,7 @@ export async function generateMgReferenceBoards(args: {
       sourceReferenceCount: sourceRefs.length,
     });
     const result = await generateImage({
-      model: 'gpt-image-2',
+      model: 'gpt-image-2.5',
       prompt,
       aspectRatio: args.aspectRatio,
       size,
@@ -384,8 +384,8 @@ export function materializeMgReferenceBoardsOnCanvas(
         referenceImage: displayPaths[index],
         localPath: board.path,
         imagePrompt: board.prompt,
-        imageModel: 'gpt-image-2',
-        modelVersion: 'gpt-image-2',
+        imageModel: 'gpt-image-2.5',
+        modelVersion: 'gpt-image-2.5',
         aspectRatio: (target.data as Record<string, unknown>).aspectRatio || '16:9',
         resolution: '2k',
         isMgReferenceBoard: true,

@@ -18,7 +18,7 @@ test('recognizes canvas Midjourney aliases before generic engine validation', ()
   assert.equal(isMidjourneyEngineId('midjourney-v82'), true);
   assert.equal(isMidjourneyEngineId('midjourney-v8.2'), true);
   assert.equal(isMidjourneyEngineId('midjourney-v81'), true);
-  assert.equal(isMidjourneyEngineId('gpt-image-2'), false);
+  assert.equal(isMidjourneyEngineId('gpt-image-2.5'), false);
 });
 
 test('uses APIMart as the primary Midjourney provider for every version', () => {

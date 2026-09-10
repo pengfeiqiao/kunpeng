@@ -60,8 +60,11 @@ test('dmxapi static price table: seedream 按分辨率 + 输入图首免，gpt-i
   // 2K ￥0.6；3 张参考图超出首免 2 张 × ￥0.02
   const twoK = await estimateEngineCost('seedream-v5-pro', { resolution: '2k' }, { ...noRefs, images: 3 }, dmxCaps);
   assert.equal(twoK!.amountCny, 0.64);
-  const gpt = await estimateEngineCost('gpt-image-2', {}, noRefs, dmxCaps);
-  assert.equal(gpt!.amountCny, 0.3);
+  // gpt-image-2.5-flare 分段计价折算 ≈ ￥0.16/次；旧引擎 id 'gpt-image-2' 同价（startsWith 匹配）
+  const gpt = await estimateEngineCost('gpt-image-2.5', {}, noRefs, dmxCaps);
+  assert.equal(gpt!.amountCny, 0.16);
+  const legacyGpt = await estimateEngineCost('gpt-image-2', {}, noRefs, dmxCaps);
+  assert.equal(legacyGpt!.amountCny, 0.16);
   // 没有 dmxapi 槽位且没有 apimart → null 降级
   assert.equal(await estimateEngineCost('seedream-v5-pro', { resolution: '1k' }, noRefs,
     { apimart: false, kuaizi: false, dmxapi: false }), null);
@@ -101,6 +104,37 @@ test('apimart pricing API: 美元报价按估算汇率折算，免鉴权不带�
     assert.ok(seen.length > 0);
     for (const call of seen) assert.equal(call.headers, undefined);
     assert.match(seen[0]!.url, /^https:\/\/apib\.ai\/api\/pricing\/model\?model=midjourney$/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('apimart gpt-image-2.5-flare 新格式：size_quality_prices 优先，resolution_prices["比例@分辨率"] fallback', async () => {
+  const original = globalThis.fetch;
+  const seen: string[] = [];
+  try {
+    // 定价响应同时带两种格式，验证优先级（模块级缓存 1 小时，本测试只取一次）
+    globalThis.fetch = async (url) => {
+      seen.push(String(url));
+      return new Response(JSON.stringify({
+        data: {
+          size_quality_prices: { '16:9': { low: 0.0036, medium: 0.0084, high: 0.03234 } },
+          resolution_prices: { '1:1@4k': 0.05 },
+        },
+      }), { status: 200 });
+    };
+    // high 质量价优先（应用默认发 quality:'high'）：$0.03234 × 7.2 ≈ ¥0.23
+    const est = await estimateEngineCost('gpt-image-2.5', { aspectRatio: '16:9', resolution: '2k' }, noRefs,
+      { apimart: true, kuaizi: false, dmxapi: false });
+    assert.ok(est);
+    assert.equal(est.amountCny, 0.03234 * USD_TO_CNY);
+    assert.match(seen[0]!, /model=gpt-image-2\.5-flare/);
+    // 该比例无 quality 表 → fallback resolution_prices["1:1@4k"]
+    const byKey = await estimateEngineCost('gpt-image-2.5', { aspectRatio: '1:1', resolution: '4k' }, noRefs,
+      { apimart: true, kuaizi: false, dmxapi: false });
+    assert.equal(byKey!.amountCny, 0.05 * USD_TO_CNY);
+    // 比例与分辨率键都缺失 → null 优雅降级
+    const missing = await estimateEngineCost('gpt-image-2.5', { aspectRatio: '3:2', resolution: '4k' }, noRefs,
+      { apimart: true, kuaizi: false, dmxapi: false });
+    assert.equal(missing, null);
   } finally { globalThis.fetch = original; }
 });
 

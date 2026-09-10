@@ -22,10 +22,10 @@ const ACTIVE_STATUSES = ['queued', 'uploading', 'running', 'downloading'];
 
 function retryEngineId(task: CanvasTask): string {
   if (task.engineId.startsWith('api:')) {
-    return task.engineId.includes('seedream-v5-pro') ? 'seedream-v5-pro' : 'gpt-image-2';
+    return task.engineId.includes('seedream-v5-pro') ? 'seedream-v5-pro' : 'gpt-image-2.5';
   }
   if (task.engineId.includes('seedream-v5-pro')) return 'seedream-v5-pro';
-  if (task.engineId.startsWith('gpt-image')) return 'gpt-image-2';
+  if (task.engineId.startsWith('gpt-image')) return 'gpt-image-2.5';
   return task.engineId;
 }
 
@@ -57,7 +57,7 @@ function TaskRow({ task, pricingCaps }: { task: CanvasTask; pricingCaps: Pricing
     if (ledgerRecord) return null;
     // api: 开头的槽位路由 id 归一回引擎 id 才能命中单价表
     const engineId = task.engineId.startsWith('api:')
-      ? (task.engineId.includes('seedream') ? 'seedream-v5-pro' : 'gpt-image-2')
+      ? (task.engineId.includes('seedream') ? 'seedream-v5-pro' : 'gpt-image-2.5')
       : task.engineId;
     try {
       return estimateEngineCostSync(engineId, (task.params ?? {}) as Record<string, unknown>, {

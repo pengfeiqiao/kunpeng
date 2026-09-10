@@ -19,7 +19,7 @@ test('workspace optimizer keeps reference identity, forwards cancellation, and r
         b.onLoad({ filter: /.*/, namespace: 'mock' }, () => ({ contents: 'export const quickChat = globalThis.__workspaceOptimize;', loader: 'js' }));
       } }] });
     const { optimizeWorkspacePrompt, restyleWorkspacePrompt } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
-    const draft = { id: 'shot:a::image', projectId: 'p', objectId: 'shot:a', outputType: 'image', engineId: 'gpt-image-2',
+    const draft = { id: 'shot:a::image', projectId: 'p', objectId: 'shot:a', outputType: 'image', engineId: 'gpt-image-2.5',
       prompt: '@图片一 司机', references: [{ id: 'r', type: 'image', label: '司机', path: '/private/original.jpg' }], params: { aspectRatio: '9:16' }, revision: 2, updatedAt: 1 };
     const original = JSON.stringify(draft);
     const controller = new AbortController();

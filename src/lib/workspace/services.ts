@@ -14,7 +14,7 @@ export interface WorkspaceCapabilities {
 /** Configuration presence, not a claim about balances, network health or CLI login. */
 export function workspaceUnavailableReason(engineId: string, caps: WorkspaceCapabilities): string | undefined {  const engine = workspaceEngine(engineId);
   if (!engine) return '当前模型不在可用能力表中';
-  if (engineId.startsWith('gpt-image')) return caps.gpt ? undefined : '未配置 GPT 生图渠道';
+  if (engineId.startsWith('gpt-image')) return caps.gpt ? undefined : '未配置 GPT 生图渠道（gpt-image-2.5）';
   if (engineId.startsWith('midjourney')) return caps.apimart ? undefined : '未配置 APIMart 渠道';
   if (engineId.startsWith('seedream') || engineId === 'dreamina-seedance-2.5' || engineId === 'seedance-2.5') return undefined;
   if (engineId === 'minimax-hailuo-h3' || engineId === 'minimax-h3' || engineId === 'wan-3.0' || engineId === 'wan-3.0-prime') {

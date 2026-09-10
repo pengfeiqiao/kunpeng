@@ -22,7 +22,7 @@ export const aigcOptimizePromptTool: Tool = {
         },
         engine: {
           type: 'string',
-          enum: ['gpt-image-2', 'seedream-v5-pro', 'seedance', 'kling', 'midjourney'],
+          enum: ['gpt-image-2.5', 'seedream-v5-pro', 'seedance', 'kling', 'midjourney'],
           description: '目标生成引擎',
         },
         director: {
@@ -39,7 +39,7 @@ export const aigcOptimizePromptTool: Tool = {
     try {
       const basePrompt = params.basePrompt as string;
       const taskType = params.taskType as 'text-to-image' | 'image-to-video' | 'text-to-video';
-      const engine = params.engine as 'gpt-image-2' | 'seedream-v5-pro' | 'seedance' | 'kling' | 'midjourney';
+      const engine = params.engine as 'gpt-image-2.5' | 'seedream-v5-pro' | 'seedance' | 'kling' | 'midjourney';
       const directorInput = params.director as string | undefined;
 
       // Build director context

@@ -21,11 +21,19 @@ test('discovers an enabled credential-backed image slot', () => {
 
 test('recovers a stale slot reference from a matching provider credential', () => {
   const slots = discoverConfiguredImageSlots(state({
-    credentials: [{ id: 'cred-new', label: 'AiHubMix', baseUrl: 'https://api.inferera.com', apiKey: key('aihub'), createdAt: 1 }],
-    imageApiSlots: [{ id: 'slot-old', label: 'AiHubMix', provider: 'aihubmix', baseUrl: 'https://api.inferera.com', apiKey: '', credentialId: 'missing', enabled: true, priority: 0 }],
+    credentials: [{ id: 'cred-new', label: 'DMX', baseUrl: 'https://www.dmxapi.cn', apiKey: key('dmx'), createdAt: 1 }],
+    imageApiSlots: [{ id: 'slot-old', label: 'DMX', provider: 'dmxapi', baseUrl: 'https://www.dmxapi.cn', apiKey: '', credentialId: 'missing', enabled: true, priority: 0 }],
   }));
   assert.equal(slots[0].credentialId, 'cred-new');
-  assert.equal(slots[0].apiKey, key('aihub'));
+  assert.equal(slots[0].apiKey, key('dmx'));
+});
+
+test('AiHubMix slots are dropped from the GPT image router (provider retired)', () => {
+  const slots = discoverConfiguredImageSlots(state({
+    credentials: [{ id: 'cred-aihub', label: 'AiHubMix', baseUrl: 'https://api.inferera.com', apiKey: key('aihub'), createdAt: 1 }],
+    imageApiSlots: [{ id: 'slot-aihub', label: 'AiHubMix', provider: 'aihubmix', baseUrl: 'https://api.inferera.com', apiKey: '', credentialId: 'cred-aihub', enabled: true, priority: 0 }],
+  }));
+  assert.deepEqual(slots, []);
 });
 
 test('credentials-only imports become runnable virtual image slots', () => {

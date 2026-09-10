@@ -21,9 +21,9 @@ test('asset draft initializes the selected model prompt and original per-asset p
   assert.equal(draft.prompt, 'cinematic driver');
   assert.equal(draft.params.aspectRatio, '9:16');
   assert.equal(draft.params.resolution, '4k');
-  const freshSwitch = saveWorkspaceDraft(data, { ...draft, engineId: 'gpt-image-2' }, 0, 2)!;
+  const freshSwitch = saveWorkspaceDraft(data, { ...draft, engineId: 'gpt-image-2.5' }, 0, 2)!;
   assert.equal(freshSwitch.workspaceDrafts![draft.id].prompt, '普通中文');
-  const gpt = editWorkspaceAssetSettings(data, 'character', 'c', { engineId: 'gpt-image-2' }, 2);
+  const gpt = editWorkspaceAssetSettings(data, 'character', 'c', { engineId: 'gpt-image-2.5' }, 2);
   assert.equal(gpt.workspaceDrafts!['character:c::image'].prompt, '普通中文');
   assert.equal(gpt.characters[0].assetPromptMj, 'cinematic driver');
 });
@@ -34,9 +34,9 @@ test('active asset prompt edits are shared; inactive family edits and model swit
   const pending = initialWorkspaceDraft(data, 'character:c', 'image')!;
   data = editWorkspaceAssetPrompt(data, 'character', 'c', '普通修改', 'gpt', 3);
   assert.equal(data.workspaceDrafts![pending.id].prompt, 'MJ修改');
-  data = editWorkspaceAssetSettings(data, 'character', 'c', { engineId: 'gpt-image-2', aspectRatio: '3:4', resolution: '2k' }, 4);
+  data = editWorkspaceAssetSettings(data, 'character', 'c', { engineId: 'gpt-image-2.5', aspectRatio: '3:4', resolution: '2k' }, 4);
   assert.equal(data.workspaceDrafts![pending.id].prompt, '普通修改');
-  assert.equal(data.characters[0].assetEngine, 'gpt-image-2');
+  assert.equal(data.characters[0].assetEngine, 'gpt-image-2.5');
   assert.equal(data.characters[0].assetAspectRatio, '3:4');
   assert.equal(data.characters[0].assetResolution, '2k');
   assert.equal(saveWorkspaceDraft(data, { ...pending, prompt: '迟到MJ' }, pending.revision), null);
@@ -70,6 +70,6 @@ test('all four asset kinds use the same command and locked/deleted assets reject
   }
   const locked = { ...data, projectObjects: { ...data.projectObjects!, objects: data.projectObjects!.objects.map((o) => o.id === 'character:c' ? { ...o, locked: true } : o) } };
   assert.equal(editWorkspaceAssetPrompt(locked, 'character', 'c', '拒绝', 'mj'), locked);
-  assert.equal(editWorkspaceAssetSettings(locked, 'character', 'c', { engineId: 'gpt-image-2' }), locked);
+  assert.equal(editWorkspaceAssetSettings(locked, 'character', 'c', { engineId: 'gpt-image-2.5' }), locked);
   assert.equal(editWorkspaceAssetPrompt(data, 'character', 'missing', '拒绝'), data);
 });

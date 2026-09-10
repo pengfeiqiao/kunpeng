@@ -16,7 +16,7 @@ import {
   normalizeMidjourneyVersion,
 } from '@/lib/midjourney/prompt';
 
-const IMAGE_MODELS = ['gpt-image-2', 'seedream-v5-pro', 'midjourney-v81', 'midjourney-v82'];
+const IMAGE_MODELS = ['gpt-image-2.5', 'seedream-v5-pro', 'midjourney-v81', 'midjourney-v82'];
 const ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '4:5', '5:4', '21:9'];
 
 // id=中文名 分组清单注入工具描述，agent 才能按题材挑风格（只看裸 id 选不准）。
@@ -32,7 +32,7 @@ export const imageGenerateTool: Tool = {
   definition: {
     name: 'image_generate',
     description:
-      '普通对话直接生成图片并返回本地图片，不创建画布节点。使用底部当前选择的 GPT Image 2、豆包 5 Pro 或 Midjourney；用户指定模型时可覆盖。GPT Image 2 由「设置 → 图片模型」中的 API 槽位路由。Midjourney 默认 V8.2（统一走 APIMart 通道），一次返回 4 张候选。'
+      '普通对话直接生成图片并返回本地图片，不创建画布节点。使用底部当前选择的 GPT Image 2.5、豆包 5 Pro 或 Midjourney；用户指定模型时可覆盖。GPT Image 2.5 由「设置 → 图片模型」中的 API 槽位路由。「GPT 生图」「GPT Image」指图像模型 gpt-image-2.5；Seedance 2.5 是视频模型，名称相似但完全不同，不要混淆。Midjourney 默认 V8.2（统一走 APIMart 通道），一次返回 4 张候选。'
       + 'APIMart 自动并行检测 api.apimart.ai、apib.ai、aiuxu.com、aishuch.com 并选择当前最快健康线路；遇到 TCP 超时时调用 apimart_route_status({refresh:true}) 查看真实状态，不要用 bash/curl 猜线路。'
       + '必须根据用户要求传 aspect_ratio；横图默认 16:9，竖图/小红书竖版通常 9:16，方图 1:1。不要只把比例写进 prompt，工具会把比例转换成供应商实际像素尺寸。'
       + '只有用户明确要求把结果放入画布时才改用 canvas_generate。',
@@ -42,7 +42,7 @@ export const imageGenerateTool: Tool = {
         prompt: { type: 'string', description: '完整生图提示词' },
         model: {
           type: 'string',
-          description: '可选；省略时使用普通对话底部当前选择的生图模型。内置值：gpt-image-2、seedream-v5-pro、midjourney-v81、midjourney-v82；自定义图片插件用 custom-media:{插件id}（先 media_api_plugin list 查看）',
+          description: '可选；省略时使用普通对话底部当前选择的生图模型。内置值：gpt-image-2.5（GPT 生图，图像模型）、seedream-v5-pro、midjourney-v81、midjourney-v82；自定义图片插件用 custom-media:{插件id}（先 media_api_plugin list 查看）',
         },
         aspect_ratio: {
           type: 'string',
@@ -90,13 +90,16 @@ export const imageGenerateTool: Tool = {
   },
   async execute(params) {
     const settings = useSettingsStore.getState();
-    let requestedModel = String(params.model || settings.chatImageModel || 'gpt-image-2');
+    let requestedModel = String(params.model || settings.chatImageModel || 'gpt-image-2.5');
     // Midjourney 别名归一：agent 常会写 'midjourney' / 'mj' / 'midjourney-v8.2'
-    // 这类自然叫法，之前不在 IMAGE_MODELS 里会被静默换成 gpt-image-2，
+    // 这类自然叫法，之前不在 IMAGE_MODELS 里会被静默换成 gpt-image-2.5，
     // 用户看到的就是"Midjourney 调用失败"。
     if (/^(?:midjourney|mj)(?:[-_ ]?v?\d+(?:\.\d+)?)?$/i.test(requestedModel) && !requestedModel.startsWith('custom-media:')) {
       requestedModel = /8[._-]?1|v81/i.test(requestedModel) ? 'midjourney-v81' : 'midjourney-v82';
     }
+
+    // 旧 id 别名：agent 记忆/历史会话里的 'gpt-image-2' 一律归一到 2.5。
+    if (requestedModel === 'gpt-image-2') requestedModel = 'gpt-image-2.5';
 
     // 自定义图片插件（issue #7）：custom-media:{id} 直接走插件执行器
     if (requestedModel.startsWith('custom-media:')) {
@@ -134,7 +137,7 @@ export const imageGenerateTool: Tool = {
       };
     }
 
-    const model = IMAGE_MODELS.includes(requestedModel) ? requestedModel : 'gpt-image-2';
+    const model = IMAGE_MODELS.includes(requestedModel) ? requestedModel : 'gpt-image-2.5';
     const requestedRatio = String(params.aspect_ratio || '16:9');
     const aspectRatio = ASPECT_RATIOS.includes(requestedRatio) ? requestedRatio : '16:9';
     const requestedResolution = String(params.resolution || '2k').toLowerCase();
@@ -143,11 +146,11 @@ export const imageGenerateTool: Tool = {
       ? params.reference_urls.map(String).filter(Boolean).slice(0, 10)
       : [];
 
-    if (model === 'gpt-image-2' && aspectRatio === '21:9') {
+    if (model === 'gpt-image-2.5' && aspectRatio === '21:9') {
       return {
         success: false,
         output: '',
-        error: 'GPT Image 2 当前通道没有原生 21:9 尺寸。为避免静默生成成 16:9，请切换普通对话生图模型为“豆包 5 Pro”后重试。',
+        error: 'GPT Image 2.5 当前通道没有原生 21:9 尺寸。为避免静默生成成 16:9，请切换普通对话生图模型为“豆包 5 Pro”后重试。',
       };
     }
 

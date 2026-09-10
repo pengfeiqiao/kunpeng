@@ -8,7 +8,7 @@ const mj = getMidjourneyParameterDefaults();
 
 /** Presentation schemas only. Dedicated routes stay in canvasGen, not in the RH registry. */
 export const WORKSPACE_ENGINES: RhtvCanvasEngine[] = [
-  { id: 'gpt-image-2', label: 'GPT Image 2', endpoint: '', kind: 'image', mode: 'image-to-image',
+  { id: 'gpt-image-2.5', label: 'GPT Image 2.5', endpoint: '', kind: 'image', mode: 'image-to-image',
     imageParam: { key: 'imageUrls', multiple: true }, params: [
       { key: 'aspectRatio', label: '比例', type: 'list', default: '16:9', options: ratios },
       { key: 'resolution', label: '分辨率', type: 'list', default: '2k', options: ['1k', '2k', '4k'] },
@@ -32,8 +32,15 @@ export const WORKSPACE_ENGINES: RhtvCanvasEngine[] = [
   ...CANVAS_VIDEO_ENGINES,
 ];
 
+/** 旧引擎 id → 现役 id 的读取层别名（存量草稿/任务记录不改数据文件）。 */
+export function canonicalWorkspaceEngineId(id: string): string {
+  if (id === 'gpt-image-2' || id === 'gpt-image-2-i2i') return id === 'gpt-image-2' ? 'gpt-image-2.5' : 'gpt-image-2.5-i2i';
+  return id;
+}
+
 export function workspaceEngine(id: string): RhtvCanvasEngine | undefined {
-  const canonical = id === 'minimax-h3' ? 'minimax-hailuo-h3' : id === 'seedance-2.5' ? 'dreamina-seedance-2.5'
+  const canonical = canonicalWorkspaceEngineId(id) !== id ? canonicalWorkspaceEngineId(id)
+    : id === 'minimax-h3' ? 'minimax-hailuo-h3' : id === 'seedance-2.5' ? 'dreamina-seedance-2.5'
     : id === 'midjourney' ? 'midjourney-v8.2' : id.replace(/^midjourney-v(\d)(\d)$/, 'midjourney-v$1.$2');
   const engine = WORKSPACE_ENGINES.find((item) => item.id === canonical);
   // Keep a historical route alias intact; canvasGen already understands it.

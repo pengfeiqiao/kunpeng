@@ -4,7 +4,7 @@ import { stableProjectHash } from '../projectObjects/migrate.ts';
 import { buildImageRefPaths, buildVideoRefPaths, getSceneReferencePaths, videoPromptForShot } from '../workshop/shotRefs.ts';
 import type { RhtvCanvasEngine } from '../rhtv/types';
 import { calibrateGenerationForEngine } from '../projectObjects/generationDraft.ts';
-import { materializeWorkspaceDefaults } from './engineCatalog.ts';
+import { materializeWorkspaceDefaults, canonicalWorkspaceEngineId } from './engineCatalog.ts';
 import { workspaceTarget } from './targets.ts';
 import { projectWorkspacePrompt } from './draftProjection.ts';
 import { assetPromptField, readAssetPrompt, workspaceAsset } from './assetDraftModel.ts';
@@ -26,7 +26,7 @@ export function initialWorkspaceDraft(data: WorkshopData, objectId: string, outp
     if (!card) return null;
     const paths = getSceneReferencePaths(parentShot ?? { sceneId: parentScene?.id }, data.scenes);
     return materializeWorkspaceDefaults({ id: key, projectId: data.projectId, objectId, outputType, prompt: card.prompt ?? '',
-      engineId: 'gpt-image-2', params: { aspectRatio: '16:9', resolution: '2k' }, revision: 0, updatedAt: now,
+      engineId: 'gpt-image-2.5', params: { aspectRatio: '16:9', resolution: '2k' }, revision: 0, updatedAt: now,
       references: paths.map((path, index) => ({ id: `scene-ref:${index}:${path}`, type: 'image', path, label: `场景 ${index + 1}` })) });
   }
   const shot = owner.kind === 'shot' ? data.shots.find((item) => (item.id ?? item.shotNo) === owner.sourceId) : undefined;
@@ -55,7 +55,7 @@ export function initialWorkspaceDraft(data: WorkshopData, objectId: string, outp
     }
     return materializeWorkspaceDefaults(stored);
   }
-  const assetEngine = asset?.assetEngine ?? data.imageModel ?? data.projectSpec?.defaultImageModel ?? 'gpt-image-2';
+  const assetEngine = canonicalWorkspaceEngineId(asset?.assetEngine ?? data.imageModel ?? data.projectSpec?.defaultImageModel ?? 'gpt-image-2.5');
   const assetKind = owner.kind === 'scene-asset' ? 'colorPalette' : owner.kind;
   const prompt = shot ? outputType === 'video' ? videoPromptForShot(shot, ctx, {
     template: shot.videoPromptTemplate ?? data.videoPromptTemplate ?? 'legacy', includeStoryboardBoards: false,
@@ -83,7 +83,7 @@ export function saveWorkspaceDraft(data: WorkshopData, draft: WorkspaceDraft, ex
   const old = data.workspaceDrafts?.[draft.id];
   if (expectedRevision !== undefined && (old?.revision ?? 0) !== expectedRevision) return null;
   const target = draft.outputType === 'image' ? workspaceAsset(data, draft.objectId) : undefined;
-  const previousEngine = old?.engineId ?? target?.asset.assetEngine ?? data.imageModel ?? data.projectSpec?.defaultImageModel ?? 'gpt-image-2';
+  const previousEngine = old?.engineId ?? target?.asset.assetEngine ?? data.imageModel ?? data.projectSpec?.defaultImageModel ?? 'gpt-image-2.5';
   const previousPrompt = old?.prompt ?? (target ? readAssetPrompt(target.asset, assetPromptField(target.kind, previousEngine)) ?? '' : '');
   const switchedSlot = target && draft.prompt === previousPrompt
     && assetPromptField(target.kind, previousEngine) !== assetPromptField(target.kind, draft.engineId);

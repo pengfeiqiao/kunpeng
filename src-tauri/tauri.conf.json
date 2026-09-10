@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "鲲鹏",
-    "version": "2.9.30"
+    "version": "2.9.32"
   },
   "tauri": {
     "allowlist": {

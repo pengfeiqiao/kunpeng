@@ -352,7 +352,7 @@ export default function StepGenerate() {
             onChange={(e) => setImageModel(e.target.value)}
             className="h-9 w-full cursor-pointer rounded-lg border border-[var(--canvas-node-border)] bg-[var(--canvas-panel)] px-3 text-[11px] text-[var(--canvas-text-1)] outline-none transition-colors hover:border-[var(--canvas-node-border-selected)] focus:border-[var(--canvas-node-border-selected)]"
           >
-            <option value="">GPT-Image-2 智能通道（默认）</option>
+            <option value="">GPT-Image-2.5 智能通道（默认）</option>
             {customImageOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}

@@ -152,7 +152,7 @@ type SettingsSnapshot = ReturnType<typeof useSettingsStore.getState>;
 
 function buildComposerModelRules(settings: SettingsSnapshot): string {
   return `## 普通对话生成模型偏好
-- 生图默认模型：${settings.chatImageModel || 'gpt-image-2'}
+- 生图默认模型：${settings.chatImageModel || 'gpt-image-2.5'}
 - 生视频默认模型：${settings.chatVideoModel || 'seedance-2.0'}
 当用户在普通对话中要求生视频时，直接调用 video_generate；用户指定 MiniMax/H3/海螺 H3 时 engine=minimax-h3。不要切换到画布，不要创建画布节点，除非用户明确说“放到画布”或要求操作某个画布节点。普通 MG 动画使用 mg_generate_with_reference_boards，也不要求进入画布。
 当用户没有明确指定模型时，必须使用上述选择。用户明确指定、当前模型不支持任务，或路由失败时才改用其他模型，并说明原因。此偏好不覆盖画布节点、工坊镜头或剪辑时间线里已经保存的模型选择。`;
@@ -422,9 +422,9 @@ function buildImageApiContext(settings: ReturnType<typeof useSettingsStore.getSt
     return `${i + 1}. ${s.label}: provider=${s.provider || 'dmxapi'}${latStr}`;
   });
 
-  return `普通对话生图必须优先调用 image_generate 工具，禁止自己拼 API 请求或临时编写生图脚本。该工具会读取底部当前选择的 GPT Image 2 / 豆包 5 Pro，并自动完成多 API 降级、参考图压缩、比例到像素尺寸的转换和图片回传。
+  return `普通对话生图必须优先调用 image_generate 工具，禁止自己拼 API 请求或临时编写生图脚本。该工具会读取底部当前选择的 GPT Image 2.5 / 豆包 5 Pro，并自动完成多 API 降级、参考图压缩、比例到像素尺寸的转换和图片回传。
 
-  GPT Image 2 由「设置 → 图片模型」中的 API 槽位自动路由。
+  GPT Image 2.5 由「设置 → 图片模型」中的 API 槽位自动路由。「GPT 生图」指图像模型 gpt-image-2.5，与视频模型 Seedance 2.5 名称相似但完全不同，不要混淆。
 
   比例纪律：调用 image_generate 时必须传 aspect_ratio。用户明确说横版/竖版/方图或 16:9、9:16、1:1 等比例时严格照传；用户未指定才默认 16:9。禁止只把比例写进 prompt 而遗漏工具参数。
 
@@ -440,7 +440,7 @@ from image_client import ImageGenerationClient
 # 槽位配置（含 key）由鲲鹏写入此文件，不要把 key 打印到输出
 slots = json.load(open(os.path.expanduser('~/.kunpeng/image_api_slots.json')))
 client = ImageGenerationClient(api_slots=slots)
-result = client.generate(prompt='描述', output_path='/path/to/output.png', model='gpt-image-2', aspect_ratio='16:9', resolution='2k')
+result = client.generate(prompt='描述', output_path='/path/to/output.png', model='gpt-image-2.5', aspect_ratio='16:9', resolution='2k')
 result_pro = client.generate(prompt='描述', output_path='/path/to/seedream.png', model='seedream-v5-pro', aspect_ratio='16:9', resolution='2k')
 print(json.dumps({"success": result.success, "path": result.image_path, "model": result.model_used}, ensure_ascii=False))
 \`\`\`
@@ -452,13 +452,13 @@ ref_b64 = base64.b64encode(open('参考图.png', 'rb').read()).decode()
 result = client.generate(
     prompt='描述',
     output_path='/path/to/output.png',
-    model='gpt-image-2',  # 也可用 seedream-v5-pro；带图时务必传 reference_images，避免退化成文生图
+    model='gpt-image-2.5',  # 也可用 seedream-v5-pro；带图时务必传 reference_images，避免退化成文生图
     aspect_ratio='16:9',
     reference_images=[("ref", ref_b64)],  # 客户端会自动压缩到 1536px
 )
 \`\`\`
 
-支持模型：gpt-image-2（主力）、seedream-v5-pro（Seedream 5.0 Pro，DMXAPI / 即梦 CLI / RunningHub 智能路由；适合审美要求高的资产图/分镜图）。即梦 CLI 未登录时，系统会自动发起 Agent 登录恢复，不要把登录错误误判成提示词失败。
+支持模型：gpt-image-2.5（主力，GPT 生图图像模型）、seedream-v5-pro（Seedream 5.0 Pro，DMXAPI / 即梦 CLI / RunningHub 智能路由；适合审美要求高的资产图/分镜图）。即梦 CLI 未登录时，系统会自动发起 Agent 登录恢复，不要把登录错误误判成提示词失败。
 参考图会自动压缩到 1536px/85quality，避免几十兆原图拖慢上传，同时保留人物/场景参考细节。`;
 }
 

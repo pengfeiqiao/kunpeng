@@ -4,7 +4,7 @@ const BASE = '.kunpeng/aigc-memory';
 
 const DIRS = [
   'director-dna',
-  'prompt-templates/gpt-image-2',
+  'prompt-templates/gpt-image-2.5',
   'prompt-templates/seedance',
   'prompt-templates/kling',
   'shot-patterns',
@@ -54,7 +54,7 @@ created: 2026-05-16
 - 母题：时间流逝、记忆、孤独、错位
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "cinematic, film grain, anamorphic, warm tones, neon glow"
+- GPT-Image-2.5 prompt_suffix: "cinematic, film grain, anamorphic, warm tones, neon glow"
 - Seedance camera: "handheld slight sway", shutter: "slow"
 - Kling motion_tokens: "[motion: subtle handheld]"
 `],
@@ -95,7 +95,7 @@ created: 2026-05-16
 - 符号：红色（革命/激情）、色彩编码角色
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "epic cinematography, bold colors, symmetrical composition, cinematic lighting"
+- GPT-Image-2.5 prompt_suffix: "epic cinematography, bold colors, symmetrical composition, cinematic lighting"
 - Seedance camera: "slow crane up, wide shot"
 - Kling motion_tokens: "[motion: slow epic crane]"
 `],
@@ -136,7 +136,7 @@ created: 2026-05-16
 - 母题：权力、男性气概、历史荒诞
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "dutch angle, harsh lighting, high contrast, film grain, masculine energy"
+- GPT-Image-2.5 prompt_suffix: "dutch angle, harsh lighting, high contrast, film grain, masculine energy"
 - Seedance camera: "rapid whip pan", shutter: "fast"
 `],
 
@@ -176,7 +176,7 @@ created: 2026-05-16
 - 特色：用环境映射人物内心
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "natural lighting, earthy tones, poetic composition, cultural depth"
+- GPT-Image-2.5 prompt_suffix: "natural lighting, earthy tones, poetic composition, cultural depth"
 `],
 
   ['director-dna', 'jia-zhangke.md', `---
@@ -209,7 +209,7 @@ created: 2026-05-16
 - 特色：真实时间、日常细节、方言
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "documentary style, natural light, realistic, faded colors, observational"
+- GPT-Image-2.5 prompt_suffix: "documentary style, natural light, realistic, faded colors, observational"
 `],
 
   ['director-dna', 'ang-lee.md', `---
@@ -242,7 +242,7 @@ created: 2026-05-16
 - 特色：跨文化视角、细腻人物
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "masterful lighting, balanced composition, cinematic, elegant"
+- GPT-Image-2.5 prompt_suffix: "masterful lighting, balanced composition, cinematic, elegant"
 `],
 
   ['director-dna', 'christopher-nolan.md', `---
@@ -275,7 +275,7 @@ created: 2026-05-16
 - 特色：实际特效优先、实用场景
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "IMAX cinematography, high contrast, cool tones, practical effects, monumental scale"
+- GPT-Image-2.5 prompt_suffix: "IMAX cinematography, high contrast, cool tones, practical effects, monumental scale"
 - Seedance camera: "slow IMAX dolly", shutter: "fast"
 `],
 
@@ -309,7 +309,7 @@ created: 2026-05-16
 - 特色：冷幽默、面瘫表演
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "symmetrical composition, pastel colors, flat lighting, diorama style"
+- GPT-Image-2.5 prompt_suffix: "symmetrical composition, pastel colors, flat lighting, diorama style"
 - Seedance camera: "lateral tracking", shutter: "standard"
 `],
 
@@ -343,7 +343,7 @@ created: 2026-05-16
 - 特色：声音设计作为叙事工具
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "monumental scale, tiny figure, vast landscape, desaturated, atmospheric"
+- GPT-Image-2.5 prompt_suffix: "monumental scale, tiny figure, vast landscape, desaturated, atmospheric"
 - Seedance camera: "slow wide dolly", shutter: "slow"
 `],
 
@@ -377,7 +377,7 @@ created: 2026-05-16
 - 特色：冷感距离、上帝视角
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "one-point perspective, symmetrical, clinical lighting, wide angle, geometric"
+- GPT-Image-2.5 prompt_suffix: "one-point perspective, symmetrical, clinical lighting, wide angle, geometric"
 `],
 
   ['director-dna', 'ridley-scott.md', `---
@@ -405,7 +405,7 @@ created: 2026-05-16
 - 转场：叠化
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "smoky atmosphere, volumetric lighting, industrial, gritty texture, anamorphic"
+- GPT-Image-2.5 prompt_suffix: "smoky atmosphere, volumetric lighting, industrial, gritty texture, anamorphic"
 `],
 
   ['director-dna', 'david-fincher.md', `---
@@ -433,7 +433,7 @@ created: 2026-05-16
 - 转场：暗场、无痕过渡
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "low key, desaturated, teal-orange, controlled lighting, procedural"
+- GPT-Image-2.5 prompt_suffix: "low key, desaturated, teal-orange, controlled lighting, procedural"
 `],
 
   ['director-dna', 'quentin-tarantino.md', `---
@@ -461,7 +461,7 @@ created: 2026-05-16
 - 转场：急切、分屏
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "dutch angle, vibrant colors, trunk shot, cinematic"
+- GPT-Image-2.5 prompt_suffix: "dutch angle, vibrant colors, trunk shot, cinematic"
 `],
 
   ['director-dna', 'terrence-malick.md', `---
@@ -489,7 +489,7 @@ created: 2026-05-16
 - 转场：跳切、联想剪辑
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "golden hour, natural light, poetic, ethereal, transcendent"
+- GPT-Image-2.5 prompt_suffix: "golden hour, natural light, poetic, ethereal, transcendent"
 `],
 
   ['director-dna', 'alfonso-cuaron.md', `---
@@ -517,7 +517,7 @@ created: 2026-05-16
 - 转场：无痕（单镜头段落）
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "deep focus, long take composition, natural light, immersive"
+- GPT-Image-2.5 prompt_suffix: "deep focus, long take composition, natural light, immersive"
 `],
 
   ['director-dna', 'roger-deakins.md', `---
@@ -545,7 +545,7 @@ created: 2026-05-16
 - 转场：服务于叙事
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "masterful lighting, motivated light source, every frame a painting"
+- GPT-Image-2.5 prompt_suffix: "masterful lighting, motivated light source, every frame a painting"
 `],
 
   ['director-dna', 'steven-spielberg.md', `---
@@ -573,7 +573,7 @@ created: 2026-05-16
 - 转场：叠化、擦除
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "lens flare, backlight, wonder, emotional, deep focus, iconic framing"
+- GPT-Image-2.5 prompt_suffix: "lens flare, backlight, wonder, emotional, deep focus, iconic framing"
 `],
 
   ['director-dna', 'paul-thomas-anderson.md', `---
@@ -601,7 +601,7 @@ created: 2026-05-16
 - 转场：叠化、急转
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "california light, anamorphic, 1970s texture, ensemble staging"
+- GPT-Image-2.5 prompt_suffix: "california light, anamorphic, 1970s texture, ensemble staging"
 `],
 
   ['director-dna', 'park-chan-wook.md', `---
@@ -629,7 +629,7 @@ created: 2026-05-16
 - 转场：匹配剪辑、分屏
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "color coded, symmetrical, dramatic chiaroscuro, intense colors"
+- GPT-Image-2.5 prompt_suffix: "color coded, symmetrical, dramatic chiaroscuro, intense colors"
 `],
 
   ['director-dna', 'bong-joon-ho.md', `---
@@ -657,7 +657,7 @@ created: 2026-05-16
 - 转场：急转（喜剧→恐怖）
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "vertical composition, social realism, tonal contrast, spatial storytelling"
+- GPT-Image-2.5 prompt_suffix: "vertical composition, social realism, tonal contrast, spatial storytelling"
 `],
 
   ['director-dna', 'hayao-miyazaki.md', `---
@@ -685,7 +685,7 @@ created: 2026-05-16
 - 转场：叠化、 dissolve
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "Studio Ghibli style, watercolor skies, lush nature, whimsical, soft lighting"
+- GPT-Image-2.5 prompt_suffix: "Studio Ghibli style, watercolor skies, lush nature, whimsical, soft lighting"
 - Seedance camera: "floating follow", shutter: "standard"
 `],
 
@@ -714,7 +714,7 @@ created: 2026-05-16
 - 转场：叠化、光过渡
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "Makoto Shinkai style, hyper-realistic sky, god rays, cinematic lighting, anime"
+- GPT-Image-2.5 prompt_suffix: "Makoto Shinkai style, hyper-realistic sky, god rays, cinematic lighting, anime"
 - Seedance camera: "panning", shutter: "standard"
 `],
 
@@ -743,7 +743,7 @@ created: 2026-05-16
 - 转场：匹配剪辑（梦境↔现实无缝切换）
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "surreal, reality-bending, match cut, psychological, urban"
+- GPT-Image-2.5 prompt_suffix: "surreal, reality-bending, match cut, psychological, urban"
 `],
 
   ['director-dna', 'brad-bird.md', `---
@@ -771,7 +771,7 @@ created: 2026-05-16
 - 转场：动态过渡
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "Pixar style, cinematic animation, dynamic lighting, adventurous"
+- GPT-Image-2.5 prompt_suffix: "Pixar style, cinematic animation, dynamic lighting, adventurous"
 `],
 
   ['director-dna', 'guillermo-del-toro.md', `---
@@ -799,12 +799,12 @@ created: 2026-05-16
 - 转场：叠化、淡入
 
 ## 常用参数
-- GPT-Image-2 prompt_suffix: "warm amber, dark fantasy, creature texture, gothic, fairy tale lighting"
+- GPT-Image-2.5 prompt_suffix: "warm amber, dark fantasy, creature texture, gothic, fairy tale lighting"
 `],
 
-  // ── prompt-templates/gpt-image-2 ─────────────────────────────────────────
-  ['prompt-templates/gpt-image-2', 'storyboard-3x3.md', `---
-engine: gpt-image-2
+  // ── prompt-templates/gpt-image-2.5 ─────────────────────────────────────────
+  ['prompt-templates/gpt-image-2.5', 'storyboard-3x3.md', `---
+engine: gpt-image-2.5
 type: template
 version: 1
 tags: [storyboard, 3x3, grid]
@@ -823,8 +823,8 @@ tags: [storyboard, 3x3, grid]
 No watermark, no extra panels, consistent character design, {constraints}
 `],
 
-  ['prompt-templates/gpt-image-2', 'single-shot.md', `---
-engine: gpt-image-2
+  ['prompt-templates/gpt-image-2.5', 'single-shot.md', `---
+engine: gpt-image-2.5
 type: template
 version: 1
 tags: [single-shot]
@@ -847,8 +847,8 @@ tags: [single-shot]
 {constraints}
 `],
 
-  ['prompt-templates/gpt-image-2', 'character-sheet.md', `---
-engine: gpt-image-2
+  ['prompt-templates/gpt-image-2.5', 'character-sheet.md', `---
+engine: gpt-image-2.5
 type: template
 version: 1
 tags: [character, design]

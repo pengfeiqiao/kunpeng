@@ -60,14 +60,6 @@ export const CHANNEL_CATALOG: ChannelEntry[] = [
     needsKey: true,
   },
   {
-    id: 'aihubmix',
-    label: 'AiHubMix',
-    url: 'https://api.inferera.com',
-    purpose: '聚合中转。',
-    kind: 'image',
-    needsKey: true,
-  },
-  {
     id: 'zexapi',
     label: 'ZexAPI',
     url: 'https://zexapi.com',

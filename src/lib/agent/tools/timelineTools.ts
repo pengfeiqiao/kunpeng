@@ -3918,7 +3918,7 @@ const omniMgGenerateBatchTool: Tool = {
 const mgTextFallbackTool: Tool = {
   definition: {
     name: 'timeline_mg_text_fallback',
-    description: 'MG文字二次兜底生成工具（花钱）：当用户对已生成的 MG/视频不满意，或明确说“文字还是错/有错字/乱码/字幕不对/字不对”等返工关键词时使用。流程固定为先用 GPT-Image-2 生成文字定版图，再用筷子丽帧 Seedance 2.0 Mini 图生视频，完成后插入视频轨2覆盖对应时间段。不要继续调用 Omni。',
+    description: 'MG文字二次兜底生成工具（花钱）：当用户对已生成的 MG/视频不满意，或明确说“文字还是错/有错字/乱码/字幕不对/字不对”等返工关键词时使用。流程固定为先用 GPT-Image-2.5 生成文字定版图，再用筷子丽帧 Seedance 2.0 Mini 图生视频，完成后插入视频轨2覆盖对应时间段。不要继续调用 Omni。',
     parameters: {
       type: 'object',
       properties: {

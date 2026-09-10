@@ -431,7 +431,7 @@ export default function NodeInfoBar() {
   const [vVideoEdit, setVVideoEdit] = useState(false);
   const [vSeed, setVSeed] = useState('');
   // Image params
-  const [imgSource, setImgSource] = useState('gpt-image-2');
+  const [imgSource, setImgSource] = useState('gpt-image-2.5');
   const [imgRatio, setImgRatio] = useState('16:9');
   const [imgRes, setImgRes] = useState('2k');
   // V8.2 is the production default; V8.1 remains the RunningHub-first route.
@@ -468,8 +468,8 @@ export default function NodeInfoBar() {
   const estimateEngineId = isImageNode
     ? (imgSource === 'midjourney'
       ? `midjourney-${mjVersion}`
-      : imgSource === 'gpt-image-2'
-        ? 'gpt-image-2'
+      : imgSource === 'gpt-image-2.5'
+        ? 'gpt-image-2.5'
         : imgSource === 'seedream-v5-pro'
           ? 'seedream-v5-pro'
           : null) // 即梦走 Agent，无价表
@@ -508,7 +508,7 @@ export default function NodeInfoBar() {
       ? (mjVersion === 'v8.1' ? 'youchuan/text-to-image-v81' : null)
       : imgSource === 'dreamina'
           ? null // 即梦走 Agent，无 rhtv 估价
-          : null) // GPT-Image-2 走智能通道，单个供应商端点估价会误导
+          : null) // GPT-Image-2.5 走智能通道，单个供应商端点估价会误导
     : isVideoNode
       ? (vModel === 'seedance-2.5'
         ? null
@@ -590,7 +590,8 @@ export default function NodeInfoBar() {
     const desc = (data.description as string) || '';
     if (node.type === 'image') {
       setImagePrompt(desc);
-      if (data.imageModel) setImgSource(data.imageModel as string);
+      // 旧引擎 id 'gpt-image-2' 读取层别名到 'gpt-image-2.5'，不改节点数据
+      if (data.imageModel) setImgSource(data.imageModel === 'gpt-image-2' ? 'gpt-image-2.5' : data.imageModel as string);
       if (data.modelVersion) setMjVersion(normalizeMidjourneyVersion(data.modelVersion));
       if (typeof data.midjourneyStylize === 'number') setMjStylize(data.midjourneyStylize);
       if (typeof data.midjourneyChaos === 'number') setMjChaos(data.midjourneyChaos);
@@ -833,7 +834,7 @@ export default function NodeInfoBar() {
           ? 'seedream-v5-pro'
           : imgSource.startsWith('custom-media:')
             ? imgSource
-            : 'gpt-image-2';
+            : 'gpt-image-2.5';
       const result = await generateForNode({
         nodeId: node.id,
         engineId: imageEngineId,
@@ -1102,7 +1103,7 @@ export default function NodeInfoBar() {
               value={imgSource}
               onChange={setImgSource}
               options={[
-                { value: 'gpt-image-2', label: 'GPT-Image-2 智能通道' },
+                { value: 'gpt-image-2.5', label: 'GPT-Image-2.5 智能通道' },
                 { value: 'seedream-v5-pro', label: 'Seedream 5 Pro' },
                 { value: 'midjourney', label: 'Midjourney' },
                 { value: 'dreamina', label: '即梦' },
@@ -1294,7 +1295,7 @@ export default function NodeInfoBar() {
       const fullPrompt = `${prompt}，equirectangular 360 degree panorama, 2:1 aspect ratio, seamless left-right edges, 无接缝全景图, 球面投影`;
       const result = await generateForNode({
         nodeId: node.id,
-        engineId: 'gpt-image-2',
+        engineId: 'gpt-image-2.5',
         prompt: fullPrompt,
         params: { aspectRatio: '21:9', resolution: '2k' },
         overwrite: true,

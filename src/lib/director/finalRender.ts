@@ -9,7 +9,7 @@ import { spawnIsolatedCanvasOutput } from './export';
 import type { DirectorOrigin, DirectorSequenceShot } from './types';
 
 export interface FinalImageOptions {
-  engineId: 'gpt-image-2' | 'seedream-v5-pro';
+  engineId: 'gpt-image-2.5' | 'seedream-v5-pro';
   resolution: '1k' | '2k' | '4k';
   writeBack: boolean;
   placeOnCanvas: boolean;

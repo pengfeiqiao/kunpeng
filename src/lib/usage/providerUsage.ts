@@ -60,14 +60,6 @@ interface KuaiziBalanceResponse {
   trace_id?: string;
 }
 
-interface AiHubMixKeyBalanceResponse {
-  object?: string;
-  total_usage?: number;
-  error?: {
-    message?: string;
-  };
-}
-
 function trimBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
 }
@@ -303,54 +295,6 @@ async function queryKuaizi(key: string): Promise<MediaUsageSnapshot> {
   }
 }
 
-async function queryAiHubMix(slot: ImageApiSlot | undefined, apiKey: string): Promise<MediaUsageSnapshot> {
-  const configured = Boolean(apiKey);
-  const base: MediaUsageSnapshot = {
-    id: 'aihubmix',
-    name: 'Inferera / AiHubMix',
-    category: '图像',
-    configured,
-    status: configured ? 'error' : 'unconfigured',
-    detail: configured ? '正在读取当前生成 Key 的可用额度。' : '尚未配置 Inferera / AiHubMix 生图 Key。',
-    docsUrl: 'https://docs.aihubmix.com/cn/api/Cli',
-  };
-  if (!configured || !slot) return base;
-
-  const candidates = Array.from(new Set([
-    trimBaseUrl(slot.baseUrl || ''),
-    'https://api.inferera.com',
-    'https://aihubmix.com',
-  ].filter(Boolean)));
-  const errors: string[] = [];
-  for (const candidate of candidates) {
-    try {
-      const { status, data } = await getJson<AiHubMixKeyBalanceResponse>(
-        `${candidate}/dashboard/billing/remain`,
-        { Authorization: `Bearer ${apiKey}` },
-      );
-      if (status < 200 || status >= 300 || typeof data.total_usage !== 'number') {
-        errors.push(`${new URL(candidate).host}: ${data.error?.message || `HTTP ${status}`}`);
-        continue;
-      }
-      const unlimited = data.total_usage < 0;
-      return {
-        ...base,
-        status: 'available',
-        remaining: unlimited ? '无限额度' : `$${formatNumber(data.total_usage, 4) ?? '0'}`,
-        detail: unlimited ? '当前生成 Key 未设置额度上限' : '当前生成 Key 实时可用额度',
-        source: new URL(candidate).host,
-      };
-    } catch (error) {
-      errors.push(`${new URL(candidate).host}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  return {
-    ...base,
-    status: 'error',
-    detail: errors.length > 0 ? `查询失败：${errors[0]}` : '没有可用的余额查询地址。',
-  };
-}
-
 function staticSnapshot(
   id: string,
   name: string,
@@ -373,7 +317,6 @@ function staticSnapshot(
 export async function queryMediaUsage(): Promise<MediaUsageSnapshot[]> {
   const settings = useSettingsStore.getState();
   const dmxSlot = configuredImageSlot(settings, 'dmxapi');
-  const aihubSlot = configuredImageSlot(settings, 'aihubmix');
   const zexSlot = configuredImageSlot(settings, 'zexapi');
   const apimartBases = [
     settings.omniBaseUrl,
@@ -381,12 +324,12 @@ export async function queryMediaUsage(): Promise<MediaUsageSnapshot[]> {
     ...APIMART_BASE_URLS,
   ];
 
-  const [runninghub, apimart, dmx, kuaizi, aihubmix] = await Promise.all([
+  // AiHubMix 的 GPT 生图已下线，不再查询其余额。
+  const [runninghub, apimart, dmx, kuaizi] = await Promise.all([
     queryRunningHub(Boolean(resolveApiKey(settings, 'runninghub', settings.runninghubApiKey).trim())),
     queryApimart(resolveApiKey(settings, 'omniApimart', settings.omniApimartApiKey), apimartBases),
     queryDmx(dmxSlot, dmxSlot ? resolveSlotApiKey(settings, dmxSlot).trim() : ''),
     queryKuaizi(resolveApiKey(settings, 'kuaizi', settings.kuaiziApiKey)),
-    queryAiHubMix(aihubSlot, aihubSlot ? resolveSlotApiKey(settings, aihubSlot).trim() : ''),
   ]);
 
   return [
@@ -394,7 +337,6 @@ export async function queryMediaUsage(): Promise<MediaUsageSnapshot[]> {
     apimart,
     dmx,
     kuaizi,
-    aihubmix,
     staticSnapshot(
       'zexapi',
       'ZexAPI',

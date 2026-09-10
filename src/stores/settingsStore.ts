@@ -7,12 +7,11 @@ import { migrateLegacyCredentials, type Credential } from '@/lib/credentials';
 import type { ArkModelsCache } from '@/lib/channels/arkModels';
 import type { AgentMeta } from '@/types/agent';
 
-/** 生图 API 提供商 */
-export type ImageProvider = 'dmxapi' | 'aihubmix' | 'zexapi';
+/** 生图 API 提供商（AiHubMix 的 GPT 生图已下线，不再作为生图渠道提供） */
+export type ImageProvider = 'dmxapi' | 'zexapi';
 /** 固化的提供商信息 */
 export const IMAGE_PROVIDERS: Record<ImageProvider, { label: string; baseUrl: string }> = {
   dmxapi: { label: 'DMXAPI', baseUrl: 'https://www.dmxapi.cn' },
-  aihubmix: { label: 'AiHubMix', baseUrl: 'https://api.inferera.com' },
   zexapi: { label: 'ZexAPI', baseUrl: 'https://zexapi.com' },
 };
 
@@ -329,7 +328,7 @@ interface SettingsState {
 
   // Composer model preferences. These guide normal-chat generation tools;
   // canvas/workshop nodes keep their own per-node model settings.
-  chatImageModel: 'gpt-image-2' | 'seedream-v5-pro' | 'midjourney-v81' | 'midjourney-v82' | `custom-media:${string}`;
+  chatImageModel: 'gpt-image-2.5' | 'seedream-v5-pro' | 'midjourney-v81' | 'midjourney-v82' | `custom-media:${string}`;
   chatVideoModel: 'seedance-2.0' | 'seedance-2.0-fast' | 'seedance-2.0-mini' | 'seedance-2.5' | 'minimax-h3' | 'omni-mg-animation' | 'wan-3.0' | `custom-media:${string}`;
   setChatImageModel: (model: SettingsState['chatImageModel']) => void;
   setChatVideoModel: (model: SettingsState['chatVideoModel']) => void;
@@ -560,7 +559,7 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           workspaceAgentModels: { ...state.workspaceAgentModels, [scope]: selection },
         })),
-      chatImageModel: 'gpt-image-2',
+      chatImageModel: 'gpt-image-2.5',
       chatVideoModel: 'seedance-2.0',
       setChatImageModel: (chatImageModel) => set({ chatImageModel }),
       setChatVideoModel: (chatVideoModel) => set({ chatVideoModel }),
@@ -649,7 +648,7 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: LS_KEY,
       storage: createJSONStorage(() => hybridStateStorage),
-      version: 32,
+      version: 33,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Partial<SettingsState>;
         let result = { ...state } as any;
@@ -717,12 +716,15 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (version <= 11) {
           // v11 → v12: add provider field to imageApiSlots, fix baseUrl
+          // （'aihubmix' 曾是合法 provider；v33 起该渠道的 GPT 生图下线，槽位在 v33 迁移中丢弃）
           if (Array.isArray(result.imageApiSlots)) {
             result.imageApiSlots = result.imageApiSlots.map((s: any) => {
               if (s.provider) return s; // already migrated
-              let provider: ImageProvider = 'dmxapi';
+              let provider: 'dmxapi' | 'aihubmix' = 'dmxapi';
               if (s.baseUrl?.includes('aihubmix')) provider = 'aihubmix';
-              const info = IMAGE_PROVIDERS[provider];
+              const info = provider === 'aihubmix'
+                ? { label: 'AiHubMix', baseUrl: 'https://api.inferera.com' }
+                : IMAGE_PROVIDERS[provider];
               return { ...s, provider, baseUrl: info.baseUrl, label: s.label || info.label };
             });
           }
@@ -793,7 +795,7 @@ export const useSettingsStore = create<SettingsState>()(
         }
         if (version <= 22) delete result.lastContextMemoryPath;
         if (version <= 23) {
-          result.chatImageModel = result.chatImageModel ?? 'gpt-image-2';
+          result.chatImageModel = result.chatImageModel ?? 'gpt-image-2.5';
           result.chatVideoModel = result.chatVideoModel ?? 'seedance-2.0';
         }
         if (version <= 24) {
@@ -847,13 +849,28 @@ export const useSettingsStore = create<SettingsState>()(
           result.providerModels = result.providerModels ?? {};
           result.providerModels.deepseek = 'deepseek-v4-flash-vision-exp';
         }
+        if (version <= 32) {
+          // v32 → v33: GPT Image 2 → GPT Image 2.5。
+          // 1) 存量 chatImageModel 'gpt-image-2' 映射到新 id；
+          // 2) AiHubMix 的 GPT 生图下线，丢弃 aihubmix 生图槽位（不动凭证注册表里的 key 本身）。
+          if (result.chatImageModel === 'gpt-image-2') result.chatImageModel = 'gpt-image-2.5';
+          if (Array.isArray(result.imageApiSlots)) {
+            result.imageApiSlots = result.imageApiSlots.filter((s: any) => (
+              s.provider !== 'aihubmix'
+              && !String(s.baseUrl ?? '').includes('aihubmix.com')
+              && !String(s.baseUrl ?? '').includes('inferera.com')
+            ));
+          }
+        }
         // Tier 4 seeds (idempotent)
         result.arkModelsCache = result.arkModelsCache ?? null;
         result.outputStyle = result.outputStyle ?? 'default';
         result.notificationsEnabled = result.notificationsEnabled ?? true;
         result.webSearchEnabled = result.webSearchEnabled ?? false;
         result.deepseekEngine = result.deepseekEngine ?? 'harness';
-        result.chatImageModel = result.chatImageModel ?? 'gpt-image-2';
+        result.chatImageModel = result.chatImageModel === 'gpt-image-2'
+          ? 'gpt-image-2.5' // 旧 id 读取层别名（v33 迁移已覆盖，这里兜底）
+          : result.chatImageModel ?? 'gpt-image-2.5';
         result.chatVideoModel = result.chatVideoModel ?? 'seedance-2.0';
         result.wan3Channel = result.wan3Channel ?? 'auto';
         result.runninghubSite = result.runninghubSite ?? 'cn';

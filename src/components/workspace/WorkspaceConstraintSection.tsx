@@ -79,7 +79,7 @@ export default function WorkspaceConstraintSection(props: Props) {
           </div>
           {!cardDraft.references.length && <p className="workspace-muted">当前镜头暂无场景参考图</p>}
           <div className="workspace-constraint-controls">
-            <span className="workspace-muted">GPT Image 2 · 16:9 · 2K</span>
+            <span className="workspace-muted">GPT Image 2.5 · 16:9 · 2K</span>
             <button title="让助手修改约束卡提示词" aria-label="让助手修改约束卡提示词" onClick={() => {
               if (save(cardDraft)) props.onAddToChat(cardDraft.objectId);
             }}><MessageSquare size={14} />修改提示词</button>

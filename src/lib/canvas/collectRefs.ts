@@ -16,6 +16,7 @@ import { useCanvasStore } from '@/stores/canvasStore';
 import { getGroupImages } from '@/components/canvas/nodes/GroupNode';
 import { assetUrlToLocalPath } from '@/lib/canvas/imageSource';
 import {
+  explicitSelfImageSource,
   explicitSelfVideoSource,
 } from '@/lib/canvas/referencePolicy';
 
@@ -30,14 +31,17 @@ export function collectNodeReferences(nodeId: string, opts?: { extraTailImages?:
   });
 }
 
-/** 图片节点自动编辑参考：当前成图优先，其后才是外部连线参考。 */
+/**
+ * 图片节点隐式编辑源判定在 referencePolicy.explicitSelfImageSource（纯函数，已测）。
+ * 图片节点自动编辑参考：用户显式上传的当前图优先，其后才是外部连线参考；AI 产物不回灌。
+ */
 export function selfImageFallback(nodeId: string, collected: CollectedRefs): string[] {
   const { nodes } = useCanvasStore.getState();
   const self = nodes.find((n) => n.id === nodeId);
   if (!self || self.type !== 'image') return [];
   const d = (self?.data ?? {}) as Record<string, unknown>;
-  const current = (d.generatedImageUrl || d.referenceImage || d.localPath) as string | undefined;
-  const currentSubmit = current ? assetUrlToLocalPath(current) ?? current : '';
+  const source = explicitSelfImageSource(d);
+  const currentSubmit = source ? assetUrlToLocalPath(source) ?? source : '';
   return [...new Set([
     currentSubmit,
     ...collected.images.map((ref) => ref.submitUrl),

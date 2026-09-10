@@ -268,7 +268,7 @@ export const canvasUpdateNode: Tool = {
 - 用户明确选择的视频输入: {"generatedVideoUrl":"...","localPath":"/path/input.mp4","sourceVideoPath":"/path/input.mp4","mediaRole":"reference"}
 - 更新音频: {"audioUrl":"https://...","localPath":"/path/to/audio.mp3"}
 - 更新文本: {"description":"提示词","generatedContent":"生成的文字"}
-- 更新模型参数: {"imageModel":"gpt-image-2","aspectRatio":"16:9","resolution":"2k"}。
+- 更新模型参数: {"imageModel":"gpt-image-2.5","aspectRatio":"16:9","resolution":"2k"}。
 位置使用 canvas_set_node_position，尺寸使用 canvas_set_node_size，连线使用 canvas_connect/canvas_disconnect。`,
     parameters: {
       type: 'object',

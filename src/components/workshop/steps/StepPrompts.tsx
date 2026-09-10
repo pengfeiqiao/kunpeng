@@ -110,7 +110,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
   return results;
 }
 const STORYBOARD_ENGINES: readonly ImageEngineOption[] = [
-  { value: 'gpt-image-2', label: 'GPT', title: 'GPT-Image-2 智能通道生成故事板' },
+  { value: 'gpt-image-2.5', label: 'GPT', title: 'GPT-Image-2.5 智能通道生成故事板' },
   { value: 'seedream-v5-pro', label: '豆包', title: '豆包 Seedream 5.0 Pro 生成故事板' },
 ];
 
@@ -1580,7 +1580,7 @@ export function LegacyStoryboardModal({ shot, characters, scenes, props, colorPa
   const [directorCardPromptDraft, setDirectorCardPromptDraft] = useState('');
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [pendingStoryboardRef, setPendingStoryboardRef] = useState<{ path: string; title: string } | null>(null);
-  const [storyboardEngine, setStoryboardEngine] = useState<'gpt-image-2' | 'seedream-v5-pro'>('gpt-image-2');
+  const [storyboardEngine, setStoryboardEngine] = useState<'gpt-image-2.5' | 'seedream-v5-pro'>('gpt-image-2.5');
   const [storyboardRatio, setStoryboardRatio] = useState(shot.videoRatio || globalRatio || '16:9');
   const [storyboardResolution, setStoryboardResolution] = useState('2k');
   const writingInitialSig = useRef('');
@@ -1949,7 +1949,7 @@ export function LegacyStoryboardModal({ shot, characters, scenes, props, colorPa
 人物名称：${characterNames}。关键道具名称：${propNames}。人物和道具仅依据剧情关系以文字标签表达，没有传入人物图或道具图。
 画面左侧约 70% 是简洁灰白素模的透视空间走位图：人物必须是无五官、无发型、无服装细节的中性灰色人形占位模型，仅用姓名标签区分；道具只用简化几何体和名称标签，不渲染真实纹理；显示 2-4 个摄影机图标、镜头朝向和人物动线。画面右侧约 30% 是动作关系卡：只写短标签，说明人物起点、终点、视线、手部与关键道具关系、允许变化和禁止漂移项。不要生成具体演员面孔，不要生成古装或真实服装，不要把人物锁成僵硬精确姿势，不要做俯视平面图，不要复刻真实场景材质，不要出现长段文字。整体像专业电影预演部门的导演工作图，信息清楚、层级克制。`;
       const result = await runGeneration({
-        engineId: 'gpt-image-2',
+        engineId: 'gpt-image-2.5',
         prompt,
         referenceUrls: refs,
         params: { aspectRatio: '16:9', resolution: '2k' },
@@ -2418,7 +2418,7 @@ ${currentPrompts}
               engine={storyboardEngine}
               engineOptions={STORYBOARD_ENGINES}
               onEngineChange={(engine) => {
-                setStoryboardEngine(engine as 'gpt-image-2' | 'seedream-v5-pro');
+                setStoryboardEngine(engine as 'gpt-image-2.5' | 'seedream-v5-pro');
               }}
               ratio={storyboardRatio}
               ratioOptions={storyboardRatioOptions}
@@ -3164,7 +3164,7 @@ function DirectorConstraintSection({
       const refs = scenePaths.map((_, index) => `@图片${numToCn(index + 1)}`).join('、');
       const prompt = `为镜头 ${shot.shotNo} 生成一张 16:9 的专业导演约束卡。剧情画面：${shot.description}。场景：${scene?.name ?? '当前场景'}，仅用 ${refs} 理解建筑、家具、通道和空间轴线，忽略参考图中人物外观。人物：${characterNames}；道具：${propNames}。左侧为灰白素模透视走位图，用姓名和道具名短标签标记人物起点、终点、视线、动作关系与 2-4 个摄影机位置；右侧为简洁动作关系说明。人物只用无五官、无服装细节的中性占位模型，道具只用简化几何体。不要渲染真人、服装和材质，不要锁死肢体姿势，不要俯视平面图，不要长段文字。`;
       const result = await runGeneration({
-        engineId: 'gpt-image-2',
+        engineId: 'gpt-image-2.5',
         prompt,
         referenceUrls: scenePaths,
         params: { aspectRatio: '16:9', resolution: '2k' },

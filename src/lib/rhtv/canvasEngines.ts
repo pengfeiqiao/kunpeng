@@ -49,7 +49,7 @@ export const CANVAS_IMAGE_ENGINES: RhtvCanvasEngine[] = [
 ];
 
 // 图像工具：放大走 Topaz 专用端点（无 prompt，2026-08 实测仍可用，保留）；
-// 扩图/重绘/擦除/抠图用 gpt-image-2 图生图 + 指令模板（走生图 API 槽位）。
+// 扩图/重绘/擦除/抠图用 gpt-image-2.5 图生图 + 指令模板（走生图 API 槽位）。
 export const IMAGE_TOOL_ENGINE: RhtvCanvasEngine = {
   id: 'topaz-upscale',
   label: 'Topaz 放大',
@@ -396,7 +396,7 @@ export function resolveImageEngine(id: string, refCountOrHasReference: number | 
     const target = hasReference ? 'seedream-v5-pro-i2i' : 'seedream-v5-pro';
     return CANVAS_IMAGE_ENGINES.find((e) => e.id === target)!;
   }
-  // Retired overseas ids (gpt-image-2*, midjourney-v81*) fall through to the
+  // Retired overseas ids (gpt-image-2 旧别名、midjourney-v81*) fall through to the
   // default rather than crashing on a removed entry. Topaz upscale is back in
   // the table (2026-08 verified working) and resolves via findCanvasEngine.
   return findCanvasEngine(id) ?? CANVAS_IMAGE_ENGINES[0];

@@ -74,12 +74,19 @@ export const MINIMAX_H3_EXTRA_INPUT_IMAGE_CNY = 0.2;
 /**
  * DMXAPI 公示价（人民币，2026-09 采集）：
  * - doubao-seedream-5-0-pro-260628：1K ￥0.3、2K ￥0.6；输入图首免，超出每张 ￥0.02
- * - gpt-image-2-03：￥0.3/次
  */
 export const DMX_SEEDREAM_PRICE_CNY: Record<string, number> = { '1k': 0.3, '2k': 0.6 };
 export const DMX_SEEDREAM_DEFAULT_PRICE_CNY = 0.6;
 export const DMX_SEEDREAM_EXTRA_IMAGE_CNY = 0.02;
-export const DMX_GPT_IMAGE_PRICE_CNY = 0.3;
+/**
+ * DMXAPI gpt-image-2.5-flare 静态估算（2026-09 采集）：
+ * 该模型是分段计价（6.8 折后 输出 ¥148.92/M tokens、图片输入 ¥39.712/M、文本 ¥24.82/M），
+ * 无按次价。按 OpenAI 官方 token 数：high 质量 16:9 ≈ 1078 output tokens
+ * × ¥148.92/M ≈ ￥0.16/次。
+ */
+export const DMX_GPT_IMAGE_PRICE_CNY = 0.16;
+/** DMXAPI cheap 档 gpt-image-2.5-flare-cdx：固定 ￥0.25/次。 */
+export const DMX_GPT_IMAGE_CHEAP_PRICE_CNY = 0.25;
 
 /** 即梦 Seedance 2.5：499 元 / 15000 VIP 积分（2.5 无普通渠道）；单次扣减积分未知，不估金额。 */
 export const JIMENG_VIP_LABEL = '即梦 VIP 积分扣减（499元/15000积分）';

@@ -24,14 +24,14 @@ const GPT_IMAGE_2_RATIO_SIZES: Record<string, string> = {
   '3:4': '1152x1536',
   '4:5': '1024x1280',
   '5:4': '1280x1024',
-  // GPT Image 2 routes currently have no native 21:9 size. Use the widest
+  // GPT Image 2.5 routes currently have no native 21:9 size. Use the widest
   // supported landscape canvas and keep 21:9 composition inside the prompt.
   '21:9': '2048x1152',
   '1:1': '1024x1024',
 };
 
 /**
- * Resolve GPT Image 2's pixel size from the requested aspect ratio.
+ * Resolve GPT Image 2.5's pixel size from the requested aspect ratio.
  * `auto` means no explicit pixel size, so it must not override aspectRatio.
  */
 export function normalizeGptImage2Size(size?: string, aspectRatio?: string): string {

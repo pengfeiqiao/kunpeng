@@ -1,7 +1,7 @@
 /**
  * imageTools — one-click AI image operations for canvas nodes.
  * 放大 = Topaz 专用端点（RunningHub，2026-08 实测可用）；
- * 扩图/重绘/擦除/抠图 = instruction-based editing via gpt-image-2 i2i
+ * 扩图/重绘/擦除/抠图 = instruction-based editing via gpt-image-2.5 i2i
  * (生图 API 槽位通道)。
  * Every tool derives a NEW node (version-tree semantics, never overwrites).
  */
@@ -16,26 +16,26 @@ export interface ImageToolDef {
   label: string;
   /** Editable instruction prefilled into the derived node (except upscale). */
   instruction?: string;
-  engineId: 'topaz-upscale' | 'gpt-image-2';
+  engineId: 'topaz-upscale' | 'gpt-image-2.5';
   autoRun: boolean;
 }
 
 export const IMAGE_TOOLS: ImageToolDef[] = [
   { id: 'upscale', label: '高清放大', engineId: 'topaz-upscale', autoRun: true },
   {
-    id: 'expand', label: '智能扩图', engineId: 'gpt-image-2', autoRun: false,
+    id: 'expand', label: '智能扩图', engineId: 'gpt-image-2.5', autoRun: false,
     instruction: '将画面向四周智能扩展约 50%，新区域与原图风格、光线、纹理无缝衔接，原图内容保持完全不变。',
   },
   {
-    id: 'inpaint', label: '局部重绘', engineId: 'gpt-image-2', autoRun: false,
+    id: 'inpaint', label: '局部重绘', engineId: 'gpt-image-2.5', autoRun: false,
     instruction: '将画面中的【描述要改的部分】替换为【描述新内容】，其余区域保持与原图完全一致。',
   },
   {
-    id: 'erase', label: '擦除物体', engineId: 'gpt-image-2', autoRun: false,
+    id: 'erase', label: '擦除物体', engineId: 'gpt-image-2.5', autoRun: false,
     instruction: '移除画面中的【描述要移除的物体】，用与周围环境一致的背景自然填补，其余内容保持完全不变。',
   },
   {
-    id: 'matting', label: '抠图去底', engineId: 'gpt-image-2', autoRun: true,
+    id: 'matting', label: '抠图去底', engineId: 'gpt-image-2.5', autoRun: true,
     instruction: '精确抠出画面主体，背景替换为纯白色，主体边缘干净自然，保留毛发等细节。',
   },
 ];
@@ -63,7 +63,7 @@ export async function applyImageTool(sourceNodeId: string, tool: ImageToolDef): 
       description: tool.instruction ?? `${tool.label}`,
       generationMode: 'image-to-image',
       referenceImages: [{ url: srcUrl, name: tool.label }],
-      imageModel: tool.engineId === 'topaz-upscale' ? 'topaz-upscale' : 'gpt-image-2',
+      imageModel: tool.engineId === 'topaz-upscale' ? 'topaz-upscale' : 'gpt-image-2.5',
     },
   });
   store.onConnect({ source: sourceNodeId, target: newId, sourceHandle: null, targetHandle: null });

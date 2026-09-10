@@ -56,7 +56,7 @@ function PluginRow({ api, onChange, onRemove }: {
           value={api.modelId}
           onChange={(e) => onChange({ ...api, modelId: e.target.value })}
           className={inputCls}
-          placeholder="model_id，如 gpt-image-2 / wan3.0-video"
+          placeholder="model_id，如 gpt-image-2.5 / wan3.0-video"
         />
       </div>
       <div className="grid grid-cols-2 gap-2">

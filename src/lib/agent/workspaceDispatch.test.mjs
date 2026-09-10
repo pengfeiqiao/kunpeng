@@ -115,7 +115,7 @@ test('project shell/skill scripts use the same real DSH risk and confirmation pa
 function nativeGenerationFixture() {
   const submissions = [], files = [], canvasWrites = [];
   const modules = {
-    '@/stores/settingsStore': { useSettingsStore: { getState: () => ({ chatImageModel: 'gpt-image-2', chatVideoModel: 'seedance-2.0' }) } },
+    '@/stores/settingsStore': { useSettingsStore: { getState: () => ({ chatImageModel: 'gpt-image-2.5', chatVideoModel: 'seedance-2.0' }) } },
     '@/lib/imageGen/client': { generateImage: async (args) => { submissions.push({ type: 'image', args }); return { success: true, imagePath: '/fixture/image.png' }; } },
     '@/lib/agent/mediaInput': { loadMediaInput: async () => ({ dataUrl: 'data:image/png;base64,ZmFrZQ==', mediaType: 'image/png' }) },
     '@/lib/canvasGen': { runGeneration: async (args) => { submissions.push({ type: 'generation', args }); return { success: true, resultPaths: ['/fixture/output.mp4'] }; } },

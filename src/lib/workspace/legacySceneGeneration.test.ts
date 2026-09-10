@@ -9,7 +9,7 @@ import { saveWorkspaceDraft } from './drafts.ts';
 
 function fixture() {
   const migrated = migrateWorkshopProjectObjects({ ...emptyWorkshopData('variants'), scenes: [{ id: 'scene', name: 'S', description: '场景事实',
-    assetImagePath: '/base.png', assetPrompt: '同一间办公室', assetEngine: 'gpt-image-2', assetAspectRatio: '9:16' }] }, 1);
+    assetImagePath: '/base.png', assetPrompt: '同一间办公室', assetEngine: 'gpt-image-2.5', assetAspectRatio: '9:16' }] }, 1);
   migrated.projectSpec = { ...migrated.projectSpec!, generationConfirmation: 'always-confirm' };
   return migrated;
 }

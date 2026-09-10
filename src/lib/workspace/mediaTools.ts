@@ -16,13 +16,13 @@ export interface WorkspaceMediaTool {
 
 export const WORKSPACE_IMAGE_TOOLS: WorkspaceMediaTool[] = [
   { id: 'upscale', label: '高清放大', engineId: 'topaz-upscale', outputType: 'image', autoRun: true, instruction: 'upscale' },
-  { id: 'matting', label: '抠图去底', engineId: 'gpt-image-2', outputType: 'image', autoRun: true,
+  { id: 'matting', label: '抠图去底', engineId: 'gpt-image-2.5', outputType: 'image', autoRun: true,
     instruction: '精确抠出画面主体，背景替换为纯白色，主体边缘干净自然，保留毛发等细节。' },
-  { id: 'expand', label: '智能扩图', engineId: 'gpt-image-2', outputType: 'image', autoRun: false,
+  { id: 'expand', label: '智能扩图', engineId: 'gpt-image-2.5', outputType: 'image', autoRun: false,
     instruction: '将画面向四周智能扩展约 50%，新区域与原图风格、光线、纹理无缝衔接，原图内容保持完全不变。' },
-  { id: 'inpaint', label: '局部重绘', engineId: 'gpt-image-2', outputType: 'image', autoRun: false,
+  { id: 'inpaint', label: '局部重绘', engineId: 'gpt-image-2.5', outputType: 'image', autoRun: false,
     instruction: '将画面中的【描述要改的部分】替换为【描述新内容】，其余区域保持与原图完全一致。' },
-  { id: 'erase', label: '擦除物体', engineId: 'gpt-image-2', outputType: 'image', autoRun: false,
+  { id: 'erase', label: '擦除物体', engineId: 'gpt-image-2.5', outputType: 'image', autoRun: false,
     instruction: '移除画面中的【描述要移除的物体】，用与周围环境一致的背景自然填补，其余内容保持完全不变。' },
 ];
 

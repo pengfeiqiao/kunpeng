@@ -2,7 +2,7 @@
  * MultiImageMarker — LibTV-style "标记" cross-image element fusion.
  * Select 2-3 image nodes → right-click "标记融合" → draw one rectangle per
  * image to mark the element to take → elements are cropped client-side and
- * fed as references to gpt-image-2 with an auto-built fusion prompt.
+ * fed as references to gpt-image-2.5 with an auto-built fusion prompt.
  */
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -109,11 +109,11 @@ export default function MultiImageMarker({ images, onClose }: {
       store.setSelectedNodeId(newId);
       onClose();
 
-      // 3) Fuse via gpt-image-2 with cropped elements as references
+      // 3) Fuse via gpt-image-2.5 with cropped elements as references
       const refLabels = cropPaths.map((_, i) => `@图片${i + 1}`).join('、');
       await generateForNode({
         nodeId: newId,
-        engineId: 'gpt-image-2',
+        engineId: 'gpt-image-2.5',
         prompt: `融合 ${refLabels} 中的元素：${prompt}`,
         referenceUrls: cropPaths,
         overwrite: true,

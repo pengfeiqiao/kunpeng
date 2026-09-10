@@ -91,7 +91,7 @@ function testChannelKey(state: SettingsSnapshot, channelId: string, key: string)
 
 /** 自定义渠道 baseUrl → 内置 provider 类型推断（与 settingsStore v12 迁移同一套规则）。 */
 function inferImageProvider(baseUrl: string): ImageProvider {
-  if (baseUrl.includes('aihubmix') || baseUrl.includes('inferera')) return 'aihubmix';
+  // AiHubMix（aihubmix/inferera）GPT 生图已下线，自定义渠道不再映射到该 provider。
   if (baseUrl.includes('zexapi')) return 'zexapi';
   return 'dmxapi';
 }

@@ -43,7 +43,7 @@ export const canvasGenerateTool: Tool = {
     name: 'canvas_generate',
     description:
       '在画布节点上执行 AI 生成。'
-      + '图片引擎: gpt-image-2（自动区分文生图/图生图，由「设置 → 图片模型」中的 API 槽位路由）、seedream-v5-pro（必须是 Seedream 5.0 Pro，支持文生/图生、多参考图，走 DMX/即梦 CLI/RunningHub 智能路由；即梦未登录时会自动唤起 Agent 登录恢复）、midjourney-v81（统一走 APIMart，返回4张；可在 params.version 传 v8.2/v8.1/v7/v6.1/v5.2/v5.1/niji7/niji6）。'
+      + '图片引擎: gpt-image-2.5（GPT 生图，图像模型，自动区分文生图/图生图，由「设置 → 图片模型」中的 API 槽位路由；勿与视频模型 Seedance 2.5 混淆）、seedream-v5-pro（必须是 Seedream 5.0 Pro，支持文生/图生、多参考图，走 DMX/即梦 CLI/RunningHub 智能路由；即梦未登录时会自动唤起 Agent 登录恢复）、midjourney-v81（统一走 APIMart，返回4张；可在 params.version 传 v8.2/v8.1/v7/v6.1/v5.2/v5.1/niji7/niji6）。'
       + '视频引擎: seedance-2.0（多模态，必须传参考图，提示词须遵守 ~/.kunpeng/aigc-memory/prompt-templates/seedance/README.md）、'
       + 'seedance-2.0-t2v（无参考图时用）、seedance-2.0-fast、'
       + 'seedance-2.5（多模态，别名 dreamina-seedance-2.5；默认走筷子丽帧通道，失败才降级即梦 CLI；支持图片≤30、视频≤10、音频≤10，总素材≤50，480p/720p，时长 4-30 秒；提交前应按官方 2.5 结构改写提示词，并严格按实际素材顺序使用 @图片N/@视频N/@音频N）、'
@@ -339,7 +339,7 @@ export const canvasGenerateTool: Tool = {
         if (referenceUrls.length > 0) {
           collectedNote = collected.images.length > 0
             ? `（自动并入节点已挂载的 ${referenceUrls.length} 张参考图）`
-            : '（自动以节点当前图片作为第一参考图进行修改）';
+            : '（自动以节点上用户上传的图片作为第一参考图进行修改）';
         }
       } else if (collected.images.length > 0 && referenceUrls.length === 0) {
         referenceUrls = collected.images.map((r) => r.submitUrl);
@@ -684,7 +684,7 @@ export const mgTextFallbackGenerateTool: Tool = {
     name: 'mg_text_fallback_generate',
     description:
       'MG/视频文字错误二次兜底生成工具（花钱）。当用户说“不满意、文字还是错、有错字、乱码、字幕不对、字不对”等返工关键词时使用。'
-      + '流程固定为 GPT-Image-2 先生成文字定版图，再调用筷子丽帧 Seedance 2.0 Mini 图生视频。'
+      + '流程固定为 GPT-Image-2.5 先生成文字定版图，再调用筷子丽帧 Seedance 2.0 Mini 图生视频。'
       + '在剪辑视图优先使用 timeline_mg_text_fallback；在画布或普通聊天中使用本工具。有 node_id 时会回填该视频/MG节点；无 node_id 时只生成并返回视频路径。',
     parameters: {
       type: 'object',

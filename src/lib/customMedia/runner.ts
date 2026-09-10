@@ -51,8 +51,8 @@ export function resetCustomMediaSelections(pluginId: string): string[] {
   const engineId = `${CUSTOM_MEDIA_ENGINE_PREFIX}${pluginId}`;
   const reset: string[] = [];
   if (s.chatImageModel === engineId) {
-    s.setChatImageModel('gpt-image-2');
-    reset.push('普通对话生图模型已重置为 GPT Image 2');
+    s.setChatImageModel('gpt-image-2.5');
+    reset.push('普通对话生图模型已重置为 GPT Image 2.5');
   }
   if (s.chatVideoModel === engineId) {
     s.setChatVideoModel('seedance-2.0');

@@ -1,10 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  explicitSelfImageSource,
   explicitSelfVideoSource,
   isNonReferenceEdgeData,
   migrateLegacyVideoNodeReferences,
 } from './referencePolicy.ts';
+
+test('generated image outputs are never implicit self references（防重 roll 自吞）', () => {
+  // AI 产物：generatedImageUrl/localPath 无上传标记 → 不回灌
+  assert.equal(explicitSelfImageSource({
+    generatedImageUrl: 'asset://localhost/output.png',
+    localPath: '/output/result.png',
+  }), '');
+  assert.equal(explicitSelfImageSource({
+    generatedImageUrl: 'asset://localhost/output.png',
+    isUploadedImage: false,
+  }), '');
+  assert.equal(explicitSelfImageSource({}), '');
+});
+
+test('explicit user-placed images remain available for image editing', () => {
+  // 上传源字段 referenceImage 优先
+  assert.equal(explicitSelfImageSource({
+    isUploadedImage: true,
+    referenceImage: 'asset://localhost/upload.png',
+    generatedImageUrl: 'asset://localhost/old-product.png',
+  }), 'asset://localhost/upload.png');
+  // 上传落在 generatedImageUrl/localPath 的旧节点（ImageNode 上传路径）也认
+  assert.equal(explicitSelfImageSource({
+    isUploadedImage: true,
+    generatedImageUrl: 'asset://localhost/upload.png',
+    localPath: '/Users/demo/upload.png',
+  }), 'asset://localhost/upload.png');
+});
 
 test('generated video outputs are never implicit self references', () => {
   assert.equal(explicitSelfVideoSource({

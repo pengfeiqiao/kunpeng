@@ -62,7 +62,7 @@ test('isArkCatalogModelId 只认 seedance/seedream 族目录 ID', () => {
   assert.ok(isArkCatalogModelId('doubao-seedance-2-0-260128'));
   assert.ok(isArkCatalogModelId('doubao-seedream-5-0-260128'));
   assert.ok(!isArkCatalogModelId('ep-20260101-xxxxx')); // 用户自建接入点不属于目录同步范围
-  assert.ok(!isArkCatalogModelId('gpt-image-2'));
+  assert.ok(!isArkCatalogModelId('gpt-image-2.5'));
 });
 
 test('mergeArkModels：缓存在前、静态注册表去重补后', () => {

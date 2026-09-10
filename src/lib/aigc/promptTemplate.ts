@@ -48,11 +48,11 @@ export function renderTemplateString(
  * Select the prompt formula for a given engine and inject director DNA.
  * Returns a human-readable guidance string for the agent/system prompt.
  */
-export function getEngineFormula(engine: 'gpt-image-2' | 'seedream-v5-pro' | 'seedance' | 'kling' | 'midjourney'): string {
+export function getEngineFormula(engine: 'gpt-image-2.5' | 'seedream-v5-pro' | 'seedance' | 'kling' | 'midjourney'): string {
   switch (engine) {
-    case 'gpt-image-2':
+    case 'gpt-image-2.5':
     case 'seedream-v5-pro':
-      return `GPT-Image-2 提示词公式：用途 + 主体 + 版式 + 风格 + 细节 + 文字 + 约束
+      return `GPT-Image-2.5 提示词公式：用途 + 主体 + 版式 + 风格 + 细节 + 文字 + 约束
 - 视觉风格放开头
 - 字面文字用引号包裹
 - 结构化段落式写法`;

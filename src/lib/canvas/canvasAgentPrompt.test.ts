@@ -19,7 +19,7 @@ test('image actions preserve explicit legacy engine, MJ parameters, and original
   assert.ok(prompt.includes('保留主体和九宫格\n参考图片: /reference.png'));
   for (const param of ['engine="midjourney-v81"', '"aspectRatio":"3:2"', '"stylize":200', '"chaos":12', '"raw":true', '"weird":30']) assert.ok(prompt.includes(param));
   const variant = await buildCanvasActionPrompt(node({ referenceImage: 'asset://source.png', imageModel: 'midjourney' }), { action: 'ai-image-to-image', nodeId: 'N' });
-  assert.ok(variant.includes('engine="gpt-image-2"'));
+  assert.ok(variant.includes('engine="gpt-image-2.5"'));
   assert.ok(variant.includes('reference_urls=["asset://source.png"]'));
 });
 

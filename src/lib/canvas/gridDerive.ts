@@ -1,6 +1,6 @@
 /**
  * gridDerive — one-click story-derivation grids (LibTV "/" 功能逆向).
- * Pattern: spawn target node → connect → generateForNode (gpt-image-2,
+ * Pattern: spawn target node → connect → generateForNode (gpt-image-2.5,
  * grid prompt, source as @图片1) → on success splitAll() explodes the grid
  * into labeled child nodes.
  */
@@ -56,7 +56,7 @@ async function runGridDerive(
 
   const result = await generateForNode({
     nodeId: gridNodeId,
-    engineId: 'gpt-image-2', // MJ 返回 4 张变体，不适合宫格 —— 锁定 GPT
+    engineId: 'gpt-image-2.5', // MJ 返回 4 张变体，不适合宫格 —— 锁定 GPT
     prompt,
     referenceUrls: [srcUrl],
     params: { aspectRatio: '1:1', resolution: '2k' },
@@ -133,7 +133,7 @@ export async function deriveSingle(sourceNodeId: string, direction: 'before' | '
   if (!nodeId) return;
   await generateForNode({
     nodeId,
-    engineId: 'gpt-image-2',
+    engineId: 'gpt-image-2.5',
     prompt,
     referenceUrls: [srcUrl],
     overwrite: true,

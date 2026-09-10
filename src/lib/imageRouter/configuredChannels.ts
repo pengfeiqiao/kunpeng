@@ -6,7 +6,7 @@ import {
   type CredentialHostState,
 } from '../credentials.ts';
 
-export type CompatibleImageProvider = 'dmxapi' | 'aihubmix' | 'zexapi';
+export type CompatibleImageProvider = 'dmxapi' | 'zexapi';
 
 export interface ConfiguredImageSlot {
   id: string;
@@ -29,7 +29,6 @@ export interface ImageChannelSettings extends CredentialHostState {
 
 const PROVIDER_DEFAULTS: Record<CompatibleImageProvider, { label: string; baseUrl: string }> = {
   dmxapi: { label: 'DMXAPI', baseUrl: 'https://www.dmxapi.cn' },
-  aihubmix: { label: 'AiHubMix', baseUrl: 'https://api.inferera.com' },
   zexapi: { label: 'ZexAPI', baseUrl: 'https://zexapi.com' },
 };
 
@@ -46,8 +45,7 @@ function hostname(value: string | undefined): string {
 export function imageProviderForBaseUrl(value: string | undefined): CompatibleImageProvider | undefined {
   const host = hostname(value);
   if (host === 'dmxapi.cn' || host.endsWith('.dmxapi.cn')) return 'dmxapi';
-  if (host === 'aihubmix.com' || host.endsWith('.aihubmix.com')) return 'aihubmix';
-  if (host === 'inferera.com' || host.endsWith('.inferera.com')) return 'aihubmix';
+  // AiHubMix（aihubmix.com / inferera.com）GPT 生图已下线：不再识别为可用生图渠道。
   if (host === 'zexapi.com' || host.endsWith('.zexapi.com')) return 'zexapi';
   return undefined;
 }
@@ -75,6 +73,8 @@ export function discoverConfiguredImageSlots(state: ImageChannelSettings): Confi
   const resolved: ConfiguredImageSlot[] = [];
 
   for (const slot of explicitSlots) {
+    // AiHubMix 的 GPT 生图已下线：存量 aihubmix 槽位不再参与路由（v33 迁移也会丢弃）。
+    if ((slot.provider as string) === 'aihubmix') continue;
     const provider = slot.provider ?? imageProviderForBaseUrl(slot.baseUrl);
     if (!provider) continue;
     explicitProviders.add(provider);
@@ -114,7 +114,7 @@ export function discoverConfiguredImageSlots(state: ImageChannelSettings): Confi
       credentialId: credential?.id,
       enabled: true,
       priority: 100 + resolved.length,
-      tier: provider === 'aihubmix' ? 'standard' : 'cheap',
+      tier: 'cheap',
     });
   }
 

@@ -63,7 +63,7 @@ test('original workshop editing actions publish shared drafts and native project
     () => f.store.getState().setAssetPrompt('character', 'c', '新资产提示词'),
     () => f.store.getState().setAssetResolution('character', 'c', '4k'),
     () => f.store.getState().setAssetAspectRatio('character', 'c', '9:16'),
-    () => f.store.getState().setAssetEngine('character', 'c', 'gpt-image-2'),
+    () => f.store.getState().setAssetEngine('character', 'c', 'gpt-image-2.5'),
     () => f.store.getState().setVideoRatio('9:16'),
     () => f.store.getState().setVideoModel('seedance-2.5'),
     () => f.store.getState().setVideoPromptTemplate('universal'),

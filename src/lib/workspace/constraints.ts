@@ -69,7 +69,7 @@ export function constraintGenerationDraft(data: WorkshopData, objectId: string, 
   const scenePaths = getSceneReferencePaths(shot, data.scenes);
   const names = shot.characterIds.map((id) => data.characters.find((item) => item.id === id)?.name).filter(Boolean).join('、');
   const props = (shot.propIds ?? []).map((id) => data.props.find((item) => item.id === id)?.name).filter(Boolean).join('、');
-  return { id, objectId: cardObjectId, projectId: data.projectId, outputType: 'image', engineId: 'gpt-image-2',
+  return { id, objectId: cardObjectId, projectId: data.projectId, outputType: 'image', engineId: 'gpt-image-2.5',
     prompt: previous?.prompt ?? card.prompt ?? `为镜头 ${shot.shotNo} 生成专业导演约束卡。剧情：${shot.description}。场景：${scene?.name ?? '当前场景'}。人物：${names || '无明确人物'}；道具：${props || '无关键道具'}。参考图片仅用于理解建筑、家具、通道与空间轴线，忽略其中人物外观。左侧为灰白素模透视空间走位图，姓名、道具名、视线箭头和2-4个摄影机图标；右侧为简洁动作关系卡。人物用无五官、无服装细节的中性占位，不锁死肢体姿势，保留剧情里的手持物与动作。不要正交俯视图，不要渲染真人或服装，不要长段文字。`,
     references: scenePaths.map((path, index) => ({ id: `scene-ref:${index}:${path}`, type: 'image', path, label: `场景 ${index + 1}` })),
     params: { aspectRatio: '16:9', resolution: '2k' }, revision: previous?.revision ?? 0, updatedAt: previous?.updatedAt ?? Date.now() };
