@@ -16,10 +16,12 @@ import { parseApimartTask, apimartError } from '@/lib/apimart/contracts';
 import {
   buildCustomImagePayload,
   buildCustomVideoPayload,
+  buildPixhubImagePayload,
   customSubmitPath,
-  customTaskPath,
+  customQueryPath,
   normalizeCustomBaseUrl,
   parseCustomTaskId,
+
   parseOpenaiImagesResponse,
 } from './payload.ts';
 
@@ -67,6 +69,11 @@ function requireCustomKey(api: CustomMediaApi): string {
   return key;
 }
 
+function customAuthHeaders(api: CustomMediaApi, key: string): Record<string, string> {
+  void api;
+  return { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+}
+
 export class CustomMediaTaskFailedError extends Error {
   constructor(message: string) {
     super(message);
@@ -81,7 +88,7 @@ async function customSubmit(api: CustomMediaApi, payload: Record<string, unknown
   try {
     res = await tauriFetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      headers: customAuthHeaders(api, key),
       body: Body.json(payload),
       responseType: ResponseType.JSON,
       timeout: 180,
@@ -98,7 +105,7 @@ async function customSubmit(api: CustomMediaApi, payload: Record<string, unknown
     if (isAmbiguousPaidSubmitStatus(res.status)) throw new PaidSubmissionUnknownError(api.label, detail);
     throw new Error(`${api.label} 提交失败：${detail}`);
   }
-  if (api.protocol === 'openai-images') return { sync: res.data as Record<string, unknown> };
+  if (api.protocol === 'openai-images' || api.protocol === 'pixhub-gpt-image') return { sync: res.data as Record<string, unknown> };
   const taskId = parseCustomTaskId(res.data);
   if (!taskId) {
     throw new PaidSubmissionUnknownError(api.label, `成功响应没有 task_id：${JSON.stringify(res.data).slice(0, 300)}`);
@@ -114,7 +121,7 @@ export async function customQueryTask(
 ): Promise<{ status: 'pending' | 'running' | 'succeeded' | 'failed'; urls: string[]; progress?: number; error?: string }> {
   const key = requireCustomKey(api);
   const base = normalizeCustomBaseUrl(api.baseUrl);
-  const res = await tauriFetch(`${base}${customTaskPath(taskId)}`, {
+  const res = await tauriFetch(`${base}${customQueryPath(api, taskId)}`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${key}` },
     responseType: ResponseType.JSON,
@@ -196,7 +203,9 @@ export async function runCustomMediaApi(req: CustomMediaRunRequest): Promise<Cus
     audioUrls.push(await resolveApimartPublicMedia(ref, imageUrls.length + videoUrls.length + audioUrls.length, () => {}));
   }
 
-  const payload = api.kind === 'video'
+  const payload = api.protocol === 'pixhub-gpt-image'
+      ? buildPixhubImagePayload({ prompt: req.prompt, quality: typeof req.params?.quality === 'string' ? req.params.quality : undefined, size: typeof req.params?.size === 'string' ? req.params.size : undefined, responseFormat: typeof req.params?.response_format === 'string' ? req.params.response_format : undefined }, api.modelId || 'gpt-image-2.5')
+    : api.kind === 'video'
     ? buildCustomVideoPayload(api, {
         prompt: req.prompt,
         imageUrls,
@@ -219,7 +228,7 @@ export async function runCustomMediaApi(req: CustomMediaRunRequest): Promise<Cus
 
   let urls: string[];
   let providerTaskId: string | undefined;
-  if (api.protocol === 'openai-images') {
+  if (api.protocol === 'openai-images' || api.protocol === 'pixhub-gpt-image') {
     const parsed = parseOpenaiImagesResponse(submitted.sync);
     if (parsed.b64) {
       const { writeBinaryFile } = await import('@tauri-apps/api/fs');

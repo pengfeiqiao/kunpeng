@@ -50,6 +50,8 @@ export interface ImageApiSlot {
  *
  * 协议：
  * - openai-images：POST {baseUrl}/v1/images/generations 同步返回 b64/url（OpenAI Images 兼容）
+ * - pixhub-gpt-image：Pixhub GPT Image 2.5 OpenAI 兼容图片接口
+ * - MiniMax H3 不直接暴露 ComfyUI 协议；通过项目内 Python 适配服务接入 apimart-async
  * - apimart-async：POST {baseUrl}/v1/{images|videos}/generations 拿 task_id，
  *   轮询 GET {baseUrl}/v1/tasks/{task_id}（APIMart/aggregator 通用异步任务协议）
  */
@@ -63,7 +65,7 @@ export interface CustomMediaApi {
   apiKey: string;
   /** 引用凭证注册表（settingsStore.credentials）中的凭证；读取时优先于 apiKey。 */
   credentialId?: string;
-  protocol: 'openai-images' | 'apimart-async';
+  protocol: 'openai-images' | 'pixhub-gpt-image' | 'apimart-async';
   enabled: boolean;
 }
 
