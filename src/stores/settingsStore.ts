@@ -4,6 +4,7 @@ import { readTextFile, exists, BaseDirectory } from '@tauri-apps/api/fs';
 import { invoke } from '@tauri-apps/api/tauri';
 import { safeLocalStorage } from '@/lib/safeStorage';
 import { migrateLegacyCredentials, type Credential } from '@/lib/credentials';
+import { migrateStoredProtocols, type CustomMediaProtocol } from '@/lib/customMedia/protocols';
 import type { ArkModelsCache } from '@/lib/channels/arkModels';
 import type { AgentMeta } from '@/types/agent';
 
@@ -50,10 +51,11 @@ export interface ImageApiSlot {
  *
  * 协议：
  * - openai-images：POST {baseUrl}/v1/images/generations 同步返回 b64/url（OpenAI Images 兼容）
- * - pixhub-gpt-image：Pixhub GPT Image 2.5 OpenAI 兼容图片接口
- * - MiniMax H3 不直接暴露 ComfyUI 协议；通过项目内 Python 适配服务接入 apimart-async
  * - apimart-async：POST {baseUrl}/v1/{images|videos}/generations 拿 task_id，
  *   轮询 GET {baseUrl}/v1/tasks/{task_id}（APIMart/aggregator 通用异步任务协议）
+ *
+ * 供应商私有协议不在此列：MiniMax H3 的 ComfyUI 工作流、Pixhub 的 generations/edits
+ * 拆分与 multipart，都由项目内 Python 适配服务转换后以标准协议暴露。
  */
 export interface CustomMediaApi {
   id: string;
@@ -65,7 +67,7 @@ export interface CustomMediaApi {
   apiKey: string;
   /** 引用凭证注册表（settingsStore.credentials）中的凭证；读取时优先于 apiKey。 */
   credentialId?: string;
-  protocol: 'openai-images' | 'pixhub-gpt-image' | 'apimart-async';
+  protocol: CustomMediaProtocol;
   enabled: boolean;
 }
 
@@ -650,7 +652,7 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: LS_KEY,
       storage: createJSONStorage(() => hybridStateStorage),
-      version: 33,
+      version: 34,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Partial<SettingsState>;
         let result = { ...state } as any;
@@ -862,6 +864,14 @@ export const useSettingsStore = create<SettingsState>()(
               && !String(s.baseUrl ?? '').includes('aihubmix.com')
               && !String(s.baseUrl ?? '').includes('inferera.com')
             ));
+          }
+        }
+        if (version <= 33) {
+          // v33 → v34: 供应商私有协议一律收口到项目内 Python 适配服务，前端只保留标准协议。
+          // pixhub-gpt-image → openai-images（脚本 scripts/pixhub_images_proxy.py 接 Pixhub）；
+          // minimax-comfyui  → apimart-async（脚本 scripts/minimax_comfyui_proxy.py 接 AutoDL）。
+          if (Array.isArray(result.customMediaApis)) {
+            result.customMediaApis = migrateStoredProtocols(result.customMediaApis as { protocol: string }[]);
           }
         }
         // Tier 4 seeds (idempotent)

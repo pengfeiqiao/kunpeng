@@ -16,12 +16,10 @@ import { parseApimartTask, apimartError } from '@/lib/apimart/contracts';
 import {
   buildCustomImagePayload,
   buildCustomVideoPayload,
-  buildPixhubImagePayload,
   customSubmitPath,
   customQueryPath,
   normalizeCustomBaseUrl,
   parseCustomTaskId,
-
   parseOpenaiImagesResponse,
 } from './payload.ts';
 
@@ -105,7 +103,7 @@ async function customSubmit(api: CustomMediaApi, payload: Record<string, unknown
     if (isAmbiguousPaidSubmitStatus(res.status)) throw new PaidSubmissionUnknownError(api.label, detail);
     throw new Error(`${api.label} 提交失败：${detail}`);
   }
-  if (api.protocol === 'openai-images' || api.protocol === 'pixhub-gpt-image') return { sync: res.data as Record<string, unknown> };
+  if (api.protocol === 'openai-images') return { sync: res.data as Record<string, unknown> };
   const taskId = parseCustomTaskId(res.data);
   if (!taskId) {
     throw new PaidSubmissionUnknownError(api.label, `成功响应没有 task_id：${JSON.stringify(res.data).slice(0, 300)}`);
@@ -203,9 +201,7 @@ export async function runCustomMediaApi(req: CustomMediaRunRequest): Promise<Cus
     audioUrls.push(await resolveApimartPublicMedia(ref, imageUrls.length + videoUrls.length + audioUrls.length, () => {}));
   }
 
-  const payload = api.protocol === 'pixhub-gpt-image'
-      ? buildPixhubImagePayload({ prompt: req.prompt, quality: typeof req.params?.quality === 'string' ? req.params.quality : undefined, size: typeof req.params?.size === 'string' ? req.params.size : undefined, responseFormat: typeof req.params?.response_format === 'string' ? req.params.response_format : undefined }, api.modelId || 'gpt-image-2.5')
-    : api.kind === 'video'
+  const payload = api.kind === 'video'
     ? buildCustomVideoPayload(api, {
         prompt: req.prompt,
         imageUrls,
@@ -228,7 +224,7 @@ export async function runCustomMediaApi(req: CustomMediaRunRequest): Promise<Cus
 
   let urls: string[];
   let providerTaskId: string | undefined;
-  if (api.protocol === 'openai-images' || api.protocol === 'pixhub-gpt-image') {
+  if (api.protocol === 'openai-images') {
     const parsed = parseOpenaiImagesResponse(submitted.sync);
     if (parsed.b64) {
       const { writeBinaryFile } = await import('@tauri-apps/api/fs');

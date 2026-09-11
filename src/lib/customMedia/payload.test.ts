@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {
   buildCustomImagePayload,
   buildCustomVideoPayload,
-  buildPixhubImagePayload,
   customQueryPath,
   customSubmitPath,
   customTaskPath,
@@ -11,6 +10,7 @@ import {
   parseCustomTaskId,
   parseOpenaiImagesResponse,
 } from './payload.ts';
+import { migrateStoredProtocols, normalizeStoredProtocol } from './protocols.ts';
 
 test('submit/task paths follow the protocol and kind', () => {
   assert.equal(customSubmitPath({ kind: 'image', protocol: 'openai-images' }), '/v1/images/generations');
@@ -21,12 +21,26 @@ test('submit/task paths follow the protocol and kind', () => {
   assert.equal(normalizeCustomBaseUrl('https://a.com///'), 'https://a.com');
 });
 
-test('Pixhub GPT Image 2.5 payload follows the Tevion contract', () => {
-  assert.deepEqual(buildPixhubImagePayload({ prompt: 'portrait', quality: 'low' }), {
-    model: 'gpt-image-2.5', prompt: 'portrait', n: 1, size: '1024x1024', quality: 'low', response_format: 'url',
-  });
-});
+test('legacy vendor protocols migrate to the standard ones', () => {
+  // 前端只允许说标准协议：供应商私有契约收口到项目内 Python 适配服务。
+  assert.equal(normalizeStoredProtocol('pixhub-gpt-image'), 'openai-images');
+  assert.equal(normalizeStoredProtocol('minimax-comfyui'), 'apimart-async');
+  assert.equal(normalizeStoredProtocol('openai-images'), 'openai-images');
+  assert.equal(normalizeStoredProtocol('apimart-async'), 'apimart-async');
+  assert.equal(normalizeStoredProtocol(undefined), 'apimart-async');
 
+  const apis = [
+    { id: 'img', protocol: 'pixhub-gpt-image', label: 'Puxhub-gpt' },
+    { id: 'ok', protocol: 'apimart-async', label: 'H3' },
+    { id: 'vid', protocol: 'minimax-comfyui', label: '' },
+  ];
+  const migrated = migrateStoredProtocols(apis);
+  assert.deepEqual(migrated.map((a) => a.protocol), ['openai-images', 'apimart-async', 'apimart-async']);
+  assert.deepEqual(migrated.map((a) => a.id), ['img', 'ok', 'vid']);
+  // 已合规的条目保持同一对象引用，不做无谓的浅拷贝
+  assert.equal(migrated[1], apis[1]);
+  assert.equal(migrated[0].label, 'Puxhub-gpt');
+});
 
 
 test('custom image payload carries model_id, size clamp and refs', () => {

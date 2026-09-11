@@ -84,8 +84,6 @@ function PluginRow({ api, onChange, onRemove }: {
         >
           <option value="apimart-async">异步任务协议（task_id + 轮询，APIMart 系通用）</option>
           {api.kind === 'image' && <option value="openai-images">OpenAI Images 同步协议</option>}
-          {api.kind === 'image' && <option value="pixhub-gpt-image">Pixhub GPT Image 2.5（OpenAI 兼容）</option>}
-
         </select>
       </div>
     </div>

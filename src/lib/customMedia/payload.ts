@@ -10,7 +10,7 @@ export function normalizeCustomBaseUrl(baseUrl: string): string {
 
 /** 提交路径：客户端只调用标准媒体协议；供应商特殊协议由适配服务处理。 */
 export function customSubmitPath(api: Pick<CustomMediaApi, 'kind' | 'protocol'>): string {
-  if (api.protocol === 'openai-images' || api.protocol === 'pixhub-gpt-image') return '/v1/images/generations';
+  if (api.protocol === 'openai-images') return '/v1/images/generations';
   return api.kind === 'video' ? '/v1/videos/generations' : '/v1/images/generations';
 }
 
@@ -41,21 +41,6 @@ export function buildCustomImagePayload(
   if (resolution) payload.resolution = resolution;
   if (input.imageUrls?.length) payload.image_urls = input.imageUrls;
   return payload;
-}
-
-/** Pixhub GPT Image 2.5 的 OpenAI 兼容请求体，固定 n=1。 */
-export function buildPixhubImagePayload(
-  input: { prompt: string; quality?: string; size?: string; responseFormat?: string },
-  modelId = 'gpt-image-2.5',
-): Record<string, unknown> {
-  return {
-    model: modelId,
-    prompt: input.prompt,
-    n: 1,
-    size: input.size || '1024x1024',
-    quality: input.quality || 'low',
-    response_format: input.responseFormat || 'url',
-  };
 }
 
 const VIDEO_RATIOS = new Set(['adaptive', '16:9', '4:3', '1:1', '3:4', '9:16', '21:9']);
