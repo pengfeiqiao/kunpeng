@@ -424,6 +424,7 @@ const SETTINGS_EXPORT_CREDENTIAL_KEYS = new Set([
   'webSearchCustomApiKey',
   'cosSecretId',
   'cosSecretKey',
+  'mediaUploadApiKey',
   'providerApiKeys',
   'imageApiSlots', // slots carry per-channel apiKey
   'customMediaApis', // plugins carry per-entry apiKey
@@ -479,6 +480,8 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
     cosSecretId, setCosSecretId,
     cosSecretKey, setCosSecretKey,
     cosTransitEndpoint, setCosTransitEndpoint,
+    mediaUploadEndpoint, mediaUploadApiKey, mediaPublicBaseUrl,
+    setMediaUploadEndpoint, setMediaUploadApiKey, setMediaPublicBaseUrl,
     webSearchApiMode, setWebSearchApiMode,
     webSearchCustomBaseUrl, setWebSearchCustomBaseUrl,
     webSearchCustomApiKey, setWebSearchCustomApiKey,
@@ -1072,6 +1075,35 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
               className="h-4 w-4 rounded border-zinc-300 text-sky-500 focus:ring-sky-200"
             />
           </label>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="自建 MinIO 媒体上传" description="项目素材通过 FastAPI 上传到 MinIO，并使用 CDN 地址访问" defaultOpen>
+        <div className="space-y-2">
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">上传 API 地址</label>
+            <input type="text" value={mediaUploadEndpoint} onChange={(e) => setMediaUploadEndpoint(e.target.value)} className={inputCls} placeholder="https://ysqvr.com/api/storage/upload" />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">上传 API Key</label>
+            <div className="relative">
+              <input
+                type={showKeys.has('media-upload') ? 'text' : 'password'}
+                value={mediaUploadApiKey}
+                onChange={(e) => setMediaUploadApiKey(e.target.value)}
+                className={inputCls + ' pr-9'}
+                placeholder="X-API-Key"
+              />
+              <button onClick={() => toggleShow('media-upload')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-700 transition-colors">
+                {showKeys.has('media-upload') ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">素材公网 CDN 地址</label>
+            <input type="text" value={mediaPublicBaseUrl} onChange={(e) => setMediaPublicBaseUrl(e.target.value)} className={inputCls} placeholder="https://cdn.ysqvr.com" />
+            <p className="text-[10px] text-zinc-500 mt-0.5">CDN 域名需要反代 MinIO 的公开 Bucket；留空则使用上传 API 返回的地址。</p>
+          </div>
         </div>
       </CollapsibleSection>
 

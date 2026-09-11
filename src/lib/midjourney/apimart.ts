@@ -1,5 +1,5 @@
 import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
-import { uploadToCos } from '@/lib/cos';
+import { uploadToMinio } from '@/lib/minioUpload';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { rhtvDownloadAll } from '@/lib/rhtv/download';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -76,7 +76,7 @@ async function resolveReferenceUrl(source: string, index: number): Promise<strin
     throw new Error('APIMart Midjourney 暂不直接接收画布内的 Base64 参考图，请先将图片保存为资产后重试。');
   }
   const localPath = assetUrlToLocalPath(source);
-  return uploadToCos(localPath, safeFileName(localPath, index));
+  return uploadToMinio(localPath, safeFileName(localPath, index));
 }
 
 function taskIdFrom(body: unknown): string {

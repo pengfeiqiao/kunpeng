@@ -299,6 +299,14 @@ interface SettingsState {
   setCosSecretKey: (v: string) => void;
   setCosTransitEndpoint: (v: string) => void;
 
+  // Self-hosted MinIO media upload API
+  mediaUploadEndpoint: string;
+  mediaUploadApiKey: string;
+  mediaPublicBaseUrl: string;
+  setMediaUploadEndpoint: (v: string) => void;
+  setMediaUploadApiKey: (v: string) => void;
+  setMediaPublicBaseUrl: (v: string) => void;
+
   // Optional display name used in greetings (「你好！」 when empty).
   // Private builds can preset it via private.defaults.json (gitignored).
   greetingName: string;
@@ -521,6 +529,14 @@ export const useSettingsStore = create<SettingsState>()(
         ...mirrorCredentialWrite(s, 'cos', `${s.cosSecretId}:${cosSecretKey}`),
       })),
       setCosTransitEndpoint: (cosTransitEndpoint) => set({ cosTransitEndpoint }),
+
+      // Self-hosted MinIO media upload API
+      mediaUploadEndpoint: 'https://ysqvr.com/api/storage/upload',
+      mediaUploadApiKey: '',
+      mediaPublicBaseUrl: 'https://cdn.ysqvr.com',
+      setMediaUploadEndpoint: (mediaUploadEndpoint) => set({ mediaUploadEndpoint }),
+      setMediaUploadApiKey: (mediaUploadApiKey) => set({ mediaUploadApiKey }),
+      setMediaPublicBaseUrl: (mediaPublicBaseUrl) => set({ mediaPublicBaseUrl }),
       greetingName: '',
       setGreetingName: (greetingName) => set({ greetingName }),
 

@@ -20,7 +20,7 @@ import { validateFx, fxThemesDoc } from '@/lib/editor/fxDesignSystem';
 import { findPageTemplate, pageTemplatesDoc } from '@/lib/editor/pageTemplates';
 import { PROJECT_TEMPLATES, findProjectTemplate, applyProjectTemplate } from '@/lib/editor/presets/projectTemplates';
 import { useRenderQueueStore } from '@/stores/renderQueueStore';
-import { uploadToCos } from '@/lib/cos';
+import { uploadToMinio } from '@/lib/minioUpload';
 import { validateSceneSpec } from '@/lib/motion/validateScene';
 import { sceneSpecToDoc } from '@/lib/motion/sceneDoc';
 import { buildScenePreset, findScenePreset, scenePresetsDoc } from '@/lib/motion/presets';
@@ -1862,7 +1862,7 @@ async function maybeUploadFreePageAssetsToCos(imageAssets: string[], enabled: bo
       continue;
     }
     const localPath = decodeURIComponent(asset.replace(/^file:\/\//i, ''));
-    out.push(await uploadToCos(localPath, basenameOfPath(asset)));
+    out.push(await uploadToMinio(localPath, basenameOfPath(asset)));
   }
   return out;
 }
@@ -2354,7 +2354,7 @@ const uploadAssetsToCosTool: Tool = {
     if (!paths.length) return { success: false, output: '', error: '需要 paths，本地文件绝对路径数组' };
     const results: { path: string; url: string }[] = [];
     for (const p of paths) {
-      const url = await uploadToCos(p, basenameOfPath(p));
+      const url = await uploadToMinio(p, basenameOfPath(p));
       results.push({ path: p, url });
     }
     return {

@@ -39,6 +39,7 @@ import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
 import type { WorkshopAssetKind } from '@/lib/workshop/types';
 import { openCanvasNodeInAgent } from '@/lib/canvas/nodeAgent';
 import { normalizeMidjourneyVersion } from '@/lib/midjourney/prompt';
+import { copyTextToClipboard, resolveCopyableMediaUrl } from '@/lib/canvas/copyMediaLink';
 
 interface ImageNodeToolbarProps {
   nodeId: string;
@@ -52,6 +53,20 @@ export default function ImageNodeToolbar({ nodeId, imageUrl }: ImageNodeToolbarP
   const [showCrop, setShowCrop] = useState(false);
   const [maskMode, setMaskMode] = useState<MaskToolMode | null>(null);
   const [showWorkshopPicker, setShowWorkshopPicker] = useState(false);
+
+  const handleCopyLink = useCallback(async () => {
+    try {
+      const node = useCanvasStore.getState().nodes.find((item) => item.id === nodeId);
+      const data = (node?.data ?? {}) as { localPath?: string };
+      const url = await resolveCopyableMediaUrl(imageUrl, data.localPath, `image-${Date.now()}.png`);
+      await copyTextToClipboard(url);
+      if (url !== imageUrl) useCanvasStore.getState().updateNode(nodeId, { generatedImageUrl: url });
+      await tauriMessage('图片链接已复制', { title: '成功' });
+    } catch (err) {
+      console.error('复制图片链接失败:', err);
+      await tauriMessage('复制图片链接失败，请检查系统剪贴板权限', { title: '错误' });
+    }
+  }, [imageUrl, nodeId]);
 
   const handleFullscreen = useCallback(() => setShowFullscreen(true), []);
 
@@ -365,6 +380,7 @@ export default function ImageNodeToolbar({ nodeId, imageUrl }: ImageNodeToolbarP
           }}
         >
           <ToolBtn onClick={handleFullscreen} title="全屏查看（双击节点同效）" label="全屏"><Maximize2 size={18} strokeWidth={2} /></ToolBtn>
+          <ToolBtn onClick={() => void handleCopyLink()} title="复制图片公网链接" label="复制链接"><Copy size={18} strokeWidth={2} /></ToolBtn>
           <ToolBtn onClick={handleDownload} title="另存为本地文件" label="下载"><Download size={18} strokeWidth={2} /></ToolBtn>
           <ToolBtn onClick={() => void handleOpenFolder()} title="在 Finder 中定位文件" label="打开"><FolderOpen size={18} strokeWidth={2} /></ToolBtn>
           <ToolBtn onClick={handleDuplicate} title="创建当前节点的副本（⌘D）" label="副本"><Copy size={18} strokeWidth={2} /></ToolBtn>

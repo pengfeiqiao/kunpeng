@@ -96,6 +96,7 @@ export async function rhtvUploadForApp(localPath: string): Promise<string> {
 
   const res = await tauriFetch(appUploadUrl(), {
     method: 'POST',
+    headers: { 'Content-Type': 'multipart/form-data' },
     body: Body.form({
       apiKey: key,
       fileType: 'input',
@@ -189,14 +190,14 @@ export async function rhtvResolveMedia(ref: string): Promise<string> {
   try {
     return await rhtvUploadFile(localPath);
   } catch (err) {
-    const { uploadToCos } = await import('@/lib/cos');
+    const { uploadToMinio } = await import('@/lib/minioUpload');
     const fileName = localPath.split('/').pop() || `rhtv-ref-${Date.now()}`;
     console.warn('[rhtv] 标准 multipart 上传失败，切换 COS URL 兜底:', err);
     try {
-      return await uploadToCos(localPath, fileName);
+      return await uploadToMinio(localPath, fileName);
     } catch (cosErr) {
       // 两级都失败时保留原始 multipart 错误——只抛 COS 报错会掩盖真正病因
-      throw new Error(`上传失败（multipart: ${err instanceof Error ? err.message : String(err)}；COS 兜底: ${cosErr instanceof Error ? cosErr.message : String(cosErr)}）`);
+      throw new Error(`上传失败（multipart: ${err instanceof Error ? err.message : String(err)}；MinIO 兜底: ${cosErr instanceof Error ? cosErr.message : String(cosErr)}）`);
     }
   }
 }

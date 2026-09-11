@@ -9,7 +9,7 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/tauri';
 import { homeDir } from '@tauri-apps/api/path';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveApiKey } from '@/lib/credentials';
-import { uploadToCos } from '@/lib/cos';
+import { uploadToMinio } from '@/lib/minioUpload';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { probeDuration } from '@/lib/canvas/videoCompose';
 import { rhtvDownloadAll } from '@/lib/rhtv/download';
@@ -235,7 +235,7 @@ export async function resolveKuaiziMediaRef(ref: string): Promise<string> {
   }
   const localPath = assetUrlToLocalPath(ref);
   const fileName = sanitizeFileName(localPath, `kuaizi-ref-${Date.now()}`);
-  return uploadToCos(localPath, fileName);
+  return uploadToMinio(localPath, fileName);
 }
 
 export function buildKuaiziSeedancePayload(args: {

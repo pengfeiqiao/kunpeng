@@ -316,7 +316,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/healthz":
             self._send(404, {"error": "not found"})
             return
-        self._send(200, self._proxy().health())
+        try:
+            self._send(200, self._proxy().health())
+        except Exception as exc:  # keep diagnostics visible to curl and logs
+            print(f"[pixhub-proxy] healthz exception: {type(exc).__name__}: {exc}", flush=True)
+            self._send(502, {"ok": False, "reason": "healthz_exception", "error": str(exc)})
 
     def log_message(self, format: str, *args: Any) -> None:
         print(f"[pixhub-proxy] {format % args}", flush=True)

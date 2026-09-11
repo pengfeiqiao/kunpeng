@@ -13,7 +13,7 @@
 import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveApiKey, resolveCosSecrets } from '@/lib/credentials';
-import { uploadToCos } from '@/lib/cos';
+import { uploadToMinio } from '@/lib/minioUpload';
 import type { SubtitleCue } from '@/stores/editorStore';
 import { nanoid } from 'nanoid';
 
@@ -233,7 +233,7 @@ export async function transcribeWithDoubaoAsr(
   onProgress?.('uploading');
   // 上传到 COS 拿公网 URL（AUC 要求音频以 URL 提交，不支持直接传文件）
   const fileName = localAudioPath.split('/').pop() || `asr-${Date.now()}.${format}`;
-  const audioUrl = await uploadToCos(localAudioPath, fileName);
+  const audioUrl = await uploadToMinio(localAudioPath, fileName);
 
   onProgress?.('submitting');
   const taskId = await submitTask(audioUrl, format);
@@ -260,7 +260,7 @@ export async function transcribeWithDoubaoAsrWords(
 
   onProgress?.('uploading');
   const fileName = localAudioPath.split('/').pop() || `asr-${Date.now()}.${format}`;
-  const audioUrl = await uploadToCos(localAudioPath, fileName);
+  const audioUrl = await uploadToMinio(localAudioPath, fileName);
 
   onProgress?.('submitting');
   const taskId = await submitTask(audioUrl, format, options);

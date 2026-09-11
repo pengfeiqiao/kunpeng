@@ -345,7 +345,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/healthz":
-            self._send(200, getattr(self.server, "proxy").health())
+            try:
+                self._send(200, getattr(self.server, "proxy").health())
+            except Exception as exc:  # keep diagnostics visible to curl and logs
+                print(f"[minimax-proxy] healthz exception: {type(exc).__name__}: {exc}", flush=True)
+                self._send(502, {"ok": False, "reason": "healthz_exception", "error": str(exc)})
             return
         prefix = "/v1/tasks/"
         if not self.path.startswith(prefix):

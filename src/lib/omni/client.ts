@@ -2,7 +2,7 @@ import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
 import { convertFileSrc, invoke } from '@tauri-apps/api/tauri';
 import { createDir, writeBinaryFile } from '@tauri-apps/api/fs';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { uploadToCos } from '@/lib/cos';
+import { uploadToMinio } from '@/lib/minioUpload';
 import {
   ApimartAllRoutesConnectError,
   resolveApimartBaseUrl,
@@ -196,7 +196,7 @@ async function resolveOmniMediaUrl(ref: string, kind: 'image' | 'video'): Promis
     : kind === 'video' && ext === 'mp4'
       ? 'video/mp4'
       : undefined;
-  return uploadToCos(localPath, fileName, contentType);
+  return uploadToMinio(localPath, fileName, contentType);
 }
 
 function unwrapVideoUrls(status: TaskStatus): string[] {

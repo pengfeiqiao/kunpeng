@@ -771,6 +771,8 @@ export default function NodeInfoBar() {
     const imgData = data as ImageNodeData;
     const hasImage = !!(imgData.generatedImageUrl || imgData.referenceImage);
     const isDreamina = imgSource === 'dreamina';
+    const assetImages = attachedAssets.flatMap((a) => a.images ?? []);
+    const collectedImageRefs = collectNodeReferences(node.id, { extraTailImages: assetImages }).images;
 
     const handleImageGenerate = async () => {
       const prompt = imagePrompt.trim();
@@ -778,7 +780,6 @@ export default function NodeInfoBar() {
       console.log('[handleImageGenerate] prompt:', prompt, 'genMode:', genMode, 'imgSource:', imgSource);
       // 统一参考收集（单一权威顺序 = edge 序，组原地展开，资产图尾部追加，
       // 自身上一轮产物自动排除）。@提及只作确认引用存在，不再重排顺序。
-      const assetImages = attachedAssets.flatMap((a) => a.images ?? []);
       const collected = collectNodeReferences(node.id, { extraTailImages: assetImages });
       const refUrls = selfUploadFallback(node.id, collected);
 
@@ -885,7 +886,8 @@ export default function NodeInfoBar() {
     };
 
     const isI2I = imgData.generationMode === 'image-to-image' || (imgData.referenceImages && imgData.referenceImages.length > 0);
-    const refImages = imgData.referenceImages || [];
+    // 展示和提交使用同一个收集结果，连入多张图片时全部显示，编号也保持一致。
+    const refImages = collectedImageRefs;
 
     // When @ selects an image in i2i mode, add to referenceImages
     const handleMentionSelectForImage = (item: MentionItem) => {
@@ -913,7 +915,7 @@ export default function NodeInfoBar() {
               {isI2I && <span className="text-[10px] text-[var(--canvas-text-2)] font-medium shrink-0">参考图</span>}
               <div className="canvas-asset-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-2">
                 {refImages.map((ref, i) => (
-                  <div key={i} className="relative group/ref shrink-0">
+                  <div key={`${ref.edgeId ?? 'data'}-${ref.url}-${i}`} className="relative group/ref shrink-0">
                     <div
                       className="w-10 h-10 rounded-lg overflow-hidden border border-[var(--canvas-node-border)] bg-[rgba(255,255,255,0.05)] cursor-pointer hover:ring-1 hover:ring-[#3b9eff] transition-all"
                       onClick={() => {
@@ -930,7 +932,15 @@ export default function NodeInfoBar() {
                       <img src={ref.url} alt="" className="w-full h-full object-cover" />
                     </div>
                     <button
-                      onClick={() => updateNode(node.id, { referenceImages: refImages.filter((_, j) => j !== i) })}
+                      onClick={() => {
+                        if (ref.edgeId) {
+                          useCanvasStore.getState().deleteEdge(ref.edgeId);
+                        } else {
+                          updateNode(node.id, {
+                            referenceImages: (imgData.referenceImages || []).filter((item) => item.url !== ref.url),
+                          });
+                        }
+                      }}
                       className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[rgba(255,255,255,0.25)] hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover/ref:opacity-100 transition-all"
                     >
                       <X size={8} />

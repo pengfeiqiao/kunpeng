@@ -42,7 +42,11 @@
       "http": {
         "all": true,
         "scope": [
-          "https://**"
+          "https://**",
+          "http://127.0.0.1:8790/**",
+          "http://localhost:8790/**",
+          "http://127.0.0.1:8791/**",
+          "http://localhost:8791/**"
         ]
       },
       "fs": {
