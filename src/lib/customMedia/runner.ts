@@ -12,7 +12,8 @@ import { rhtvDownloadAll } from '@/lib/rhtv/download';
 import { downloadProgressLabel } from '@/lib/rhtv/downloadLabels';
 import { appendArtifact } from '@/lib/artifacts';
 import { appendGenerationLog } from '@/lib/aigc/genLogger';
-import { resolveApimartPublicMedia } from '@/lib/apimart/client';
+import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
+import { readBinaryFileUnicode } from '@/lib/agent/mediaInput';
 import { parseApimartTask, apimartError } from '@/lib/apimart/contracts';
 import {
   buildCustomImagePayload,
@@ -66,6 +67,36 @@ function requireCustomKey(api: CustomMediaApi): string {
   const key = resolveSlotApiKey(useSettingsStore.getState(), api).trim();
   if (!key) throw new Error(`自定义插件「${api.label}」未配置 API Key，请在设置中填写`);
   return key;
+}
+
+const CUSTOM_REFERENCE_MAX_BYTES = 20 * 1024 * 1024;
+
+function customReferenceMime(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'gif') return 'image/gif';
+  return 'image/png';
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+  }
+  return btoa(binary);
+}
+
+/** 自定义插件参考图不走通用 COS：供应商适配服务可以直接接收 data URL。 */
+async function resolveCustomReference(source: string): Promise<string> {
+  if (/^https?:\/\//i.test(source) || source.startsWith('data:image/')) return source;
+  const localPath = assetUrlToLocalPath(source);
+  const bytes = await readBinaryFileUnicode(localPath);
+  if (bytes.length > CUSTOM_REFERENCE_MAX_BYTES) {
+    throw new Error(`本地参考图超过 ${CUSTOM_REFERENCE_MAX_BYTES / 1024 / 1024}MB 限制`);
+  }
+  return `data:${customReferenceMime(localPath)};base64,${bytesToBase64(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes))}`;
 }
 
 function customAuthHeaders(api: CustomMediaApi, key: string): Record<string, string> {
@@ -188,18 +219,18 @@ export async function runCustomMediaApi(req: CustomMediaRunRequest): Promise<Cus
   if (!api) {
     throw new Error(`未找到启用的自定义模型插件：${req.engineId}（可在设置 → 自定义模型插件中检查）`);
   }
-  req.onProgress?.('上传参考素材…');
+  req.onProgress?.('准备参考素材…');
   const imageUrls: string[] = [];
   for (const ref of req.referenceUrls ?? []) {
-    imageUrls.push(await resolveApimartPublicMedia(ref, imageUrls.length, () => {}));
+    imageUrls.push(await resolveCustomReference(ref));
   }
   const videoUrls: string[] = [];
   for (const ref of req.videoUrls ?? []) {
-    videoUrls.push(await resolveApimartPublicMedia(ref, imageUrls.length + videoUrls.length, () => {}));
+    videoUrls.push(await resolveCustomReference(ref));
   }
   const audioUrls: string[] = [];
   for (const ref of req.audioUrls ?? []) {
-    audioUrls.push(await resolveApimartPublicMedia(ref, imageUrls.length + videoUrls.length + audioUrls.length, () => {}));
+    audioUrls.push(await resolveCustomReference(ref));
   }
 
   const payload = api.kind === 'video'
