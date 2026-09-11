@@ -9,6 +9,7 @@ import { useSettingsStore, type CustomMediaApi } from '@/stores/settingsStore';
 import { resolveSlotApiKey } from '@/lib/credentials';
 import { isAmbiguousPaidSubmitStatus, PaidSubmissionUnknownError, PaidTaskCreatedError } from '@/lib/billingSafety';
 import { rhtvDownloadAll } from '@/lib/rhtv/download';
+import { downloadProgressLabel } from '@/lib/rhtv/downloadLabels';
 import { appendArtifact } from '@/lib/artifacts';
 import { appendGenerationLog } from '@/lib/aigc/genLogger';
 import { resolveApimartPublicMedia } from '@/lib/apimart/client';
@@ -250,6 +251,7 @@ export async function runCustomMediaApi(req: CustomMediaRunRequest): Promise<Cus
         refs: genLogRefs,
       });
       void appendArtifact({ path, type: 'image', engine: `custom-media/${api.modelId}`, prompt: req.prompt, taskId: '' });
+      req.onProgress?.('图片下载完成');
       return { taskId: '', resultPaths: [path], resultUrls: [convertFileSrc(path)] };
     }
     if (!parsed.url) throw new Error(`${api.label} 同步响应中没有图片（b64_json/url 均为空）`);
@@ -271,8 +273,8 @@ export async function runCustomMediaApi(req: CustomMediaRunRequest): Promise<Cus
   }
 
   if (urls.length === 0) throw new Error(`${api.label} 生成完成但没有输出文件`);
-  req.onProgress?.('下载产物…');
   const kind = api.kind === 'video' ? 'video' : 'image';
+  req.onProgress?.(downloadProgressLabel(kind));
   const resultPaths = await rhtvDownloadAll(urls, kind, `custom-media-${api.id}`, req.onProgress);
   for (const p of resultPaths) {
     void appendArtifact({ path: p, type: kind, engine: `custom-media/${api.modelId}`, prompt: req.prompt, taskId: providerTaskId ?? '' });

@@ -9,6 +9,7 @@ import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
 import { writeBinaryFile, createDir } from '@tauri-apps/api/fs';
 import { invoke } from '@tauri-apps/api/tauri';
 import { cosTransitDownload } from '@/lib/cos';
+import { downloadCompletedLabel, downloadProgressLabel, type DownloadMediaKind } from './downloadLabels.ts';
 
 let counter = 0;
 
@@ -23,7 +24,7 @@ export type DownloadProgressFn = (phase: string) => void;
 
 export async function rhtvDownloadResult(
   url: string,
-  kind: 'image' | 'video' | 'audio',
+  kind: DownloadMediaKind,
   namePrefix = 'rhtv',
   onProgress?: DownloadProgressFn,
 ): Promise<string> {
@@ -48,16 +49,19 @@ export async function rhtvDownloadResult(
     }
   }
 
+  onProgress?.(downloadProgressLabel(kind));
   const resp = await tauriFetch(downloadUrl, {
     method: 'GET',
     responseType: ResponseType.Binary,
-    timeout: downloadUrl === url ? 600 : 120,
+    // 同步图片没有可恢复的远端 task_id；限制直连下载时间，避免画布永久停在 downloading。
+    timeout: kind === 'image' && downloadUrl === url ? 300 : downloadUrl === url ? 600 : 120,
   });
   if (!resp.ok) throw new Error(`下载失败 HTTP ${resp.status}: ${downloadUrl.slice(0, 120)}`);
 
   const ext = extFromUrl(url, kind === 'video' ? 'mp4' : kind === 'audio' ? 'mp3' : 'png');
   const path = `${dir}/${namePrefix}_${Date.now()}_${++counter}.${ext}`;
   await writeBinaryFile(path, new Uint8Array(resp.data as number[] | ArrayBuffer as ArrayBuffer));
+  onProgress?.(downloadCompletedLabel(kind));
   return path;
 }
 
