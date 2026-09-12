@@ -12,8 +12,8 @@ use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{oneshot, Mutex, RwLock};
 use tokio::time::{timeout, Duration};
 
-const DSH_VERSION: &str = "0.1.0-rc.6";
-const DSH_RUNTIME_REVISION: &str = "0.1.0-rc.6-kunpeng.10";
+const DSH_VERSION: &str = "0.1.5-rc.1";
+const DSH_RUNTIME_REVISION: &str = "0.1.5-rc.1-kunpeng.1";
 const DSH_EVENT_PREFIX: &str = "__KUNPENG_DSH_EVENT__";
 
 #[derive(Clone)]
@@ -229,14 +229,10 @@ fn ensure_runtime(app: &tauri::AppHandle) -> Result<PathBuf, String> {
             .join("index.js"),
         root.join("node_modules")
             .join("@deepseek-ai")
-            .join("dsh-llm-pi-ai")
-            .join("lib")
-            .join("index.js"),
-        root.join("node_modules")
-            .join("@deepseek-ai")
             .join("dsh-attachment-local")
             .join("lib")
             .join("index.js"),
+        root.join("kunpeng-dsh.mjs"),
         root.join("kunpeng-acp-host.mjs"),
         root.join("kunpeng-acp.mjs"),
         root.join("kunpeng-mcp-server.mjs"),
@@ -572,12 +568,7 @@ pub async fn dsh_start(
     };
     let bridge = ensure_bridge(&app, state.inner.clone()).await?;
     let node = node_binary(&runtime);
-    let acp_bin = runtime
-        .join("node_modules")
-        .join("@deepseek-ai")
-        .join("dsh-acp-demo")
-        .join("lib")
-        .join("bin.js");
+    let acp_bin = runtime.join("kunpeng-dsh.mjs");
     let mcp_server = runtime.join("kunpeng-mcp-server.mjs");
     let acp_host = runtime.join("kunpeng-acp-host.mjs");
     // The Cordis loader resolves bare package names relative to the CONFIG
@@ -595,17 +586,8 @@ pub async fn dsh_start(
         .join("dsh-llm-deepseek")
         .join("lib")
         .join("index.js");
-    // 视觉模型走 pi-ai 适配器（dsh-llm-deepseek 是 text-only 设计，显式拒绝
-    // image 块）；pi-ai 按模型声明 input:[text,image]，图片经 attachment
-    // 服务落盘后原生进模型。
-    let llm_pi_ai = runtime
-        .join("node_modules")
-        .join("@deepseek-ai")
-        .join("dsh-llm-pi-ai")
-        .join("lib")
-        .join("index.js");
     let kunpeng_acp = runtime.join("kunpeng-acp.mjs");
-    for required in [&node, &acp_bin, &mcp_server, &acp_host, &llm_deepseek, &llm_pi_ai, &kunpeng_acp] {
+    for required in [&node, &acp_bin, &mcp_server, &acp_host, &llm_deepseek, &kunpeng_acp] {
         if !required.exists() {
             return Err(format!("Harness 运行时文件缺失: {}", required.display()));
         }
@@ -623,51 +605,27 @@ pub async fn dsh_start(
     std::fs::create_dir_all(&sessions)
         .map_err(|error| format!("创建 Harness 会话目录失败: {}", error))?;
 
-    let vision_model = request.model.to_lowercase().contains("vision");
-    let llm_entry = if vision_model {
-        // pi-ai 路由：模型级声明 input:[text,image]，图片原生进视觉模型。
-        // openai-completions 协议 + 官方 /v1 base（pi-ai 自行拼接路径）。
-        json!({
-            "id": "llm-pi-ai",
-            "name": module_specifier(&llm_pi_ai),
-            "config": {
-                "providers": {
-                    "deepseek": {
-                        "apiKeyEnv": "DEEPSEEK_API_KEY",
-                        "api": "openai-completions",
-                        "baseURL": format!("{}/v1", normalized_base_url(&request.base_url)),
-                        "models": [{
-                            "id": request.model,
-                            "name": request.model,
-                            "contextWindow": request.context_window.unwrap_or(1_000_000),
-                            "maxTokens": request.max_tokens.unwrap_or(32768),
-                            "input": ["text", "image"]
-                        }]
-                    }
-                }
-            }
-        })
-    } else {
-        json!({
-            "id": "llm-deepseek",
-            "name": module_specifier(&llm_deepseek),
-            "config": {
-                "apiKeyEnv": "DEEPSEEK_API_KEY",
-                "baseURL": normalized_base_url(&request.base_url),
-                "thinking": "enabled",
-                "reasoningEffort": "high",
+    let llm_entry = json!({
+        "id": "llm-deepseek",
+        "name": module_specifier(&llm_deepseek),
+        "config": {
+            "apiKeyEnv": "DEEPSEEK_API_KEY",
+            "baseURL": normalized_base_url(&request.base_url),
+            "thinking": "enabled",
+            "reasoningEffort": "high",
+            "maxTokens": request.max_tokens.unwrap_or(32768),
+            "defaultContextWindow": request.context_window.unwrap_or(1_000_000),
+            "models": [{
+                "id": "deepseek-flash",
+                "name": "DeepSeek V4.1 Flash",
+                "contextWindow": request.context_window.unwrap_or(1_000_000),
                 "maxTokens": request.max_tokens.unwrap_or(32768),
-                "defaultContextWindow": request.context_window.unwrap_or(1_000_000),
-                "models": [{
-                    "id": request.model,
-                    "name": request.model,
-                    "contextWindow": request.context_window.unwrap_or(1_000_000),
-                    "maxTokens": request.max_tokens.unwrap_or(32768)
-                }]
-            }
-        })
-    };
-    let acp_provider = if vision_model { "deepseek" } else { "deepseek-official" };
+                "inputModalities": ["text", "image"],
+                "systemPromptUpdate": "in-history"
+            }]
+        }
+    });
+    let acp_provider = "deepseek-official";
     let config = json!([
         llm_entry,
         {
@@ -675,7 +633,7 @@ pub async fn dsh_start(
             "name": module_specifier(&acp_host),
             "config": {
                 "provider": acp_provider,
-                "model": request.model,
+                "model": "deepseek-flash",
                 "persona": request.persona,
                 "workspaceContext": false,
                 "skills": { "enabled": false },

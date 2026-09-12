@@ -33,19 +33,19 @@ test('visible global selection wins over a migrated agent preference', () => {
   });
   assert.deepEqual(getPrimaryRouteSelection(strategy), {
     providerId: 'deepseek',
-    modelId: 'deepseek-v4-flash',
+    modelId: 'deepseek-flash',
   });
 });
 
 test('workspace selection is the primary route and fallback remains explicit', () => {
   const strategy = buildChatRouteStrategy(
     { ...routingSettings, providerDefault: 'kimi' },
-    { primary: { providerId: 'deepseek', modelId: 'deepseek-chat' } },
+    { primary: { providerId: 'deepseek', modelId: 'deepseek-flash' } },
   );
   assert.equal(strategy?.kind, 'fallback_chain');
   if (strategy?.kind !== 'fallback_chain') return;
   assert.deepEqual(strategy.chain, [
-    { providerId: 'deepseek', modelId: 'deepseek-chat' },
+    { providerId: 'deepseek', modelId: 'deepseek-flash' },
     { providerId: 'kimi', modelId: 'k3[1m]' },
   ]);
 });
@@ -57,12 +57,12 @@ test('global default is not added as a hidden workspace fallback', () => {
       providerDefault: 'kimi',
       providerFallbackChain: ['deepseek'],
     },
-    { primary: { providerId: 'deepseek', modelId: 'deepseek-chat' } },
+    { primary: { providerId: 'deepseek', modelId: 'deepseek-flash' } },
   );
   assert.deepEqual(strategy, {
     kind: 'primary',
     providerId: 'deepseek',
-    modelId: 'deepseek-chat',
+    modelId: 'deepseek-flash',
   });
 });
 
@@ -71,7 +71,7 @@ test('fallback error names both the selected and actual final provider', () => {
     {
       providerId: 'deepseek',
       providerName: 'DeepSeek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
       status: 503,
       message: 'upstream unavailable',
     },
@@ -108,7 +108,7 @@ test('prompt rewrite route appends other configured LLM providers', () => {
   assert.deepEqual(strategy, {
     kind: 'fallback_chain',
     chain: [
-      { providerId: 'deepseek', modelId: 'deepseek-v4-flash' },
+      { providerId: 'deepseek', modelId: 'deepseek-flash' },
       { providerId: 'kimi', modelId: 'k3[1m]' },
       { providerId: 'qwen', modelId: 'qwen3.8-max' },
     ],

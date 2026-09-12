@@ -40,6 +40,13 @@ import { migrateLocalStorageToFiles, cleanupLegacySessionMedia } from './lib/his
 import { appWindow } from '@tauri-apps/api/window';
 
 function App() {
+  useEffect(() => {
+    let alive = true;
+    const check = () => { void import('./lib/agent/evolution').then((module) => { if (alive) void module.maybeEvolve(); }); };
+    check();
+    const timer = setInterval(check, 60_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
   const { isReady, sendMessage, abort } = useAgent();
   const { loadAgents, loadSessions, loadSession } = useSessions();
   useBackgroundPoller();

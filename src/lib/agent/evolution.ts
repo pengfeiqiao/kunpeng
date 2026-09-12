@@ -50,6 +50,9 @@ const MODEL_REPLACEMENTS: Record<string, string> = {
   'kimi-k3-1m': 'k3[1m]',
   'kimi-k3': 'k3',
   'glm-4.5': 'glm-5.1',
+  'deepseek-v4-flash-vision-exp': 'deepseek-flash',
+  'deepseek-v4-flash': 'deepseek-flash',
+  'deepseek-v4-pro': 'deepseek-flash',
 };
 
 let trajectoryWriteQueue: Promise<void> = Promise.resolve();
@@ -73,6 +76,9 @@ interface EvolutionState {
   reflections: number;
   lastRunAt: number;
   lastConsolidatedAt?: number;
+  lastSummary?: string;
+  lastError?: string;
+  lastAttemptAt?: number;
   cursorTs?: number;
   cursorCountAtTs?: number;
 }
@@ -377,7 +383,15 @@ export async function reflectNegativeTrajectory(record: TrajectoryRecord): Promi
   if (!negativeReflectionThrottle.tryStart(now, NEGATIVE_REFLECT_MIN_INTERVAL_MS)) return;
   let succeeded = false;
   try {
-    const result = await reflectionQueue.enqueue(async () => reflectBatch([record], NEGATIVE_REFLECT_SYSTEM));
+    const result = await reflectionQueue.enqueue(async () => {
+      const result = await reflectBatch([record], NEGATIVE_REFLECT_SYSTEM);
+      const state = await loadState();
+      await saveState({ ...state, lastAttemptAt: Date.now(),
+        ...(result ? { reflections: state.reflections + 1, lastError: '', lastSummary: `反馈反思完成：新增 ${result.memories} 条记忆、${result.skills} 个候选技能。` }
+          : { lastError: '反馈反思结果无法解析，未写入经验。' }),
+      });
+      return result;
+    });
     succeeded = Boolean(result);
   } catch (error) {
     agentLog.debug('Evolution', `negative reflection skipped: ${summarizeTrajectoryValue(error instanceof Error ? error.message : error)}`);
@@ -393,21 +407,28 @@ export async function runEvolutionReflect(force: boolean): Promise<string | null
     const [trajectories, state] = await Promise.all([loadTrajectories(), loadState()]);
     const fresh = freshTrajectories(trajectories, state);
     if (!force && fresh.length < REFLECT_MIN_NEW) return null;
-    const batch = (fresh.length ? fresh : trajectories).slice(-REFLECT_BATCH);
+    const batch = fresh.length ? fresh.slice(0, REFLECT_BATCH) : trajectories.slice(-REFLECT_BATCH);
+    const consumed = batch.length ? trajectories.slice(0, trajectories.indexOf(batch[batch.length - 1]) + 1) : [];
     if (!batch.length) return force ? '还没有可分析的执行轨迹。' : null;
+    await saveState({ ...state, lastAttemptAt: Date.now(), lastError: '' });
     const written = await reflectBatch(batch, '从多条轨迹中提炼稳定模式。');
-    if (!written) return force ? '自省结果无法解析，本次未写入。' : null;
+    if (!written) throw new Error('自省结果无法解析，本次未写入，将在后续重试。');
+    const summary = `自省完成：分析 ${batch.length} 条轨迹，新增 ${written.memories} 条记忆、${written.skills} 个候选技能。`;
     await saveState({
       ...state,
-      offset: trajectories.length,
+      lastSummary: summary,
+      lastError: '',
+      lastAttemptAt: Date.now(),
+      offset: consumed.length,
       reflections: state.reflections + 1,
       lastRunAt: Date.now(),
-      ...cursorForTrajectories(trajectories),
+      ...cursorForTrajectories(consumed),
     });
-    const summary = `自省完成：分析 ${batch.length} 条轨迹，新增 ${written.memories} 条记忆、${written.skills} 个候选技能。`;
     agentLog.info('Evolution', summary);
     return force ? summary : null;
   } catch (error) {
+    const failedState = await loadState();
+    await saveState({ ...failedState, lastError: summarizeTrajectoryValue(error instanceof Error ? error.message : error), lastAttemptAt: Date.now() });
     agentLog.warn('Evolution', `reflection failed: ${summarizeTrajectoryValue(error instanceof Error ? error.message : error)}`);
     if (force) throw error;
     return null;
@@ -492,17 +513,30 @@ export async function consolidateAutoSkills(now = Date.now()): Promise<void> {
   for (const record of records.slice(MAX_AUTO_SKILLS)) await archiveAutoSkill(record, 'catalog-limit');
 }
 
+let evolutionCheckRunning = false;
 export async function maybeEvolve(): Promise<void> {
+  if (evolutionCheckRunning || reflectionQueue.busy) return;
+  evolutionCheckRunning = true;
   try {
-    const [trajectories, initialState] = await Promise.all([loadTrajectories(), loadState()]);
-    let state = initialState;
-    if (Date.now() - (state.lastConsolidatedAt ?? 0) >= CONSOLIDATE_INTERVAL_MS) {
-      await consolidateAutoSkills();
-      state = { ...state, lastConsolidatedAt: Date.now() };
-      await saveState(state);
-    }
-    if (freshTrajectories(trajectories, state).length < REFLECT_MIN_NEW) return;
-    if (Date.now() - state.lastRunAt < REFLECT_MIN_INTERVAL_MS) return;
-    await runEvolutionReflect(false);
+    const shouldReflect = await reflectionQueue.enqueue(async () => {
+      const [trajectories, initialState] = await Promise.all([loadTrajectories(), loadState()]);
+      let state = initialState;
+      if (Date.now() - (state.lastConsolidatedAt ?? 0) >= CONSOLIDATE_INTERVAL_MS) {
+        await consolidateAutoSkills();
+        state = { ...state, lastConsolidatedAt: Date.now() };
+        await saveState(state);
+      }
+      if (state.lastError && Date.now() - (state.lastAttemptAt ?? 0) < 5 * 60 * 1000) return false;
+      return freshTrajectories(trajectories, state).length >= REFLECT_MIN_NEW
+        && Date.now() - state.lastRunAt >= REFLECT_MIN_INTERVAL_MS;
+    });
+    if (shouldReflect) await runEvolutionReflect(false);
   } catch (error) { agentLog.debug('Evolution', `background evolution skipped: ${summarizeTrajectoryValue(error instanceof Error ? error.message : error)}`); }
+  finally { evolutionCheckRunning = false; }
+}
+
+export async function getEvolutionStatus() {
+  const [state, trajectories, skills] = await Promise.all([loadState(), loadTrajectories(), listAutoSkills()]);
+  return { ...state, running: reflectionQueue.busy, pending: freshTrajectories(trajectories, state).length,
+    total: trajectories.length, threshold: REFLECT_MIN_NEW, skills: skills.length };
 }

@@ -8,12 +8,7 @@
  * Rust SSE proxy). Otherwise we fall back to the OpenAI-compatible streaming
  * path implemented inline below.
  *
- * Models tracked here as of 2026-04:
- *   - deepseek-v4-pro       (Anthropic API; unknown names fall back to flash)
- *   - deepseek-v4-flash     (Anthropic API)
- *   - deepseek-v4           (OpenAI-compatible API)
- *   - deepseek-chat         (OpenAI-compatible API alias)
- *   - deepseek-reasoner     (R1 series, OpenAI-compatible)
+ * The only supported DeepSeek model is deepseek-flash (V4.1 Flash, native vision).
  */
 
 import { invoke } from '@tauri-apps/api/tauri';
@@ -25,46 +20,8 @@ import { withRetry } from '../withRetry';
 import { GLMClient } from '../glmClient';
 import { sanitizeOpenAIToolPairing } from './pairing';
 
-const DEEPSEEK_VISION_MODEL = 'deepseek-v4-flash-vision-exp';
-
-const MODELS: ModelDef[] = [
-  {
-    id: 'deepseek-v4-pro',
-    displayName: 'DeepSeek V4 Pro (Anthropic API)',
-    contextWindow: 1_000_000,
-    supportsTools: true,
-  },
-  {
-    id: 'deepseek-v4-flash',
-    displayName: 'DeepSeek V4 Flash (Anthropic API)',
-    contextWindow: 1_000_000,
-    supportsTools: true,
-  },
-  {
-    id: DEEPSEEK_VISION_MODEL,
-    displayName: 'DeepSeek V4 Vision（实验 · 原生识图）',
-    contextWindow: 1_000_000,
-    supportsTools: true,
-  },
-  {
-    id: 'deepseek-v4',
-    displayName: 'DeepSeek V4 (OpenAI API)',
-    contextWindow: 1_000_000,
-    supportsTools: true,
-  },
-  {
-    id: 'deepseek-chat',
-    displayName: 'DeepSeek Chat (OpenAI API)',
-    contextWindow: 1_000_000,
-    supportsTools: true,
-  },
-  {
-    id: 'deepseek-reasoner',
-    displayName: 'DeepSeek R1 (Reasoner)',
-    contextWindow: 64_000,
-    supportsTools: false,
-  },
-];
+const DEEPSEEK_VISION_MODEL = 'deepseek-flash';
+const MODELS: ModelDef[] = [{ id: DEEPSEEK_VISION_MODEL, displayName: 'DeepSeek V4.1 Flash', contextWindow: 1_000_000, supportsTools: true }];
 
 export interface DeepSeekConfig {
   apiKey: string;
@@ -87,7 +44,7 @@ export class DeepSeekProvider implements Provider {
 
   constructor(private cfg: DeepSeekConfig) {
     this.baseUrl = cfg.baseUrl || 'https://api.deepseek.com/anthropic';
-    this.defaultModelId = cfg.modelId || (isAnthropicBase(this.baseUrl) ? DEEPSEEK_VISION_MODEL : 'deepseek-v4');
+    this.defaultModelId = DEEPSEEK_VISION_MODEL;
 
     if (isAnthropicBase(this.baseUrl)) {
       this.anthropicClient = new GLMClient({
@@ -122,11 +79,11 @@ export class DeepSeekProvider implements Provider {
 
   async chatDetailed(req: SimpleCompletionRequest, opts: ChatOptions): Promise<CompletionResult> {
     if (this.anthropicClient) {
-      const target = req.modelId ?? this.defaultModelId;
+      const target = this.defaultModelId;
       return this.anthropicClient.chatDetailed(req.messages, { maxTokens: req.maxTokens, model: target });
     }
     const body = {
-      model: req.modelId ?? this.defaultModelId,
+      model: this.defaultModelId,
       messages: req.messages,
       max_tokens: req.maxTokens ?? 2000,
       stream: false,
@@ -154,38 +111,13 @@ export class DeepSeekProvider implements Provider {
 
   async *streamChat(req: ChatRequest, opts: ChatOptions): AsyncGenerator<StreamDelta> {
     if (this.anthropicClient) {
-      const preferred = req.modelId ?? this.defaultModelId;
-      // 多模态默认开启：请求带图片且当前模型不支持视觉时，自动改用官方视觉
-      // 模型（deepseek-v4-flash-vision-exp，2026-08-21 实测可用）。若视觉
-      // 模型在产出任何内容前失败，回退到原模型的文本占位路径
-      // （由 image_recognition 工具完成识图），绝不让整轮失败。
-      const hasImages = req.messages.some((message) => {
-        if (message.role === 'tool' && message.media?.some((block) => block.type === 'image')) return true;
-        if (message.role === 'user' && Array.isArray(message.content)) {
-          return message.content.some((block) => block.type === 'image');
-        }
-        return false;
-      });
-      const autoVision = hasImages && !/vision/i.test(preferred);
-      const firstModel = autoVision ? DEEPSEEK_VISION_MODEL : preferred;
-      let yieldedAny = false;
-      try {
-        for await (const delta of this.anthropicClient.streamChat(req.messages, req.tools, opts.signal, firstModel)) {
-          yieldedAny = true;
-          yield delta;
-        }
-        return;
-      } catch (err) {
-        if (!autoVision || yieldedAny) throw err;
-        agentLog.warn('DeepSeek', `${DEEPSEEK_VISION_MODEL} failed before any output; falling back to ${preferred} with tool-based vision`);
-      }
-      yield* this.anthropicClient.streamChat(req.messages, req.tools, opts.signal, preferred);
+      yield* this.anthropicClient.streamChat(req.messages, req.tools, opts.signal, DEEPSEEK_VISION_MODEL);
       return;
     }
 
-    const { messages, tools, modelId, maxTokens, temperature } = req;
+    const { messages, tools, maxTokens, temperature } = req;
     const body = {
-      model: modelId ?? this.defaultModelId,
+      model: this.defaultModelId,
       messages: convertMessagesForOpenAI(messages),
       tools: convertToolsForOpenAI(tools),
       max_tokens: maxTokens ?? 16_000,

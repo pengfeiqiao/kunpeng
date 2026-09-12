@@ -3,6 +3,7 @@ export const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000;
 const MODEL_WINDOWS: Record<string, number> = {
   'glm-5.1': 128_000,
   'glm-4.6': 128_000,
+  'deepseek-flash': 1_000_000,
   'deepseek-v4-pro': 1_000_000,
   'deepseek-v4-flash': 1_000_000,
   'deepseek-v4-flash-vision-exp': 1_000_000,

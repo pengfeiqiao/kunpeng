@@ -82,6 +82,12 @@ export default function ImageFullscreenViewer({ imageUrl, mediaType = 'image', o
     }
   }, [mounted]);
 
+  useEffect(() => {
+    if (mounted && mediaType === 'video') {
+      window.dispatchEvent(new CustomEvent('kunpeng-canvas-video-activate', { detail: { id: '__fullscreen__' } }));
+    }
+  }, [mounted, mediaType, imageUrl]);
+
   if (!mounted) return null;
 
   return createPortal(
@@ -103,6 +109,7 @@ export default function ImageFullscreenViewer({ imageUrl, mediaType = 'image', o
           <video
             src={imageUrl}
             controls
+            playsInline
             autoPlay
             className="absolute inset-0 w-full h-full object-contain select-none"
             style={{

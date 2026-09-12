@@ -535,7 +535,7 @@ export const useSettingsStore = create<SettingsState>()(
           ...mirrorCredentialWrite(state, `provider:${providerId}`, key),
         })),
       providerBaseUrls: {},
-      providerModels: {},
+      providerModels: { deepseek: 'deepseek-flash' },
       setProviderBaseUrl: (providerId, url) =>
         set((state) => ({
           providerBaseUrls: { ...state.providerBaseUrls, [providerId]: url },
@@ -648,7 +648,7 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: LS_KEY,
       storage: createJSONStorage(() => hybridStateStorage),
-      version: 33,
+      version: 34,
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Partial<SettingsState>;
         let result = { ...state } as any;
@@ -848,6 +848,9 @@ export const useSettingsStore = create<SettingsState>()(
           // 按产品决策覆盖此前的任何 DeepSeek 模型选择。
           result.providerModels = result.providerModels ?? {};
           result.providerModels.deepseek = 'deepseek-v4-flash-vision-exp';
+        }
+        if (version <= 33) {
+          result.providerModels = { ...result.providerModels, deepseek: 'deepseek-flash' };
         }
         if (version <= 32) {
           // v32 → v33: GPT Image 2 → GPT Image 2.5。

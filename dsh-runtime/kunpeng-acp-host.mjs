@@ -1,9 +1,9 @@
 import { join } from 'node:path';
 import z from '@deepseek-ai/schemastery';
-// KUNPENG: fork 的 ACP 桥（支持 image 块 → attachment store），上游 dsh-acp 只读不改
-import * as acp from './kunpeng-acp.mjs';
+// Official ACP handles native attachments and tool-result images.
+import * as acp from '@deepseek-ai/dsh-acp';
 import AttachmentLocal from '@deepseek-ai/dsh-attachment-local';
-import * as agentCore from '@deepseek-ai/dsh-agent-spine-demo';
+
 import * as mcpClient from '@deepseek-ai/dsh-mcp-client';
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection';
 import TokenMeter from '@deepseek-ai/dsh-token-meter';
@@ -18,11 +18,11 @@ import SqliteSessionQueryEngine from '@deepseek-ai/dsh-session-query-sqlite';
 export const name = 'kunpeng-acp-host';
 
 export const Config = z.intersect([
-  agentCore.Config,
+  z.object({ persona: z.string().default(''), maxParallelToolCalls: z.number().default(1) }),
   z.object({
     provider: z.string().required(),
     model: z.string().required(),
-    mcp: mcpClient.Config.required(),
+    mcp: mcpClient.Config,
     persistenceRoot: z.string().required(),
     contextWindow: z.number().default(1_000_000),
     packChunks: z.boolean().default(true),
@@ -31,82 +31,54 @@ export const Config = z.intersect([
 ]);
 
 export async function apply(ctx, config) {
-  // Official ACP rc.6 intentionally forwards assistant text only. Expose the
-  // remaining official session signals over a private stderr side channel so
-  // Kunpeng can render reasoning, tool phases and context pressure without
-  // taking ownership of the DSH loop or patching DSH source.
-  const emitObserver = (update) => {
-    try {
-      process.stderr.write(`__KUNPENG_DSH_EVENT__${JSON.stringify(update)}\n`);
-    } catch {
-      // Observability must never interrupt the agent turn.
-    }
-  };
-  const emitUsage = (session, providerUsage) => {
-    try {
-      const measurement = ctx.tokenMeter.measure(session);
-      emitObserver({
-        sessionUpdate: 'usage_update',
-        used: measurement.totalTokens,
-        size: config.contextWindow,
-      });
-    } catch {
-      // The first live usage event may arrive before the meter has consumed a
-      // durable assistant/message anchor. Use the exact provider accounting as
-      // an early baseline; later events switch back to the official meter.
-      if (providerUsage) {
-        emitObserver({
-          sessionUpdate: 'usage_update',
-          used: providerUsage.inputTokens
-            + (providerUsage.cacheReadTokens ?? 0)
-            + (providerUsage.cacheWriteTokens ?? 0)
-            + providerUsage.outputTokens,
-          size: config.contextWindow,
-        });
-      }
-    }
-  };
-  ctx.on('session/event', (session, event) => {
-    if (event.type === 'assistant/chunk') {
-      const chunk = event.data.chunk;
-      if (chunk.type === 'reasoning-delta' && chunk.text) {
-        emitObserver({
-          sessionUpdate: 'agent_thought_chunk',
-          content: { type: 'text', text: chunk.text },
-        });
-      } else if (chunk.type === 'usage') {
-        emitUsage(session, chunk.usage);
-      }
-      return;
-    }
-    if (event.type === 'tool/call') {
-      emitObserver({ sessionUpdate: 'tool_call' });
-      return;
-    }
-    if (event.type === 'assistant/message') {
-      emitUsage(session);
-      return;
-    }
-    if (event.type === 'compaction/start'
-      || event.type === 'compaction/summary'
-      || event.type === 'compaction/end') {
-      emitObserver({
-        sessionUpdate: 'kunpeng_compaction',
-        phase: event.type.slice('compaction/'.length),
+  // ACP now publishes reasoning, tools and usage itself. Only compaction
+  // remains on the private observer channel; never duplicate native chunks.
+  ctx.on('session/event', (_session, event) => {
+    if (['compaction/start', 'compaction/summary', 'compaction/end'].includes(event.type)) {
+      process.stderr.write(`__KUNPENG_DSH_EVENT__${JSON.stringify({
+        sessionUpdate: 'kunpeng_compaction', phase: event.type.slice('compaction/'.length),
         failed: event.type === 'compaction/end' && event.data.error !== undefined,
-      });
-      emitUsage(session);
+      })}\n`);
     }
   });
 
-  // Follow dsh-acp-demo's ownership model exactly: the spine and every
+  // The core and every
   // consumer live in one ordered effect. Mounting the spine outside this
   // effect can let Cordis settle its fiber before ACP creates a session,
   // leaving a valid-looking transport whose bridge is already disposed.
   await ctx.effect(async function* () {
-    const spine = ctx.plugin(agentCore, agentCore.pickSpineConfig(config));
-    await spine;
-    yield spine.dispose;
+    // Explicit service composition replaces the retired upstream spine-demo.
+    // These are unmodified official plugins; Kunpeng owns only the tool/UI bridge.
+    const core = [
+      ['@deepseek-ai/cordis-plugin-timer', {}],
+      ['@deepseek-ai/dsh-llm', {}],
+      ['@deepseek-ai/dsh-session', {}],
+      ['@deepseek-ai/dsh-session-title', { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 }],
+      ['@deepseek-ai/dsh-system-prompt', { includeRuntimeContext: false, personaPrefix: '{{kunpeng_persona}}' }],
+      ['@deepseek-ai/dsh-tools', {}],
+      ['@deepseek-ai/dsh-agent', {}],
+      ['@deepseek-ai/dsh-llm-retry', {}],
+      ['@deepseek-ai/dsh-jobs-local', {}],
+      ['@deepseek-ai/dsh-invariants', {}],
+      ['@deepseek-ai/dsh-session/invariant', {}],
+      ['@deepseek-ai/dsh-agent/invariant', {}],
+      ['@deepseek-ai/dsh-scope/invariant', {}],
+      ['@deepseek-ai/dsh-agent-loop/invariant', {}],
+      ['@deepseek-ai/dsh-agent-loop', { agents: [], maxParallelToolCalls: config.maxParallelToolCalls }],
+    ];
+    for (const [name, options] of core) {
+      const module = await import(name);
+      const plugin = ctx.plugin(module.default ?? module, options);
+      yield plugin.dispose;
+      if (name === '@deepseek-ai/dsh-system-prompt') {
+        await plugin;
+        const persona = ctx.inject(['systemPrompt'], (child) => {
+          child.systemPrompt.variable('kunpeng_persona', () => config.persona);
+        });
+        await persona;
+        yield persona.dispose;
+      }
+    }
 
     const projection = ctx.plugin(SessionProjectionRegistry);
     await projection;
@@ -130,9 +102,11 @@ export async function apply(ctx, config) {
 
     // MCP is a sibling of the spine, so it resolves the same ToolRuntime
     // service that the official agent loop uses without mutating DSH source.
-    const mcp = ctx.plugin(mcpClient, config.mcp);
-    await mcp;
-    yield mcp.dispose;
+    if (config.mcp) {
+      const mcp = ctx.plugin(mcpClient, config.mcp);
+      await mcp;
+      yield mcp.dispose;
+    }
 
     const persistence = ctx.plugin(JsonlSessionPersistence, {
       root: config.persistenceRoot,
@@ -154,7 +128,7 @@ export async function apply(ctx, config) {
     await query;
     yield query.dispose;
 
-    // KUNPENG: durable attachment store —— pi-ai 视觉路由的图片输入依赖它
+    // Durable attachment storage for official ACP and MCP image evidence.
     // （图片字节落盘为内容寻址引用，线上请求时再 base64 内联）。
     // 单图上限对齐 DeepSeek 官方视觉限制（32MiB）。
     const attachments = ctx.plugin(AttachmentLocal, {

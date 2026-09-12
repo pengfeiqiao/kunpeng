@@ -11,6 +11,7 @@
  * image 参数接受公网 URL、data URI 或本地路径（本地自动转 base64）。
  */
 
+import { fetch as nativeFetch, ResponseType } from '@tauri-apps/api/http';
 import type { Tool } from '../types';
 import { visionWithFallback, loadImageInput } from './dmxClient';
 
@@ -33,7 +34,7 @@ export const visionTool: Tool = {
     },
   },
   risk: 'safe',
-  async execute(params) {
+  async execute(params, _signal, context) {
     const { image, prompt } = params as { image?: string; prompt?: string };
     if (!image || !image.trim()) {
       return { success: false, output: '', error: 'image required' };
@@ -41,7 +42,28 @@ export const visionTool: Tool = {
     const question = (prompt && prompt.trim()) || DEFAULT_PROMPT;
 
     try {
-      await loadImageInput(image);
+      let input = await loadImageInput(image);
+      if (context?.nativeVision && /^https?:\/\//i.test(input)) {
+        const response = await nativeFetch<number[]>(input, { method: 'GET', responseType: ResponseType.Binary, timeout: 30 });
+        if (!response.ok) throw new Error(`图片下载失败 (${response.status})`);
+        const bytes = response.data;
+        if (bytes.length > 4 * 1024 * 1024) throw new Error('图片超过 4MB，请先缩小图片后查看。');
+        let binary = '';
+        for (let index = 0; index < bytes.length; index += 8192) binary += String.fromCharCode(...bytes.slice(index, index + 8192));
+        const mime = response.headers['content-type']?.split(';')[0] || 'image/jpeg';
+        if (!mime.startsWith('image/')) throw new Error('地址未返回图片内容');
+        input = `data:${mime};base64,${btoa(binary)}`;
+      }
+      if (context?.nativeVision) {
+        const source = input.startsWith('data:')
+          ? { type: 'base64' as const, media_type: input.slice(5, input.indexOf(';')), data: input.slice(input.indexOf(',') + 1) }
+          : { type: 'url' as const, url: input };
+        return {
+          success: true,
+          output: `图片已加载，请使用当前模型的原生视觉回答：${question}`,
+          media: [{ type: 'image' as const, source }],
+        };
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, output: '', error: `读取图片失败: ${msg}` };

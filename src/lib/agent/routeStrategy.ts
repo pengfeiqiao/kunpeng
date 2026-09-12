@@ -70,7 +70,7 @@ export function buildChatRouteStrategy(
     if (!hasProviderKey(settings, providerId, options.legacyGlmApiKey)) return false;
     chain.push({
       providerId,
-      modelId: selection?.modelId || settings.providerModels?.[providerId] || undefined,
+      modelId: providerId === 'deepseek' ? 'deepseek-flash' : selection?.modelId || settings.providerModels?.[providerId] || undefined,
     });
     seen.add(providerId);
     return true;

@@ -79,7 +79,7 @@ export class DshAcpClient {
     const prompt = buildAcpPromptContent(mediaBlocks, () => {
       if (warnedDroppedMedia) return;
       warnedDroppedMedia = true;
-      agentLog.warn('DSH', 'Dropped inline media block: ACP only supports text/resource_link; use vision tools instead');
+      agentLog.warn('DSH', 'Dropped unsupported media block: ACP accepts native images; use analysis tools for video');
     });
     prompt.push({ type: 'text', text });
     return this.request('session/prompt', { sessionId: this.sessionId, prompt }) as Promise<{ stopReason?: string }>;

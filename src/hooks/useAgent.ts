@@ -699,8 +699,8 @@ export function useAgent(options?: { primary?: boolean }) {
   // trajectory record, then maybe fires a background reflection pass.
   // Best-effort — never blocks or breaks the foreground run.
   const recordRunTrajectory = useCallback(
-    (status: 'done' | 'failed' | 'aborted', req: string, startTime: number | null, ordinaryChat = false) => {
-      if (!ordinaryChat) return;
+    (status: 'done' | 'failed' | 'aborted', req: string, startTime: number | null, _ordinaryChat = false) => {
+      // Include canvas, workshop and editor runs in the learning journal.
       try {
         const tools: Record<string, number> = {};
         const fail: Record<string, number> = {};
@@ -1812,6 +1812,7 @@ export function useAgent(options?: { primary?: boolean }) {
       let subagentRunner: SubagentRunner | null = null;
       const registry = coordinator.getToolRegistry();
       const releaseWorkspaceDispatch = bindWorkspaceRunDispatch(runId, content);
+      registry.bindRunContext(runId, { nativeVision: ['deepseek', 'kimi'].includes(primaryRoute.providerId) });
       if (isOrdinaryChatRun) {
         subagentRunner = new SubagentRunner({
           parentRunId: runId,
@@ -1826,6 +1827,7 @@ export function useAgent(options?: { primary?: boolean }) {
             ),
         });
         registry.bindRunContext(runId, {
+          nativeVision: ['deepseek', 'kimi'].includes(primaryRoute.providerId),
           idempotencyRunId: runId,
           subagentDepth: 0,
           delegate: (request, signal) => subagentRunner!.run(request, signal),
@@ -1874,17 +1876,12 @@ export function useAgent(options?: { primary?: boolean }) {
             if (resumeContext) input = `${resumeContext}\n\n${input}`;
             if (stagePrefix) input = `${stagePrefix}\n\n${input}`;
             if (filePaths?.length) mediaBlocks = await buildDshMediaBlocks(filePaths);
-            // DeepSeek 视觉模型（deepseek-v4-flash-vision-exp 起）在 Harness
-            // 里原生看图：fork 的 ACP 桥（dsh-runtime/kunpeng-acp.mjs）接受
-            // image 块 → attachment store 持久化 → pi-ai 路由（模型声明
-            // input:[text,image]，见 dsh.rs 的 llm-pi-ai 条目）。
-            // 非视觉 DeepSeek 模型的带图轮次才改道内置通道（内置路径会把
-            // 模型自动切到官方视觉模型，同供应商）。含视频附件的轮次一律
-            // 留在 Harness 走分析/转写工具（视频块不进模型）。
+            // Official DSH ACP and DeepSeek Flash 4.1 accept native images.
+            // Video remains a separate analysis/transcription tool flow.
             const hasImageMedia = mediaBlocks.some((block) => block.type === 'image');
             const hasVideoMedia = mediaBlocks.some((block) => block.type === 'video');
-            const harnessModel = primaryRoute.modelId || settings.providerModels.deepseek || 'deepseek-v4-flash-vision-exp';
-            const harnessVisionCapable = /vision/i.test(harnessModel);
+            const harnessModel = primaryRoute.modelId || settings.providerModels.deepseek || 'deepseek-flash';
+            const harnessVisionCapable = harnessModel === 'deepseek-flash' || /vision/i.test(harnessModel);
             if (hasImageMedia && !hasVideoMedia && !harnessVisionCapable) {
               executingHarness = false;
               coordinator.setRouteStrategy(deepseekBuiltinRoute(primaryRoute.modelId));

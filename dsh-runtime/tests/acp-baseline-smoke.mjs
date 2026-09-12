@@ -9,7 +9,7 @@ const node = join(root, 'node', ...(process.platform === 'win32' ? ['node.exe'] 
 // cordis/loader entry 的 name 直接进 import()：Windows 裸绝对路径会被当成
 // URL scheme 'c:'，必须 file:// URL（与 dsh.rs 的 module_specifier 一致）。
 const fileUrl = (p) => 'file:///' + p.replace(/\\/g, '/');
-const bin = join(root, 'node_modules', '@deepseek-ai', 'dsh-acp-demo', 'lib', 'bin.js');
+const bin = join(root, 'kunpeng-dsh.mjs');
 const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
 
 if (!apiKey) {
@@ -21,7 +21,7 @@ if (!apiKey) {
 // contains node_modules), not the system temp dir.
 const work = await mkdtemp(join(root, '.baseline-'));
 const configPath = join(work, 'cordis.json');
-const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
 const baseURL = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
 
 await writeFile(configPath, JSON.stringify([
@@ -40,7 +40,7 @@ await writeFile(configPath, JSON.stringify([
   },
   {
     id: 'acp',
-    name: '@deepseek-ai/dsh-acp-demo',
+    name: fileUrl(join(root, 'kunpeng-acp-host.mjs')),
     config: {
       provider: 'deepseek-official',
       model,

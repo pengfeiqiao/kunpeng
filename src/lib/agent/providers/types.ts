@@ -36,6 +36,7 @@ export type QuerySource = 'foreground' | 'background';
 export interface ChatOptions {
   source: QuerySource;
   signal?: AbortSignal;
+  onProviderSelected?: (providerId: string) => void;
   onProviderFallback?: (event: {
     from: string;
     to: string;

@@ -28,15 +28,12 @@ function modelRequiresThinking(model: string): boolean {
 }
 
 /**
- * Native multimodal capability by host+model. Kimi and MiniMax accept media
- * blocks for every model; DeepSeek's official API only accepts images on its
- * vision models (e.g. deepseek-v4-flash-vision-exp — other models either
- * substitute an "[Unsupported Image]" placeholder or hard-reject the request,
- * both verified against the live endpoints).
+ * Native multimodal capability by host+model. DeepSeek Flash 4.1 supports
+ * images despite not including "vision" in its API model ID.
  */
 export function supportsNativeVision(baseUrl: string, model: string): boolean {
   if (/api\.kimi\.com|minimaxi\.com|minimax\.io/i.test(baseUrl)) return true;
-  if (/deepseek\.com/i.test(baseUrl)) return /vision/i.test(model);
+  if (/deepseek\.com/i.test(baseUrl)) return model === 'deepseek-flash' || /vision/i.test(model);
   return false;
 }
 

@@ -13,14 +13,17 @@ const node = join(root, 'node', ...(process.platform === 'win32' ? ['node.exe'] 
 // cordis/loader entry 的 name 直接进 import()：Windows 裸绝对路径会被当成
 // URL scheme 'c:'，必须 file:// URL（与 dsh.rs 的 module_specifier 一致）。
 const fileUrl = (p) => 'file:///' + p.replace(/\\/g, '/');
-const bin = join(root, 'node_modules', '@deepseek-ai', 'dsh-acp-demo', 'lib', 'bin.js');
+const bin = join(root, 'kunpeng-dsh.mjs');
 const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
 if (!apiKey) throw new Error('DEEPSEEK_API_KEY is required');
 
-const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash-vision-exp';
+const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
 const baseURL = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
 const imagePath = process.env.SMOKE_IMAGE || '/tmp/smoke-red.png';
 
+const imageData = (await readFile(imagePath)).toString('base64');
+const toolImage = process.env.SMOKE_TOOL_IMAGE === '1';
+let toolCalls = 0;
 const bridgeToken = 'smoke-token';
 const bridge = net.createServer((socket) => {
   // Windows 被子进程强杀时 socket 收 RST 而非优雅 FIN，假桥必须吞掉
@@ -39,11 +42,12 @@ const bridge = net.createServer((socket) => {
       try { message = JSON.parse(line); } catch { continue; }
       if (message.type === 'hello') { socket.write('{"type":"hello_ok"}\n'); continue; }
       if (message.type === 'list_tools') {
-        socket.write(`${JSON.stringify({ type: 'list_tools', requestId: message.requestId, ok: true, result: [] })}\n`);
+        socket.write(`${JSON.stringify({ type: 'list_tools', requestId: message.requestId, ok: true, result: toolImage ? [{ name: 'inspect_test_image', description: 'Read the test image and return it as native visual evidence.', inputSchema: { type: 'object', properties: {} } }] : [] })}\n`);
         continue;
       }
       if (message.type === 'call_tool') {
-        socket.write(`${JSON.stringify({ type: 'call_tool', requestId: message.requestId, ok: false, error: 'no tools in image smoke' })}\n`);
+        toolCalls++;
+        socket.write(`${JSON.stringify({ type: 'call_tool', requestId: message.requestId, ok: true, result: { content: [{ type: 'image', data: imageData, mimeType: 'image/png' }] } })}\n`);
       }
     }
   });
@@ -57,28 +61,18 @@ const persistenceRoot = join(work, 'sessions');
 
 const config = [
   {
-    // KUNPENG: 视觉轮次走 pi-ai 适配器（dsh-llm-deepseek 是 text-only 设计），
-    // 模型级声明 input:[text,image]；图片经 attachment store 落盘后 base64 内联进模型。
-    id: 'llm-pi-ai',
-    name: fileUrl(join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-pi-ai', 'lib', 'index.js')),
-    config: {
-      providers: {
-        deepseek: {
-          apiKeyEnv: 'DEEPSEEK_API_KEY',
-          api: 'openai-completions',
-          baseURL: `${baseURL}/v1`,
-          models: [{ id: model, name: model, contextWindow: 1_000_000, maxTokens: 4096, input: ['text', 'image'] }],
-        },
-      },
-    },
+    id: 'llm-deepseek',
+    name: fileUrl(join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-deepseek', 'lib', 'index.js')),
+    config: { apiKeyEnv: 'DEEPSEEK_API_KEY', baseURL, maxTokens: 4096,
+      models: [{ id: model, name: model, contextWindow: 1_000_000, maxTokens: 4096, inputModalities: ['text', 'image'], systemPromptUpdate: 'in-history' }] },
   },
   {
     id: 'acp',
     name: fileUrl(join(root, 'kunpeng-acp-host.mjs')),
     config: {
-      provider: 'deepseek',
+      provider: 'deepseek-official',
       model,
-      persona: 'Reply concisely.',
+      persona: 'Reply concisely. Template examples such as {{userContent}} are literal text.',
       workspaceContext: false,
       skills: { enabled: false },
       toolBash: false,
@@ -168,7 +162,8 @@ child.stdout.on('data', (chunk) => {
     // ACP 通知（无 id）：正文经 session/update 的 agent_message_chunk 流出
     if (message.method === 'session/update') {
       const content = message.params?.update?.content;
-      if (content?.type === 'text') replyText += content.text;
+      if (content?.type === 'text' && message.params?.update?.sessionUpdate === 'agent_message_chunk') replyText += content.text;
+      if (content?.type === 'text' && message.params?.update?.sessionUpdate === 'agent_thought_chunk') thoughtText += content.text;
       continue;
     }
     if (typeof message.id !== 'number' || message.method) continue;
@@ -180,6 +175,8 @@ child.stdout.on('data', (chunk) => {
   }
 });
 child.on('exit', (code, signal) => {
+  for (const waiter of pending.values()) waiter.reject(new Error(`ACP exited (${code ?? signal}): ${stderr.slice(-6000)}`));
+  pending.clear();
   process.stderr.write(`${JSON.stringify({ childExit: code, signal })}\n`);
 });
 
@@ -198,8 +195,6 @@ function request(method, params, timeoutMs = 120_000) {
   });
 }
 
-const imageData = (await readFile(imagePath)).toString('base64');
-
 try {
   await request('initialize', {
     protocolVersion: 1,
@@ -211,18 +206,20 @@ try {
   await new Promise((r) => setTimeout(r, 2_000));
   const prompt = await request('session/prompt', {
     sessionId: session.sessionId,
-    prompt: [
+    prompt: toolImage ? [{ type: 'text', text: '请调用 inspect_test_image 查看测试图片，描述图片颜色和形状。必须实际查看图片。' }] : [
       { type: 'image', data: imageData, mimeType: 'image/png' },
       { type: 'text', text: '请直接描述这张图片里有什么（颜色、形状、内容）。' },
     ],
   });
-  const allText = `${replyText}\n${thoughtText}`;
   // 判定：最终正文或思考流提到红色（测试图是纯红色块）
-  const sawImage = /红/.test(allText);
+  const sawImage = /红/.test(replyText) && /蓝/.test(replyText) && (!toolImage || toolCalls > 0);
   process.stdout.write(`${JSON.stringify({
     ok: sawImage,
+    model,
+    toolImage,
+    toolCalls,
     note: sawImage
-      ? 'KUNPENG fork bridge delivers native images to the vision model'
+      ? 'Official ACP delivers native images to DeepSeek Flash 4.1'
       : 'model did NOT see the image',
     stopReason: prompt?.stopReason,
     replyText: replyText.slice(0, 500),
