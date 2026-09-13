@@ -5,6 +5,7 @@ import { Command } from '@tauri-apps/api/shell';
 import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveCosSecrets } from '@/lib/credentials';
+import { uploadToS3 } from '@/lib/s3Upload';
 
 export interface CosUploadProgress {
   stage: 'preparing' | 'uploading' | 'completed';
@@ -33,6 +34,9 @@ export async function uploadToCos(
   onProgress?: (progress: CosUploadProgress) => void,
 ): Promise<string> {
   const state = useSettingsStore.getState();
+  if (state.s3Endpoint.trim()) {
+    return uploadToS3(localPath, fileName, contentTypeOverride, onProgress);
+  }
   const cosBucket = state.cosBucket;
   const cosRegion = state.cosRegion;
   const resolved = resolveCosSecrets(state, state.cosSecretId, state.cosSecretKey);

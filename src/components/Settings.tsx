@@ -56,7 +56,7 @@ const SETTINGS_TABS: Array<{
   { id: 'videos', group: 'AI 服务', label: '视频与语音', description: 'Seedance、MiniMax H3、Omni MG 与豆包语音的统一管理', icon: <Film size={16} /> },
   { id: 'usage', group: 'AI 服务', label: '用量与余额', description: '查看媒体生成服务的剩余额度', icon: <Gauge size={16} /> },
   { id: 'routes', group: 'AI 服务', label: '智能路由', description: '配置模型降级链与生图通道顺序', icon: <Route size={16} /> },
-  { id: 'integrations', group: 'AI 服务', label: '存储与集成', description: 'Kimi 剪辑 Agent 与腾讯云 COS', icon: <Cloud size={16} /> },
+  { id: 'integrations', group: 'AI 服务', label: '存储与集成', description: 'Kimi 剪辑 Agent、COS 与 S3', icon: <Cloud size={16} /> },
   { id: 'data', group: '偏好设置', label: '数据与备份', description: '导入或导出鲲鹏设置', icon: <Database size={16} /> },
   { id: 'skills', group: '扩展与诊断', label: '自进化与技能', description: '查看自动反思状态、总结经验与管理技能', icon: <Boxes size={16} /> },
   { id: 'logs', group: '扩展与诊断', label: '运行日志', description: '诊断 Agent 与接口问题', icon: <ScrollText size={16} /> },
@@ -425,6 +425,8 @@ const SETTINGS_EXPORT_CREDENTIAL_KEYS = new Set([
   'webSearchCustomApiKey',
   'cosSecretId',
   'cosSecretKey',
+  's3AccessKeyId',
+  's3SecretAccessKey',
   'providerApiKeys',
   'imageApiSlots', // slots carry per-channel apiKey
   'customMediaApis', // plugins carry per-entry apiKey
@@ -480,6 +482,8 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
     cosSecretId, setCosSecretId,
     cosSecretKey, setCosSecretKey,
     cosTransitEndpoint, setCosTransitEndpoint,
+    s3Endpoint, s3Region, s3Bucket, s3AccessKeyId, s3SecretAccessKey, s3Prefix, s3PublicBaseUrl, s3ForcePathStyle,
+    setS3Endpoint, setS3Region, setS3Bucket, setS3AccessKeyId, setS3SecretAccessKey, setS3Prefix, setS3PublicBaseUrl, setS3ForcePathStyle,
     webSearchApiMode, setWebSearchApiMode,
     webSearchCustomBaseUrl, setWebSearchCustomBaseUrl,
     webSearchCustomApiKey, setWebSearchCustomApiKey,
@@ -1072,6 +1076,43 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
               onChange={(e) => setKimiEditUseCos(e.target.checked)}
               className="h-4 w-4 rounded border-zinc-300 text-sky-500 focus:ring-sky-200"
             />
+          </label>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="自定义 S3 兼容存储" description="直接上传到 AWS S3、MinIO、R2 或其他 S3 兼容服务" defaultOpen={false}>
+        <div className="space-y-2">
+          <p className="text-[10px] leading-relaxed text-zinc-500">填写 Endpoint 后启用直传；留空则继续使用腾讯云 COS。</p>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Endpoint</label>
+            <input type="text" value={s3Endpoint} onChange={(e) => setS3Endpoint(e.target.value)} className={inputCls} placeholder="https://s3.amazonaws.com 或 https://minio.example.com" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1">Region</label>
+              <input type="text" value={s3Region} onChange={(e) => setS3Region(e.target.value)} className={inputCls} placeholder="us-east-1" />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1">Bucket</label>
+              <input type="text" value={s3Bucket} onChange={(e) => setS3Bucket(e.target.value)} className={inputCls} placeholder="my-bucket" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Access Key ID</label>
+            <input type="text" value={s3AccessKeyId} onChange={(e) => setS3AccessKeyId(e.target.value)} className={inputCls} placeholder="AKIA..." />
+          </div>
+          <KeyInputRow label="Secret Access Key" value={s3SecretAccessKey} onChange={setS3SecretAccessKey} show={showKeys.has('s3')} onToggleShow={() => toggleShow('s3')} placeholder="输入 Secret Access Key..." />
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Object Prefix</label>
+            <input type="text" value={s3Prefix} onChange={(e) => setS3Prefix(e.target.value)} className={inputCls} placeholder="kunpeng" />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">公网访问基础 URL（可选）</label>
+            <input type="text" value={s3PublicBaseUrl} onChange={(e) => setS3PublicBaseUrl(e.target.value)} className={inputCls} placeholder="https://cdn.example.com" />
+          </div>
+          <label className="flex items-center gap-2 text-xs text-zinc-600">
+            <input type="checkbox" checked={s3ForcePathStyle} onChange={(e) => setS3ForcePathStyle(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 text-sky-500 focus:ring-sky-200" />
+            使用 Path-style 请求（MinIO、R2 等通常需要）
           </label>
         </div>
       </CollapsibleSection>
