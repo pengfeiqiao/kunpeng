@@ -307,6 +307,24 @@ interface SettingsState {
   setMediaUploadApiKey: (v: string) => void;
   setMediaPublicBaseUrl: (v: string) => void;
 
+  // Generic S3-compatible media storage
+  s3Endpoint: string;
+  s3Region: string;
+  s3Bucket: string;
+  s3AccessKeyId: string;
+  s3SecretAccessKey: string;
+  s3Prefix: string;
+  s3PublicBaseUrl: string;
+  s3ForcePathStyle: boolean;
+  setS3Endpoint: (v: string) => void;
+  setS3Region: (v: string) => void;
+  setS3Bucket: (v: string) => void;
+  setS3AccessKeyId: (v: string) => void;
+  setS3SecretAccessKey: (v: string) => void;
+  setS3Prefix: (v: string) => void;
+  setS3PublicBaseUrl: (v: string) => void;
+  setS3ForcePathStyle: (v: boolean) => void;
+
   // Optional display name used in greetings (「你好！」 when empty).
   // Private builds can preset it via private.defaults.json (gitignored).
   greetingName: string;
@@ -537,6 +555,23 @@ export const useSettingsStore = create<SettingsState>()(
       setMediaUploadEndpoint: (mediaUploadEndpoint) => set({ mediaUploadEndpoint }),
       setMediaUploadApiKey: (mediaUploadApiKey) => set({ mediaUploadApiKey }),
       setMediaPublicBaseUrl: (mediaPublicBaseUrl) => set({ mediaPublicBaseUrl }),
+      // Generic S3-compatible media storage
+      s3Endpoint: '',
+      s3Region: 'us-east-1',
+      s3Bucket: '',
+      s3AccessKeyId: '',
+      s3SecretAccessKey: '',
+      s3Prefix: 'kunpeng',
+      s3PublicBaseUrl: '',
+      s3ForcePathStyle: true,
+      setS3Endpoint: (s3Endpoint) => set({ s3Endpoint }),
+      setS3Region: (s3Region) => set({ s3Region }),
+      setS3Bucket: (s3Bucket) => set({ s3Bucket }),
+      setS3AccessKeyId: (s3AccessKeyId) => set({ s3AccessKeyId }),
+      setS3SecretAccessKey: (s3SecretAccessKey) => set({ s3SecretAccessKey }),
+      setS3Prefix: (s3Prefix) => set({ s3Prefix }),
+      setS3PublicBaseUrl: (s3PublicBaseUrl) => set({ s3PublicBaseUrl }),
+      setS3ForcePathStyle: (s3ForcePathStyle) => set({ s3ForcePathStyle }),
       greetingName: '',
       setGreetingName: (greetingName) => set({ greetingName }),
 

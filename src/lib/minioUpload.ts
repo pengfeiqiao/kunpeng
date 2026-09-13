@@ -1,6 +1,7 @@
 /** Upload local media through the self-hosted FastAPI → MinIO service. */
 import { fetch as tauriFetch, Body, ResponseType } from '@tauri-apps/api/http';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { uploadToS3 } from '@/lib/s3Upload';
 
 export interface MinioUploadProgress {
   stage: 'preparing' | 'uploading' | 'completed';
@@ -41,6 +42,9 @@ export async function uploadToMinio(
   onProgress?: (progress: MinioUploadProgress) => void,
 ): Promise<string> {
   const state = useSettingsStore.getState();
+  if (state.s3Endpoint.trim()) {
+    return uploadToS3(localPath, fileName, contentTypeOverride, onProgress);
+  }
   const endpoint = state.mediaUploadEndpoint.trim();
   const apiKey = state.mediaUploadApiKey.trim();
   if (!endpoint || !apiKey) {
