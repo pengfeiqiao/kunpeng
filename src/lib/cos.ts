@@ -241,7 +241,8 @@ export async function cosTransitDownload(remoteUrl: string, fileName: string): P
     responseType: ResponseType.JSON,
   });
   if (!resp.ok) throw new Error(`SCF 中转失败 HTTP ${resp.status}`);
-  const data = resp.data as { cosUrl?: string; error?: string };
+  const data = resp.data as { cosUrl?: string; cosKey?: string; error?: string };
   if (!data.cosUrl) throw new Error(data.error || 'SCF 未返回 cosUrl');
+  if (data.cosKey) console.info('[COS] 中转对象:', data.cosKey);
   return data.cosUrl;
 }

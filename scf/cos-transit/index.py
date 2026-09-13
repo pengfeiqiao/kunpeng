@@ -10,6 +10,7 @@ Package with cos-python-sdk-v5 + urllib3<2 in the zip.
 Environment variables:
   COS_BUCKET    — e.g. my-images-1250000000 (REQUIRED, your own bucket)
   COS_REGION    — e.g. ap-guangzhou
+  COS_OBJECT_PREFIX — object key prefix, defaults to kunpeng
   COS_SECRET_ID — AKID...
   COS_SECRET_KEY — ...
 """
@@ -21,6 +22,7 @@ from qcloud_cos import CosConfig, CosS3Client
 
 BUCKET = os.environ.get('COS_BUCKET', '')
 REGION = os.environ.get('COS_REGION', 'ap-guangzhou')
+OBJECT_PREFIX = os.environ.get('COS_OBJECT_PREFIX', 'kunpeng').strip('/')
 SECRET_ID = os.environ.get('COS_SECRET_ID', '')
 SECRET_KEY = os.environ.get('COS_SECRET_KEY', '')
 
@@ -45,7 +47,7 @@ def main_handler(event, context):
 
     config = CosConfig(Region=REGION, SecretId=SECRET_ID, SecretKey=SECRET_KEY)
     client = CosS3Client(config)
-    cos_key = f'kunpeng/transit/{file_name}'
+    cos_key = f'{OBJECT_PREFIX}/{file_name}' if OBJECT_PREFIX else file_name
     client.put_object(Bucket=BUCKET, Body=data, Key=cos_key, ContentType=content_type)
 
     cos_url = f'https://{BUCKET}.cos.{REGION}.myqcloud.com/{cos_key}'
@@ -53,5 +55,5 @@ def main_handler(event, context):
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
-        'body': json.dumps({'cosUrl': cos_url, 'size': len(data)})
+        'body': json.dumps({'cosUrl': cos_url, 'cosKey': cos_key, 'size': len(data)})
     }
