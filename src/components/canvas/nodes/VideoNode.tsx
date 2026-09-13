@@ -260,7 +260,7 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeData>) {
           style={{ background: 'rgba(38,38,38,0.92)', backdropFilter: 'blur(12px) saturate(1.5)', boxShadow: '0 2px 12px rgba(0,0,0,0.1), 0 0 0 1px rgba(255,255,255,0.08)' }}
         >
           {data.generatedVideoUrl && (<>
-            <ToolBtnV onClick={() => window.dispatchEvent(new CustomEvent('kunpeng-open-video-fullscreen', { detail: { url: data.generatedVideoUrl } }))} icon={Maximize2} label="全屏" title="全屏查看视频" />
+            <ToolBtnV onClick={() => window.dispatchEvent(new CustomEvent('kunpeng-open-video-fullscreen', { detail: { url: data.localPath ? convertFileSrc(data.localPath) : data.generatedVideoUrl } }))} icon={Maximize2} label="全屏" title="全屏查看视频" />
             <ToolBtnV onClick={() => void handleCopyLink()} icon={Copy} label="复制链接" title="复制视频公网链接" />
             <ToolBtnV onClick={() => void handleOpenFolder()} icon={FolderOpen} label="打开" title="在 Finder 中定位视频文件" />
             <ToolBtnV onClick={() => void sendToEditor(id)} icon={Scissors} label="剪辑" title="加入剪辑时间轴" />
