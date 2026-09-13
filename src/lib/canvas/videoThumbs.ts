@@ -52,7 +52,7 @@ export async function ensureVideoThumb(videoPath: string): Promise<VideoThumbRes
       if (!ffmpeg) return null;
       const q = (p: string) => `'${p.replace(/'/g, `'\\''`)}'`;
       // Serialize extraction (one ffmpeg at a time keeps the UI snappy)
-      await (queue = queue.then(async () => {
+      await (queue = queue.catch(() => {}).then(async () => {
         const r = await invoke<CommandResult>('execute_command', {
           command: `${ffmpeg} -ss 0.5 -i ${q(videoPath)} -frames:v 1 -vf "scale=320:-2" -q:v 4 ${q(thumbPath)} -y`,
           timeoutMs: 30000,
@@ -118,7 +118,7 @@ export async function getVideoFilmstrip(videoPath: string, count = 6): Promise<s
         const duration = (await probeDuration(videoPath)) || 5;
         // fps = count/duration spreads N picks evenly across the file
         const fps = Math.max(0.05, count / duration);
-        await (queue = queue.then(async () => {
+        await (queue = queue.catch(() => {}).then(async () => {
           const r = await invoke<CommandResult>('execute_command', {
             command: `${ffmpeg} -i ${q(videoPath)} -vf "fps=${fps.toFixed(4)},scale=160:-2" -frames:v ${count} -q:v 5 ${q(`${base}-%d.jpg`)} -y`,
             timeoutMs: 60000,

@@ -63,6 +63,8 @@ export type SubAgentEvent =
   | { type: 'terminal'; id: string; runId: string; status: SubAgentTerminalStatus; conclusion?: string; error?: string };
 
 export interface ToolExecutionContext {
+  /** Return visual evidence to the active model instead of a separate vision service. */
+  nativeVision?: boolean;
   runId?: string;
   /** Parent run namespace used by paid-call idempotency across delegates. */
   idempotencyRunId?: string;

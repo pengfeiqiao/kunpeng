@@ -147,6 +147,7 @@ export function repairToolPairingSnapshot(messages: AgentMessage[]): AgentMessag
  */
 export class AgentCoordinator {
   private messages: AgentMessage[] = [];
+  private nativeVisionForTurn = false;
   private abortController: AbortController | null = null;
   private config: Required<Pick<CoordinatorConfig, 'maxTurns'>> & CoordinatorConfig;
   private contextManager: ContextManager;
@@ -807,6 +808,7 @@ export class AgentCoordinator {
               runId,
               idempotencyRunId: this.config.idempotencyRunId,
               subagentDepth: this.config.subagentDepth ?? 0,
+              nativeVision: this.nativeVisionForTurn,
             },
           );
           callbacks.onToolEnd(p.call.function.name, result);
@@ -1098,6 +1100,7 @@ export class AgentCoordinator {
       );
     }
 
+    this.nativeVisionForTurn = false;
     const stream = this.config.routeStrategy
       ? streamWithFallback(
           this.config.routeStrategy,
@@ -1108,6 +1111,7 @@ export class AgentCoordinator {
           {
             source: this.config.requestSource ?? 'foreground',
             signal: this.abortController?.signal,
+            onProviderSelected: (providerId) => { this.nativeVisionForTurn = ['deepseek', 'kimi'].includes(providerId); },
             onProviderFallback: ({ from, to, reason }) => {
               this.currentCallbacks?.onProgressText?.(
                 '',

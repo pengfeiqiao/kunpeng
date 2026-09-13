@@ -66,7 +66,7 @@ async function quickChatDirectDeepseek(
   const s = useSettingsStore.getState();
   const key = resolveApiKey(s, 'provider:deepseek', s.providerApiKeys?.deepseek ?? '').trim();
   if (!key) throw new Error('未配置 DeepSeek API Key（设置 → Agent 引擎）');
-  const model = s.providerModels?.deepseek || 'deepseek-v4-flash-vision-exp';
+  const model = s.providerModels?.deepseek || 'deepseek-flash';
   const resp = await tauriFetch('https://api.deepseek.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },

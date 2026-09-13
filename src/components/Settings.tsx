@@ -21,6 +21,7 @@ import { resolveApiKey, resolveCosSecrets } from '@/lib/credentials';
 import { syncArkModels } from '@/lib/channels/arkSync';
 import { mergeArkModels } from '@/lib/channels/arkModels';
 import ImageRoutePanel from './settings/ImageRoutePanel';
+import EvolutionSettings from './settings/EvolutionSettings';
 import UsageSettings from './settings/UsageSettings';
 
 interface SettingsPanelProps {
@@ -57,7 +58,7 @@ const SETTINGS_TABS: Array<{
   { id: 'routes', group: 'AI 服务', label: '智能路由', description: '配置模型降级链与生图通道顺序', icon: <Route size={16} /> },
   { id: 'integrations', group: 'AI 服务', label: '存储与集成', description: 'Kimi 剪辑 Agent 与腾讯云 COS', icon: <Cloud size={16} /> },
   { id: 'data', group: '偏好设置', label: '数据与备份', description: '导入或导出鲲鹏设置', icon: <Database size={16} /> },
-  { id: 'skills', group: '扩展与诊断', label: '技能库', description: '查看鲲鹏当前可用技能', icon: <Boxes size={16} /> },
+  { id: 'skills', group: '扩展与诊断', label: '自进化与技能', description: '查看自动反思状态、总结经验与管理技能', icon: <Boxes size={16} /> },
   { id: 'logs', group: '扩展与诊断', label: '运行日志', description: '诊断 Agent 与接口问题', icon: <ScrollText size={16} /> },
 ];
 
@@ -189,7 +190,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     </div>
                   )}
                   {activeTab === 'data' && <ApiKeysTab section="data" />}
-                  {activeTab === 'skills' && <SkillLibrary />}
+                  {activeTab === 'skills' && <><EvolutionSettings /><SkillLibrary /></>}
                   {activeTab === 'logs' && <LogPanel />}
                 </div>
               </div>

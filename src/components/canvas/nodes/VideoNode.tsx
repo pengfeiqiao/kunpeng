@@ -1,4 +1,5 @@
 import { memo, useState, useCallback, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { Handle, Position, NodeResizer } from 'reactflow';
 import type { NodeProps } from 'reactflow';
 import { Film, Loader2, Trash2, Pencil, Check, Download, Wand2, Camera, Mic, Upload, Sparkles, Scissors, AudioLines, Bot, Maximize2, Play, Pause, FolderOpen, Clapperboard, Copy } from 'lucide-react';
@@ -35,7 +36,7 @@ function defaultVideoName(path: string): string {
 }
 
 /** 自绘视频播放器：大播放/暂停按钮 + 粗进度条，nodrag nopan 防误触。 */
-function VideoPlayer({
+export function VideoPlayer({
   id,
   src,
   localPath,
@@ -52,17 +53,23 @@ function VideoPlayer({
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
+  const [playError, setPlayError] = useState('');
 
   const toggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (!active) {
       window.dispatchEvent(new CustomEvent('kunpeng-canvas-video-activate', { detail: { id } }));
-      setActive(true);
-      return;
+      flushSync(() => setActive(true));
     }
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) { void v.play(); } else { v.pause(); }
+    setPlayError('');
+    if (v.paused) {
+      void v.play().catch((error: unknown) => {
+        if (error instanceof Error && error.name === 'AbortError') return;
+        setPlaying(false); setPlayError('播放失败，请重试或在本地播放器打开。');
+      });
+    } else { v.pause(); }
   }, [active, id]);
 
   useEffect(() => {
@@ -76,12 +83,8 @@ function VideoPlayer({
 
   useEffect(() => {
     if (!active) return;
-    const timer = requestAnimationFrame(() => {
-      void videoRef.current?.play().catch(() => setPlaying(false));
-    });
+    const video = videoRef.current;
     return () => {
-      cancelAnimationFrame(timer);
-      const video = videoRef.current;
       if (!video) return;
       video.pause();
       video.removeAttribute('src');
@@ -122,7 +125,9 @@ function VideoPlayer({
           onPause={() => setPlaying(false)}
           onTimeUpdate={onTime}
           onLoadedMetadata={onTime}
-          preload="metadata"
+          playsInline
+          onError={() => { setPlaying(false); setPlayError('无法加载视频，请检查文件或使用本地播放器打开。'); }}
+          preload="none"
         />
       ) : thumbnail || fallbackPoster ? (
         <img
@@ -137,7 +142,8 @@ function VideoPlayer({
       {/* 居中播放/暂停按钮（不占满，留出边缘可点选节点）。暂停时常显，播放时 hover 显 */}
       <button
         onClick={toggle}
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
+        onDoubleClick={(event) => event.stopPropagation()}
+        className="nodrag nopan absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
         title={playing ? '暂停' : '播放'}
       >
         <span
@@ -147,6 +153,7 @@ function VideoPlayer({
           {active && playing ? <Pause size={26} /> : <Play size={26} className="ml-1" />}
         </span>
       </button>
+      {playError && <div role="alert" className="absolute top-0 inset-x-0 bg-black/70 p-2 text-xs text-white">{playError}</div>}
       {/* 底部进度条（粗 8px，好点） */}
       {active && <div
         className="absolute bottom-0 left-0 right-0 px-2 pb-2 pt-3 bg-gradient-to-t from-black/55 to-transparent nodrag nopan"
@@ -339,8 +346,9 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeData>) {
       >
         {data.generatedVideoUrl && !isGenerating ? (
           <VideoPlayer
+            key={data.localPath || data.generatedVideoUrl}
             id={id}
-            src={data.generatedVideoUrl}
+            src={data.localPath ? convertFileSrc(data.localPath) : data.generatedVideoUrl}
             localPath={data.localPath}
             fallbackPoster={data.imageUrl}
           />

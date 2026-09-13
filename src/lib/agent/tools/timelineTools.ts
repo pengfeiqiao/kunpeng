@@ -2155,7 +2155,7 @@ const motionGuideTool: Tool = {
   async execute(params) {
     const section = String(params.section ?? 'overview');
     const docs: Record<string, string> = {
-      overview: 'KPMotion 设计顺序：先判断内容能否“演出来”，再选择语义结构，最后选艺术方向。机制、流程、关系、数据优先用节点、连线、传递、数量和状态变化表达；孤立金句才用纯文字。实体造型要按语义区分，禁止所有内容都变成彩色字块或同一种圆球。列表做统一卡片组，对比做分栏，流程做节点链路，否定修正做划掉与替换。生成后必须 timeline_render_frame 截取关键时刻并用 image_recognition 验收。',
+      overview: 'KPMotion 设计顺序：先判断内容能否“演出来”，再选择语义结构，最后选艺术方向。机制、流程、关系、数据优先用节点、连线、传递、数量和状态变化表达；孤立金句才用纯文字。实体造型要按语义区分，禁止所有内容都变成彩色字块或同一种圆球。列表做统一卡片组，对比做分栏，流程做节点链路，否定修正做划掉与替换。生成后必须 timeline_render_frame 截取关键时刻并直接使用当前模型的原生视觉验收。',
       'scene-spec': sceneDslDoc(),
       styles: `${styleKitsDoc()}\n\n透明叠加只要配色时传 styleBackdrop:false；不选 style 时才单独使用 theme。`,
       presets: `${scenePresetsDoc()}\n\n预设只作为结构骨架；交付前用 spec_patch 修改 style、配色、构图、beats 或速度，避免模板感。`,

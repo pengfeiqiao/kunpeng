@@ -43,7 +43,7 @@ function latestUserTurnHasNativeImage(req: ChatRequest): boolean {
 }
 
 function requestForProvider(req: ChatRequest, providerId: string): ChatRequest {
-  if (providerId !== 'kimi' || !latestUserTurnHasNativeImage(req) || !req.tools?.length) return req;
+  if (!['kimi', 'deepseek'].includes(providerId) || !latestUserTurnHasNativeImage(req) || !req.tools?.length) return req;
   return {
     ...req,
     // The image is already an Anthropic multimodal content block. Keeping a
@@ -164,6 +164,7 @@ export async function* streamWithFallback(
     const triggers = link.triggerCodes ?? DEFAULT_TRIGGERS;
     let yieldedAny = false;
     try {
+      opts.onProviderSelected?.(link.providerId);
       const providerReq = requestForProvider(req, link.providerId);
       const stream = provider.streamChat(
         { ...providerReq, modelId: link.modelId ?? req.modelId },
