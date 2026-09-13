@@ -2,7 +2,7 @@ import { memo, useState, useCallback, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { Handle, Position, NodeResizer } from 'reactflow';
 import type { NodeProps } from 'reactflow';
-import { Film, Loader2, Trash2, Pencil, Check, Download, Wand2, Camera, Mic, Upload, Sparkles, Scissors, AudioLines, Bot, Maximize2, Play, Pause, FolderOpen, Clapperboard } from 'lucide-react';
+import { Film, Loader2, Trash2, Pencil, Check, Download, Wand2, Camera, Mic, Upload, Sparkles, Scissors, AudioLines, Bot, Maximize2, Play, Pause, FolderOpen, Clapperboard, Copy } from 'lucide-react';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { useCanvasTaskStore } from '@/stores/canvasTaskStore';
 import { captureSnapshot } from '@/lib/canvas/history';
@@ -19,6 +19,7 @@ import { increaseFps, separateAudio, sendToEditor, sendToAgent, upscaleVideo } f
 import { useJustCompleted } from './ImageNode';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { useVideoThumb } from '@/lib/canvas/videoThumbs';
+import { copyTextToClipboard, resolveCopyableMediaUrl } from '@/lib/canvas/copyMediaLink';
 
 const ACTIVE = ['queued', 'uploading', 'running', 'downloading'];
 
@@ -217,6 +218,20 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeData>) {
     }
   }, [data.generatedVideoUrl, data.localPath]);
 
+  const handleCopyLink = useCallback(async () => {
+    const url = data.generatedVideoUrl || '';
+    if (!url) return;
+    try {
+      const publicUrl = await resolveCopyableMediaUrl(url, data.localPath, defaultVideoName(url));
+      await copyTextToClipboard(publicUrl);
+      if (publicUrl !== url) updateNode(id, { generatedVideoUrl: publicUrl });
+      await tauriMessage('视频链接已复制', { title: '成功' });
+    } catch (err) {
+      console.error('复制视频链接失败:', err);
+      await tauriMessage('复制视频链接失败，请检查系统剪贴板权限', { title: '错误' });
+    }
+  }, [data.generatedVideoUrl]);
+
   const handleOpenFolder = useCallback(async () => {
     const d = data as unknown as Record<string, unknown>;
     let localPath = (d.localPath as string) || '';
@@ -253,6 +268,7 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeData>) {
         >
           {data.generatedVideoUrl && (<>
             <ToolBtnV onClick={() => window.dispatchEvent(new CustomEvent('kunpeng-open-video-fullscreen', { detail: { url: data.localPath ? convertFileSrc(data.localPath) : data.generatedVideoUrl } }))} icon={Maximize2} label="全屏" title="全屏查看视频" />
+            <ToolBtnV onClick={() => void handleCopyLink()} icon={Copy} label="复制链接" title="复制视频公网链接" />
             <ToolBtnV onClick={() => void handleOpenFolder()} icon={FolderOpen} label="打开" title="在 Finder 中定位视频文件" />
             <ToolBtnV onClick={() => void sendToEditor(id)} icon={Scissors} label="剪辑" title="加入剪辑时间轴" />
             <ToolBtnV onClick={() => window.dispatchEvent(new CustomEvent('kunpeng-frame-capture', { detail: { nodeId: id } }))} icon={Camera} label="捕捉帧" title="截取任意一帧为图片节点" />

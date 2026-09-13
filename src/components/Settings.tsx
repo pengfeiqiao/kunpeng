@@ -425,6 +425,9 @@ const SETTINGS_EXPORT_CREDENTIAL_KEYS = new Set([
   'webSearchCustomApiKey',
   'cosSecretId',
   'cosSecretKey',
+  'mediaUploadApiKey',
+  's3AccessKeyId',
+  's3SecretAccessKey',
   'providerApiKeys',
   'imageApiSlots', // slots carry per-channel apiKey
   'customMediaApis', // plugins carry per-entry apiKey
@@ -480,6 +483,10 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
     cosSecretId, setCosSecretId,
     cosSecretKey, setCosSecretKey,
     cosTransitEndpoint, setCosTransitEndpoint,
+    mediaUploadEndpoint, mediaUploadApiKey, mediaPublicBaseUrl,
+    setMediaUploadEndpoint, setMediaUploadApiKey, setMediaPublicBaseUrl,
+    s3Endpoint, s3Region, s3Bucket, s3AccessKeyId, s3SecretAccessKey, s3Prefix, s3PublicBaseUrl, s3ForcePathStyle,
+    setS3Endpoint, setS3Region, setS3Bucket, setS3AccessKeyId, setS3SecretAccessKey, setS3Prefix, setS3PublicBaseUrl, setS3ForcePathStyle,
     webSearchApiMode, setWebSearchApiMode,
     webSearchCustomBaseUrl, setWebSearchCustomBaseUrl,
     webSearchCustomApiKey, setWebSearchCustomApiKey,
@@ -1073,6 +1080,58 @@ function ApiKeysTab({ section }: { section: ApiSettingsSection }) {
               className="h-4 w-4 rounded border-zinc-300 text-sky-500 focus:ring-sky-200"
             />
           </label>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="自建 MinIO 媒体上传" description="项目素材通过 FastAPI 上传到 MinIO，并使用 CDN 地址访问" defaultOpen>
+        <div className="space-y-2">
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">上传 API 地址</label>
+            <input type="text" value={mediaUploadEndpoint} onChange={(e) => setMediaUploadEndpoint(e.target.value)} className={inputCls} placeholder="https://ysqvr.com/api/storage/upload" />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">上传 API Key</label>
+            <div className="relative">
+              <input
+                type={showKeys.has('media-upload') ? 'text' : 'password'}
+                value={mediaUploadApiKey}
+                onChange={(e) => setMediaUploadApiKey(e.target.value)}
+                className={inputCls + ' pr-9'}
+                placeholder="X-API-Key"
+              />
+              <button onClick={() => toggleShow('media-upload')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-700 transition-colors">
+                {showKeys.has('media-upload') ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">素材公网 CDN 地址</label>
+            <input type="text" value={mediaPublicBaseUrl} onChange={(e) => setMediaPublicBaseUrl(e.target.value)} className={inputCls} placeholder="https://cdn.ysqvr.com" />
+            <p className="text-[10px] text-zinc-500 mt-0.5">CDN 域名需要反代 MinIO 的公开 Bucket；留空则使用上传 API 返回的地址。</p>
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="自定义 S3 兼容存储" description="直接上传到 AWS S3、MinIO、R2 或其他 S3 兼容服务" defaultOpen={false}>
+        <div className="space-y-2">
+          <p className="text-[10px] leading-relaxed text-zinc-500">填写 Endpoint 后启用直传；留空则继续使用上面的 MinIO 上传 API。</p>
+          <details className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-[11px] text-zinc-600">
+            <summary className="cursor-pointer font-medium text-zinc-700">Linux / MinIO 配置指南</summary>
+            <div className="mt-2 space-y-1.5 leading-relaxed">
+              <p>1. 在 Linux 上部署 MinIO，创建 Bucket 和应用 Access Key。</p>
+              <p>2. 用 Nginx 或 Caddy 将 HTTPS 域名反代到 MinIO 的 9000 API 端口；9001 是管理控制台，不是 Endpoint。</p>
+              <p>3. Endpoint 填 HTTPS 域名，Region 通常填 <code>us-east-1</code>，MinIO/R2 一般勾选 Path-style。</p>
+              <p>4. 公网访问基础 URL 填对象可访问的 CDN/反代地址；私有 Bucket 需要额外的鉴权或预签名下载服务。</p>
+              <p>完整部署示例见仓库 <code>docs/s3-storage.md</code>。</p>
+            </div>
+          </details>
+          <div><label className="block text-xs text-zinc-500 mb-1">Endpoint</label><input type="text" value={s3Endpoint} onChange={(e) => setS3Endpoint(e.target.value)} className={inputCls} placeholder="https://s3.amazonaws.com 或 https://minio.example.com" /></div>
+          <div className="grid grid-cols-2 gap-2"><div><label className="block text-xs text-zinc-500 mb-1">Region</label><input type="text" value={s3Region} onChange={(e) => setS3Region(e.target.value)} className={inputCls} placeholder="us-east-1" /></div><div><label className="block text-xs text-zinc-500 mb-1">Bucket</label><input type="text" value={s3Bucket} onChange={(e) => setS3Bucket(e.target.value)} className={inputCls} placeholder="my-bucket" /></div></div>
+          <div><label className="block text-xs text-zinc-500 mb-1">Access Key ID</label><input type="text" value={s3AccessKeyId} onChange={(e) => setS3AccessKeyId(e.target.value)} className={inputCls} placeholder="AKIA..." /></div>
+          <KeyInputRow label="Secret Access Key" value={s3SecretAccessKey} onChange={setS3SecretAccessKey} show={showKeys.has('s3')} onToggleShow={() => toggleShow('s3')} placeholder="输入 Secret Access Key..." />
+          <div><label className="block text-xs text-zinc-500 mb-1">Object Prefix</label><input type="text" value={s3Prefix} onChange={(e) => setS3Prefix(e.target.value)} className={inputCls} placeholder="kunpeng" /></div>
+          <div><label className="block text-xs text-zinc-500 mb-1">公网访问基础 URL（可选）</label><input type="text" value={s3PublicBaseUrl} onChange={(e) => setS3PublicBaseUrl(e.target.value)} className={inputCls} placeholder="https://cdn.example.com" /></div>
+          <label className="flex items-center gap-2 text-xs text-zinc-600"><input type="checkbox" checked={s3ForcePathStyle} onChange={(e) => setS3ForcePathStyle(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 text-sky-500 focus:ring-sky-200" />使用 Path-style 请求（MinIO、R2 等通常需要）</label>
         </div>
       </CollapsibleSection>
 

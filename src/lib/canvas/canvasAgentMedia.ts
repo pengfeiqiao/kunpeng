@@ -14,12 +14,11 @@ export const resolveCanvasAgentMediaUrl = async (url: string): Promise<string> =
         } else {
           return url;
         }
-        const { uploadToCos } = await import('@/lib/cos');
+        const { uploadToMinio } = await import('@/lib/minioUpload');
         const fileName = localPath.split('/').pop() || `ref-${Date.now()}.png`;
-        return await uploadToCos(localPath, fileName);
+        return await uploadToMinio(localPath, fileName);
       } catch (err) {
-        console.warn('COS 上传失败，传原始 URL:', err);
+        console.warn('MinIO 上传失败，传原始 URL:', err);
         return url;
       }
     };
-

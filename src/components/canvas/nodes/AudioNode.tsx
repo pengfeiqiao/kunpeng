@@ -6,7 +6,7 @@
 import { memo, useState, useRef, useEffect } from 'react';
 import { Handle, Position, NodeResizer } from 'reactflow';
 import type { NodeProps } from 'reactflow';
-import { AudioLines, Bot, Trash2, Music, Link2, Download, FolderOpen } from 'lucide-react';
+import { AudioLines, Bot, Trash2, Music, Link2, Download, FolderOpen, Copy } from 'lucide-react';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { useWorkshopStore } from '@/stores/workshopStore';
 import { copyFile, createDir, BaseDirectory } from '@tauri-apps/api/fs';
@@ -18,6 +18,7 @@ import type { WorkshopRef } from '@/lib/workshop/canvasSync';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { openCanvasNodeInAgent } from '@/lib/canvas/nodeAgent';
 import { useHasMultiNodeSelection } from '../NodeToolbarPortal';
+import { copyTextToClipboard, resolveCopyableMediaUrl } from '@/lib/canvas/copyMediaLink';
 
 function audioSourcePath(data: AudioNodeData): string {
   return data.localPath || (data.audioUrl ? assetUrlToLocalPath(data.audioUrl) : '');
@@ -146,6 +147,20 @@ function AudioNodeComponent({ id, data, selected }: NodeProps<AudioNodeData>) {
     }
   };
 
+  const handleCopyLink = async () => {
+    const url = data.audioUrl || '';
+    if (!url) return;
+    try {
+      const publicUrl = await resolveCopyableMediaUrl(url, data.localPath, defaultAudioName(url));
+      await copyTextToClipboard(publicUrl);
+      if (publicUrl !== url) useCanvasStore.getState().updateNode(id, { audioUrl: publicUrl });
+      await tauriMessage('音频链接已复制', { title: '成功' });
+    } catch (err) {
+      console.error('复制音频链接失败:', err);
+      await tauriMessage('复制音频链接失败，请检查系统剪贴板权限', { title: '错误' });
+    }
+  };
+
   const handleOpenFolder = async () => {
     const source = audioSourcePath(data);
     if (!source) { await tauriMessage('未找到本地音频文件', { title: '提示' }); return; }
@@ -177,6 +192,7 @@ function AudioNodeComponent({ id, data, selected }: NodeProps<AudioNodeData>) {
           {wsProject && <VoiceLinkButton nodeId={id} localPath={data.localPath} />}
           {data.audioUrl && (
             <>
+              <button onClick={() => void handleCopyLink()} className="p-1 rounded hover:bg-[rgba(255,255,255,0.1)] text-[var(--canvas-text-2)] hover:text-[var(--canvas-accent)]" title="复制音频公网链接"><Copy size={13} /></button>
               <button onClick={() => void handleDownload()} className="p-1 rounded hover:bg-[rgba(255,255,255,0.1)] text-[var(--canvas-text-2)] hover:text-[var(--canvas-accent)]" title="下载音频"><Download size={13} /></button>
               <button onClick={() => void handleOpenFolder()} className="p-1 rounded hover:bg-[rgba(255,255,255,0.1)] text-[var(--canvas-text-2)] hover:text-[var(--canvas-accent)]" title="在 Finder 中定位"><FolderOpen size={13} /></button>
             </>

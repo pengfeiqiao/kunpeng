@@ -5,6 +5,7 @@ import { Command } from '@tauri-apps/api/shell';
 import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveCosSecrets } from '@/lib/credentials';
+import { uploadToS3 } from '@/lib/s3Upload';
 
 export interface CosUploadProgress {
   stage: 'preparing' | 'uploading' | 'completed';
@@ -33,6 +34,9 @@ export async function uploadToCos(
   onProgress?: (progress: CosUploadProgress) => void,
 ): Promise<string> {
   const state = useSettingsStore.getState();
+  if (state.s3Endpoint.trim()) {
+    return uploadToS3(localPath, fileName, contentTypeOverride, onProgress);
+  }
   const cosBucket = state.cosBucket;
   const cosRegion = state.cosRegion;
   const resolved = resolveCosSecrets(state, state.cosSecretId, state.cosSecretKey);
@@ -237,7 +241,8 @@ export async function cosTransitDownload(remoteUrl: string, fileName: string): P
     responseType: ResponseType.JSON,
   });
   if (!resp.ok) throw new Error(`SCF 中转失败 HTTP ${resp.status}`);
-  const data = resp.data as { cosUrl?: string; error?: string };
+  const data = resp.data as { cosUrl?: string; cosKey?: string; error?: string };
   if (!data.cosUrl) throw new Error(data.error || 'SCF 未返回 cosUrl');
+  if (data.cosKey) console.info('[COS] 中转对象:', data.cosKey);
   return data.cosUrl;
 }

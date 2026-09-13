@@ -2,10 +2,10 @@ import { fetch, ResponseType } from '@tauri-apps/api/http';
 import { appCacheDir } from '@tauri-apps/api/path';
 import { writeBinaryFile } from '@tauri-apps/api/fs';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { resolveApiKey, resolveCosSecrets } from '@/lib/credentials';
+import { resolveApiKey } from '@/lib/credentials';
 import { generateSeedAudioViaKuaizi } from '@/lib/kuaizi/seedAudio';
 import { getKuaiziApiKey, resolveKuaiziMediaRef } from '@/lib/kuaizi/seedance';
-import { uploadToCos } from '@/lib/cos';
+import { uploadToMinio } from '@/lib/minioUpload';
 import { nanoid } from 'nanoid';
 import {
   PaidSubmissionUnknownError,
@@ -174,16 +174,15 @@ function sniffAudioExt(bytes: Uint8Array): string {
  */
 async function uploadSpeechReferenceToCos(base64: string): Promise<string> {
   const st = useSettingsStore.getState();
-  const cosSecrets = resolveCosSecrets(st, st.cosSecretId, st.cosSecretKey);
-  if (!st.cosBucket || !cosSecrets.secretId.trim() || !cosSecrets.secretKey.trim()) {
-    throw new Error('筷子丽帧配音通道使用本地参考音色，需要先在「设置 → 存储与集成 → 腾讯云 COS」完成配置（用于换取公网 URL），或改用豆包官方通道');
+  if (!st.mediaUploadEndpoint.trim() || !st.mediaUploadApiKey.trim()) {
+    throw new Error('筷子丽帧配音通道使用本地参考音色，需要先在「设置 → 存储与集成 → 自建 MinIO 媒体上传」完成配置（用于换取公网 URL），或改用豆包官方通道');
   }
   const bytes = base64ToBytes(base64);
   const ext = sniffAudioExt(bytes);
   const fileName = `kunpeng-voice-ref-${Date.now()}-${nanoid(6)}.${ext}`;
   const tmpPath = `${await appCacheDir()}${fileName}`;
   await writeBinaryFile(tmpPath, bytes);
-  return uploadToCos(tmpPath, fileName);
+  return uploadToMinio(tmpPath, fileName);
 }
 
 /**

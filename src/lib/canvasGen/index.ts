@@ -1732,6 +1732,7 @@ async function runCustomMediaGeneration(req: CoreGenRequest): Promise<CoreGenRes
       progress: '完成',
       rhTaskId: providerTaskId || undefined,
       resultPaths: result.resultPaths,
+      resultUrls: result.resultUrls,
       finishedAt: Date.now(),
     });
     return {

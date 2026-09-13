@@ -4,6 +4,7 @@ import { readTextFile, exists, BaseDirectory } from '@tauri-apps/api/fs';
 import { invoke } from '@tauri-apps/api/tauri';
 import { safeLocalStorage } from '@/lib/safeStorage';
 import { migrateLegacyCredentials, type Credential } from '@/lib/credentials';
+import { migrateStoredProtocols, type CustomMediaProtocol } from '@/lib/customMedia/protocols';
 import type { ArkModelsCache } from '@/lib/channels/arkModels';
 import type { AgentMeta } from '@/types/agent';
 
@@ -52,6 +53,9 @@ export interface ImageApiSlot {
  * - openai-images：POST {baseUrl}/v1/images/generations 同步返回 b64/url（OpenAI Images 兼容）
  * - apimart-async：POST {baseUrl}/v1/{images|videos}/generations 拿 task_id，
  *   轮询 GET {baseUrl}/v1/tasks/{task_id}（APIMart/aggregator 通用异步任务协议）
+ *
+ * 供应商私有协议不在此列：MiniMax H3 的 ComfyUI 工作流、Pixhub 的 generations/edits
+ * 拆分与 multipart，都由项目内 Python 适配服务转换后以标准协议暴露。
  */
 export interface CustomMediaApi {
   id: string;
@@ -63,7 +67,7 @@ export interface CustomMediaApi {
   apiKey: string;
   /** 引用凭证注册表（settingsStore.credentials）中的凭证；读取时优先于 apiKey。 */
   credentialId?: string;
-  protocol: 'openai-images' | 'apimart-async';
+  protocol: CustomMediaProtocol;
   enabled: boolean;
 }
 
@@ -295,6 +299,32 @@ interface SettingsState {
   setCosSecretKey: (v: string) => void;
   setCosTransitEndpoint: (v: string) => void;
 
+  // Self-hosted MinIO media upload API
+  mediaUploadEndpoint: string;
+  mediaUploadApiKey: string;
+  mediaPublicBaseUrl: string;
+  setMediaUploadEndpoint: (v: string) => void;
+  setMediaUploadApiKey: (v: string) => void;
+  setMediaPublicBaseUrl: (v: string) => void;
+
+  // Generic S3-compatible media storage
+  s3Endpoint: string;
+  s3Region: string;
+  s3Bucket: string;
+  s3AccessKeyId: string;
+  s3SecretAccessKey: string;
+  s3Prefix: string;
+  s3PublicBaseUrl: string;
+  s3ForcePathStyle: boolean;
+  setS3Endpoint: (v: string) => void;
+  setS3Region: (v: string) => void;
+  setS3Bucket: (v: string) => void;
+  setS3AccessKeyId: (v: string) => void;
+  setS3SecretAccessKey: (v: string) => void;
+  setS3Prefix: (v: string) => void;
+  setS3PublicBaseUrl: (v: string) => void;
+  setS3ForcePathStyle: (v: boolean) => void;
+
   // Optional display name used in greetings (「你好！」 when empty).
   // Private builds can preset it via private.defaults.json (gitignored).
   greetingName: string;
@@ -517,6 +547,31 @@ export const useSettingsStore = create<SettingsState>()(
         ...mirrorCredentialWrite(s, 'cos', `${s.cosSecretId}:${cosSecretKey}`),
       })),
       setCosTransitEndpoint: (cosTransitEndpoint) => set({ cosTransitEndpoint }),
+
+      // Self-hosted MinIO media upload API
+      mediaUploadEndpoint: 'https://ysqvr.com/api/storage/upload',
+      mediaUploadApiKey: '',
+      mediaPublicBaseUrl: 'https://cdn.ysqvr.com',
+      setMediaUploadEndpoint: (mediaUploadEndpoint) => set({ mediaUploadEndpoint }),
+      setMediaUploadApiKey: (mediaUploadApiKey) => set({ mediaUploadApiKey }),
+      setMediaPublicBaseUrl: (mediaPublicBaseUrl) => set({ mediaPublicBaseUrl }),
+      // Generic S3-compatible media storage
+      s3Endpoint: '',
+      s3Region: 'us-east-1',
+      s3Bucket: '',
+      s3AccessKeyId: '',
+      s3SecretAccessKey: '',
+      s3Prefix: 'kunpeng',
+      s3PublicBaseUrl: '',
+      s3ForcePathStyle: true,
+      setS3Endpoint: (s3Endpoint) => set({ s3Endpoint }),
+      setS3Region: (s3Region) => set({ s3Region }),
+      setS3Bucket: (s3Bucket) => set({ s3Bucket }),
+      setS3AccessKeyId: (s3AccessKeyId) => set({ s3AccessKeyId }),
+      setS3SecretAccessKey: (s3SecretAccessKey) => set({ s3SecretAccessKey }),
+      setS3Prefix: (s3Prefix) => set({ s3Prefix }),
+      setS3PublicBaseUrl: (s3PublicBaseUrl) => set({ s3PublicBaseUrl }),
+      setS3ForcePathStyle: (s3ForcePathStyle) => set({ s3ForcePathStyle }),
       greetingName: '',
       setGreetingName: (greetingName) => set({ greetingName }),
 
@@ -863,6 +918,14 @@ export const useSettingsStore = create<SettingsState>()(
               && !String(s.baseUrl ?? '').includes('aihubmix.com')
               && !String(s.baseUrl ?? '').includes('inferera.com')
             ));
+          }
+        }
+        if (version <= 33) {
+          // v33 → v34: 供应商私有协议一律收口到项目内 Python 适配服务，前端只保留标准协议。
+          // pixhub-gpt-image → openai-images（脚本 scripts/pixhub_images_proxy.py 接 Pixhub）；
+          // minimax-comfyui  → apimart-async（脚本 scripts/minimax_comfyui_proxy.py 接 AutoDL）。
+          if (Array.isArray(result.customMediaApis)) {
+            result.customMediaApis = migrateStoredProtocols(result.customMediaApis as { protocol: string }[]);
           }
         }
         // Tier 4 seeds (idempotent)

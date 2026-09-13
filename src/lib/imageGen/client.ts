@@ -11,6 +11,7 @@ import { readBinaryFile } from '@tauri-apps/api/fs';
 import { useSettingsStore, type ImageApiSlot } from '@/stores/settingsStore';
 import { resolveSlotApiKey } from '@/lib/credentials';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
+import { uploadToMinio } from '@/lib/minioUpload';
 import { normalizeGptImage2Size, normalizeSeedreamProSize, fitSeedreamProPixelSize } from './size';
 import { imageAttemptStopError } from './attemptPolicy';
 import {
@@ -671,7 +672,18 @@ async function tryGenerate(
 
       paidResultReceived = true;
       const savedPath = await saveImage(result, outputPath);
-      const displayUrl = convertFileSrc(savedPath);
+      let displayUrl = convertFileSrc(savedPath);
+      const savedName = savedPath.split('/').pop() || `generated-${Date.now()}.png`;
+      console.info('[image] local-result-saved', { path: savedPath, fileName: savedName });
+      try {
+        displayUrl = await uploadToMinio(savedPath, savedName);
+        console.info('[image] minio-archive-success', { path: savedPath, url: displayUrl });
+      } catch (archiveError) {
+        console.error('[image] minio-archive-failed-local-kept', {
+          path: savedPath,
+          error: archiveError instanceof Error ? archiveError.message : String(archiveError),
+        });
+      }
       console.log(`✅ [${slot.label}] ${model} 生成成功，耗时 ${((Date.now() - t1) / 1000).toFixed(1)}s`);
       return { success: true, imagePath: savedPath, imageUrl: displayUrl, modelUsed: model, apiUsed: slot.label };
     } catch (err) {

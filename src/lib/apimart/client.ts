@@ -1,7 +1,7 @@
 import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
 import { createDir, removeFile, writeBinaryFile } from '@tauri-apps/api/fs';
 import { homeDir } from '@tauri-apps/api/path';
-import { uploadToCos } from '@/lib/cos';
+import { uploadToMinio } from '@/lib/minioUpload';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { resolveConfiguredApimartApiKey } from '@/lib/imageRouter/configuredChannels';
@@ -183,7 +183,7 @@ export async function resolveApimartPublicMedia(
   const fileName = localPath.split('/').pop() || `reference-${index + 1}`;
   onProgress?.(`上传参考素材 ${index + 1} 到公网存储…`);
   try {
-    return await uploadToCos(localPath, fileName, mime);
+    return await uploadToMinio(localPath, fileName, mime);
   } finally {
     if (tempPath) void removeFile(tempPath).catch(() => {});
   }

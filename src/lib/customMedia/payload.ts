@@ -8,7 +8,7 @@ export function normalizeCustomBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '');
 }
 
-/** 提交路径：异步协议按 kind 区分 images/videos；openai-images 固定 images。 */
+/** 提交路径：客户端只调用标准媒体协议；供应商特殊协议由适配服务处理。 */
 export function customSubmitPath(api: Pick<CustomMediaApi, 'kind' | 'protocol'>): string {
   if (api.protocol === 'openai-images') return '/v1/images/generations';
   return api.kind === 'video' ? '/v1/videos/generations' : '/v1/images/generations';
@@ -16,6 +16,12 @@ export function customSubmitPath(api: Pick<CustomMediaApi, 'kind' | 'protocol'>)
 
 export function customTaskPath(taskId: string): string {
   return `/v1/tasks/${encodeURIComponent(taskId)}`;
+}
+
+/** 自定义插件统一使用标准任务查询路径。 */
+export function customQueryPath(api: Pick<CustomMediaApi, 'protocol'>, taskId: string): string {
+  void api;
+  return customTaskPath(taskId);
 }
 
 const IMAGE_RATIOS = new Set([
@@ -26,24 +32,11 @@ const IMAGE_RATIOS = new Set([
 /** 图片插件 payload（openai-images 同步与 apimart-async 异步同构）。 */
 export function buildCustomImagePayload(
   api: Pick<CustomMediaApi, 'modelId'>,
-  input: {
-    prompt: string;
-    imageUrls?: string[];
-    size?: string;
-    aspectRatio?: string;
-    resolution?: string;
-  },
+  input: { prompt: string; imageUrls?: string[]; size?: string; aspectRatio?: string; resolution?: string },
 ): Record<string, unknown> {
   const requestedSize = String(input.size || input.aspectRatio || 'auto');
-  const size = IMAGE_RATIOS.has(requestedSize) || /^\d{3,5}x\d{3,5}$/i.test(requestedSize)
-    ? requestedSize
-    : 'auto';
-  const payload: Record<string, unknown> = {
-    model: api.modelId,
-    prompt: input.prompt,
-    n: 1,
-    size,
-  };
+  const size = IMAGE_RATIOS.has(requestedSize) || /^\d{3,5}x\d{3,5}$/i.test(requestedSize) ? requestedSize : 'auto';
+  const payload: Record<string, unknown> = { model: api.modelId, prompt: input.prompt, n: 1, size };
   const resolution = String(input.resolution || '').trim();
   if (resolution) payload.resolution = resolution;
   if (input.imageUrls?.length) payload.image_urls = input.imageUrls;
@@ -55,28 +48,14 @@ const VIDEO_RATIOS = new Set(['adaptive', '16:9', '4:3', '1:1', '3:4', '9:16', '
 /** 视频插件 payload（apimart-async 异步任务协议）。 */
 export function buildCustomVideoPayload(
   api: Pick<CustomMediaApi, 'modelId'>,
-  input: {
-    prompt: string;
-    imageUrls?: string[];
-    videoUrls?: string[];
-    audioUrls?: string[];
-    duration?: unknown;
-    resolution?: unknown;
-    aspectRatio?: unknown;
-  },
+  input: { prompt: string; imageUrls?: string[]; videoUrls?: string[]; audioUrls?: string[]; duration?: unknown; resolution?: unknown; aspectRatio?: unknown },
 ): Record<string, unknown> {
   const rawDuration = Math.round(Number(input.duration ?? 5));
   const duration = Number.isFinite(rawDuration) ? Math.min(30, Math.max(2, rawDuration)) : 5;
   const resolution = String(input.resolution || '720P').trim() || '720P';
   const requestedRatio = String(input.aspectRatio || 'adaptive');
   const size = VIDEO_RATIOS.has(requestedRatio) ? requestedRatio : 'adaptive';
-  const payload: Record<string, unknown> = {
-    model: api.modelId,
-    prompt: input.prompt,
-    duration,
-    resolution,
-    size,
-  };
+  const payload: Record<string, unknown> = { model: api.modelId, prompt: input.prompt, duration, resolution, size };
   if (input.imageUrls?.length) payload.image_urls = input.imageUrls;
   if (input.videoUrls?.length) payload.video_urls = input.videoUrls;
   if (input.audioUrls?.length) payload.audio_urls = input.audioUrls;
@@ -88,9 +67,10 @@ export function parseOpenaiImagesResponse(body: unknown): { b64?: string; url?: 
   const root = body && typeof body === 'object' ? body as Record<string, unknown> : {};
   const data = Array.isArray(root.data) ? root.data as Array<Record<string, unknown>> : [];
   const first = data[0] ?? {};
-  const b64 = typeof first.b64_json === 'string' && first.b64_json ? first.b64_json : undefined;
-  const url = typeof first.url === 'string' && first.url ? first.url : undefined;
-  return { b64, url };
+  return {
+    b64: typeof first.b64_json === 'string' && first.b64_json ? first.b64_json : undefined,
+    url: typeof first.url === 'string' && first.url ? first.url : undefined,
+  };
 }
 
 /** 从异步任务提交响应提取 task_id（{data:[{task_id}]} 或 {data:{task_id}} 或顶层）。 */

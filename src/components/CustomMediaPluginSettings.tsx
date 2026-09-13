@@ -139,7 +139,7 @@ export default function CustomMediaPluginSettings({ kind }: { kind: 'image' | 'v
         添加自定义{kind === 'image' ? '图片' : '视频'}模型
       </button>
       <p className="text-[10px] leading-relaxed text-zinc-400">
-        协议说明：异步任务协议 = POST /v1/{kind === 'image' ? 'images' : 'videos'}/generations 返回 task_id，轮询 GET /v1/tasks/&#123;id&#125;（APIMart 及同类聚合网关通用）；
+        协议说明：异步任务协议 = POST /v1/{kind === 'image' ? 'images' : 'videos'}/generations 返回 task_id，轮询 GET /v1/tasks/&#123;id&#125;（MiniMax H3 请使用项目内 Python 标准转换服务）；
         {kind === 'image' ? 'OpenAI Images 同步协议 = POST /v1/images/generations 直接返回图片。' : '视频插件当前仅支持异步任务协议。'}
         Base URL 填到域名即可，不要带具体接口路径。
       </p>
