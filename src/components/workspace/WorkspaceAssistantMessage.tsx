@@ -20,15 +20,6 @@ export default function WorkspaceAssistantMessage({ message, tone }: { message: 
   const changeIds = Array.isArray(message.metadata?.projectChangeSetIds) ? message.metadata.projectChangeSetIds : [];
   const boundChanges = changes.filter((entry) => changeIds.includes(entry.id));
   const runId = typeof message.metadata?.runId === 'string' ? message.metadata.runId : undefined;
-  const mediaPreview = media.length > 0 ? <span className="workspace-assistant-stage-previews" aria-label={`${media.length} 个已返回媒体`}>
-    {media.slice(0, 3).map((item) => {
-      const src = /^(https?:|data:|blob:|asset:)/i.test(item.path) ? item.path : convertFileSrc(item.path);
-      return <span key={item.id}>{item.mediaType === 'image' ? <img src={src} alt="返回的图片" loading="lazy" />
-        : item.mediaType === 'video' ? <video src={src} aria-label="返回的视频" preload="metadata" muted playsInline />
-        : <span className="workspace-assistant-audio-preview"><Music size={16} aria-hidden="true" /><small>音频</small></span>}</span>;
-    })}
-    {media.length > 3 && <small>+{media.length - 3}</small>}
-  </span> : undefined;
   const restore = async () => {
     if (!snapshot || !data || useUnifiedProjectStore.getState().activeId !== data.projectId) return;
     if (!window.confirm('回到这条消息的项目快照？后续项目改动将回退。')) return;
@@ -54,11 +45,11 @@ export default function WorkspaceAssistantMessage({ message, tone }: { message: 
     const handled = !window.dispatchEvent(new CustomEvent(WORKSPACE_ASSISTANT_INSPECT_EVENT, { detail, cancelable: true }));
     if (!handled) setNotice('预览入口尚未接入，请从项目媒体列表打开');
   };
-  return <article className="workspace-assistant-message" data-tone={tone}>
-    {message.content && <div className="workspace-assistant-prose"><MarkdownRenderer content={message.content} tone={tone} /></div>}
-    {runId && <RunStepTimeline runId={runId} compact embedded tone={tone} preview={mediaPreview} />}
-    {media.length > 0 && <details className="workspace-assistant-results" aria-label="本次返回的媒体">
-      <summary><span>产物</span><small>{media.length}</small><ChevronDown size={13} />{mediaPreview}</summary>
+  return <article className="conversation-reply workspace-assistant-message" data-tone={tone}>
+    <div className="conversation-author">鲲鹏</div>
+    {runId && <RunStepTimeline runId={runId} compact embedded tone={tone} />}
+    {media.length > 0 && <details className="workspace-assistant-results" open aria-label="本次返回的媒体">
+      <summary><span>生成结果</span><small>{media.length}</small><ChevronDown size={13} /></summary>
       <div className="workspace-assistant-result-grid">{media.map((item) => {
         const version = data?.projectObjects?.versions.find((entry) => entry.mediaObjectId === item.id);
         const owner = data?.projectObjects?.objects.find((entry) => entry.id === item.ownerObjectId);
@@ -76,6 +67,7 @@ export default function WorkspaceAssistantMessage({ message, tone }: { message: 
         </button>;
       })}</div>
     </details>}
+    {message.content && <div className="workspace-assistant-prose"><MarkdownRenderer content={message.content} tone={tone} /></div>}
     {boundChanges.length > 0 && <p className="workspace-assistant-change-summary">本次调整：{new Set(boundChanges.map((entry) => entry.objectId)).size} 个对象，{boundChanges.reduce((sum, entry) => sum + entry.changes.length, 0)} 个字段</p>}
     {promptChanges.length > 0 && <p className="workspace-assistant-change-summary">已更新 {new Set(promptChanges.map((entry) => entry.objectId)).size} 个对象的提示词</p>}
     {(snapshot || boundChanges.length > 0 || promptChanges.length > 0 || message.thinkingContent || message.workingContent) && <details className="workspace-assistant-message-menu">

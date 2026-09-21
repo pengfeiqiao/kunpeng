@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, X, FolderOpen, FileText, FileImage, FileVideo, FileAudio, FileCode2, Archive, ArrowUp, Square, Globe, Megaphone } from 'lucide-react';
+import { Plus, FolderOpen, FileText, ArrowUp, Square, Globe, Megaphone } from 'lucide-react';
 import { open } from '@tauri-apps/api/dialog';
 import { appWindow } from '@tauri-apps/api/window';
 import { useChatStore, useSkillStore, useSettingsStore } from '@/stores';
@@ -10,6 +10,7 @@ import { TouliuDataPanel } from './touliu';
 import ComposerModelPicker from './ComposerModelPicker';
 import DeepseekHarnessControl from './chat/DeepseekHarnessControl';
 import ConfirmModeSelect from './chat/ConfirmModeSelect';
+import ConversationAttachment from './chat/ConversationAttachment';
 import type { SkillManifest } from '@/types/skill';
 
 interface MessageInputProps {
@@ -157,6 +158,7 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSubmit(); }
   };
 
@@ -201,23 +203,11 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
   };
 
   const canSend = !!message.trim() || filePaths.length > 0 || (activeSkill?.hasPanel ?? false);
-  const displayName = (p: string) => p.split('/').pop() || p;
-  const attachmentIcon = (path: string) => {
-    if (path.endsWith('/')) return <FolderOpen size={13} />;
-    const extension = path.split(/[?#]/, 1)[0].split('.').pop()?.toLowerCase();
-    if (extension && ['png', 'jpg', 'jpeg', 'webp', 'gif', 'heic', 'svg'].includes(extension)) return <FileImage size={13} />;
-    if (extension && ['mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv'].includes(extension)) return <FileVideo size={13} />;
-    if (extension && ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'].includes(extension)) return <FileAudio size={13} />;
-    if (extension && ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'swift', 'html', 'css', 'json', 'md'].includes(extension)) return <FileCode2 size={13} />;
-    if (extension && ['zip', 'rar', '7z', 'tar', 'gz', 'dmg'].includes(extension)) return <Archive size={13} />;
-    return <FileText size={13} />;
-  };
-
   // Determine placeholder
   const placeholder = isStreaming
     ? '补充要求，发送后会调整当前任务...'
     : activeSkill?.placeholder
-      ?? (activeSkill?.hasPanel ? '补充说明（可选）...' : '有什么我可以帮你的？');
+      ?? (activeSkill?.hasPanel ? '补充说明（可选）...' : '描述创意或需求，添加素材作为参考');
 
   // Check if current skill has file-multi fields (for drag overlay text)
   const hasFileMultiField = activeSkill?.panel?.fields?.some((f) => f.type === 'file-multi');
@@ -234,7 +224,7 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
       onDrop={(e) => { e.preventDefault(); }}
     >
       {/* Main card */}
-      <div className={`
+      <div className={`conversation-main-input
         bg-white dark:bg-zinc-950 border rounded-[22px] transition-all duration-200 shadow-[0_1px_3px_rgba(15,23,42,0.08)]
         ${isDragging
           ? 'border-zinc-400 shadow-[0_0_0_3px_rgba(24,24,27,0.08)]'
@@ -248,18 +238,8 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
               className="flex flex-wrap gap-2 px-4 pt-3"
             >
               {filePaths.map((p, i) => (
-                <div key={p} className="flex h-11 max-w-[230px] items-center gap-2 rounded-lg border border-[rgb(var(--c-border))] bg-white py-1 pl-1.5 pr-1.5 text-xs text-[rgb(var(--c-text))] dark:bg-[rgb(var(--c-card))]">
-                  <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-[rgb(var(--c-card))] text-[rgb(var(--c-text-muted))] dark:bg-[rgb(var(--c-border))]">{attachmentIcon(p)}</span>
-                  <span className="min-w-0 flex-1 truncate" title={p}>{displayName(p)}</span>
-                  <button
-                    type="button"
-                    onClick={() => setFilePaths((prev) => prev.filter((_, j) => j !== i))}
-                    className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-[rgb(var(--c-text-muted))] hover:bg-[rgb(var(--c-border))] hover:text-[rgb(var(--c-text))]"
-                    title="移除附件"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
+                <ConversationAttachment key={p} path={p}
+                  onRemove={() => setFilePaths((prev) => prev.filter((_, j) => j !== i))} />
               ))}
             </motion.div>
           )}
@@ -272,6 +252,7 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
+            aria-label="对话消息"
             placeholder={placeholder}
             rows={1}
             className="w-full bg-transparent resize-none outline-none max-h-[180px] text-[0.9375rem] leading-relaxed placeholder:text-[rgb(var(--c-text-muted))] text-[rgb(var(--c-text))]"
@@ -289,7 +270,7 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
         {activeSkillId === 'ocean-engine-ad' && <TouliuDataPanel />}
 
         {/* Toolbar */}
-        <div className="flex items-center gap-1 px-3 pb-3 pt-1">
+        <div className="conversation-main-input-tools flex items-center gap-1 px-3 pb-3 pt-1">
 
           {/* Attachment button */}
           <div className="relative flex-shrink-0" ref={menuRef}>

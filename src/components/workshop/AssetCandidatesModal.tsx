@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ImageIcon, Loader2, Maximize2, RefreshCw, Upload, X } from 'lucide-react';
-import { convertFileSrc } from '@tauri-apps/api/tauri';
+import { toCanvasDisplayUrl } from '@/lib/canvas/imageSource';
 import { open as openDialog } from '@tauri-apps/api/dialog';
 import { copyFile, BaseDirectory } from '@tauri-apps/api/fs';
 import { homeDir } from '@tauri-apps/api/path';
@@ -127,9 +127,9 @@ export default function AssetCandidatesModal({ kind, id, onClose }: Props) {
         <div className="flex-1 min-h-0 flex items-center justify-center bg-black/40 relative" style={{ minHeight: 320 }}>
           {current ? (
             <>
-              <img src={convertFileSrc(current)} alt="" decoding="async" className="max-w-full object-contain" style={{ maxHeight: '52vh' }} />
+              <img src={toCanvasDisplayUrl(current)} alt="" decoding="async" className="max-w-full object-contain" style={{ maxHeight: '52vh' }} />
               <button
-                onClick={() => setFullscreen(convertFileSrc(current))}
+                onClick={() => setFullscreen(toCanvasDisplayUrl(current))}
                 className="absolute top-3 right-3 p-2 rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
                 title="全屏查看"
               >
@@ -184,7 +184,7 @@ export default function AssetCandidatesModal({ kind, id, onClose }: Props) {
                 }}
                 title={`${c.source}${c.engineId ? ` · ${c.engineId}` : ''}`}
               >
-                <img src={convertFileSrc(c.path)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                <img src={toCanvasDisplayUrl(c.path)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 {c.role && (
                   <span className="absolute left-0.5 bottom-0.5 px-1 rounded bg-black/60 text-white text-[10px]">
                     {c.role}

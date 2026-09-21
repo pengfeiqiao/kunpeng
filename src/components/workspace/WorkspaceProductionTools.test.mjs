@@ -5,6 +5,7 @@ import ts from 'typescript';
 import { runInNewContext } from 'node:vm';
 import * as productionSafety from '../../lib/workspace/productionSafety.ts';
 import * as queueModule from '../../lib/workspace/projectAssistantQueue.ts';
+import * as assistantHistory from '../../lib/workspace/assistantHistory.ts';
 import * as assistantMessage from '../../lib/workspace/workspaceAssistantMessage.ts';
 import * as workspaceMessage from '../../lib/agent/workspaceMessage.ts';
 import * as assistantTarget from './assistantTarget.ts';
@@ -82,6 +83,7 @@ function assistantRuntime(prepare) {
     '@/hooks/useCanvasMention': { useCanvasMention: () => ({}) },
     '@/stores/projectAssistantQueueStore': { projectAssistantQueue: queue },
     '@/lib/workspace/projectAssistantQueue': queueModule,
+    '@/lib/workspace/assistantHistory': assistantHistory,
     '@/lib/workspace/productionSafety': productionSafety,
     '@/lib/workspace/workspaceAssistantMessage': assistantMessage,
     '@/lib/agent/workspaceMessage': workspaceMessage,

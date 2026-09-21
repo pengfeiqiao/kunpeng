@@ -27,6 +27,7 @@ export class DshAcpClient {
   private pending = new Map<number, PendingRequest>();
   private unlisten: UnlistenFn[] = [];
   private started = false;
+  private startPromise: Promise<void> | null = null;
   private closed = false;
   private sessionId: string | null = null;
   private stderr = '';
@@ -38,27 +39,51 @@ export class DshAcpClient {
     private readonly onUpdate: (update: AcpUpdate) => void,
   ) {}
 
-  async start(): Promise<void> {
-    if (this.started) return;
-    this.unlisten.push(await listen<DshAcpLineEvent>('dsh-acp-line', ({ payload }) => {
+  start(): Promise<void> {
+    if (this.closed) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+    // All concurrent callers must await the same complete handshake.
+    return this.startPromise ??= this.startSession().catch(async (error) => {
+      await this.dispose();
+      throw error;
+    });
+  }
+
+  private async registerListener<T>(name: string, handler: Parameters<typeof listen<T>>[1]): Promise<void> {
+    if (this.closed) throw new DOMException('Aborted', 'AbortError');
+    const stop = await listen<T>(name, handler);
+    // dispose() may have run while Tauri was registering this listener.
+    if (this.closed) {
+      stop();
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    this.unlisten.push(stop);
+  }
+
+  private async startSession(): Promise<void> {
+    await this.registerListener<DshAcpLineEvent>('dsh-acp-line', ({ payload }) => {
       if (payload.runId !== this.options.runId || payload.instanceId !== this.instanceId) return;
       this.handleLine(payload.line);
-    }));
-    this.unlisten.push(await listen<DshHarnessEvent>('dsh-harness-event', ({ payload }) => {
+    });
+    await this.registerListener<DshHarnessEvent>('dsh-harness-event', ({ payload }) => {
       if (payload.runId !== this.options.runId || payload.instanceId !== this.instanceId || !payload.event || this.closed) return;
       this.onUpdate({ sessionId: this.sessionId || '', update: payload.event });
-    }));
-    this.unlisten.push(await listen<DshAcpLineEvent>('dsh-acp-stderr', ({ payload }) => {
+    });
+    await this.registerListener<DshAcpLineEvent>('dsh-acp-stderr', ({ payload }) => {
       if (payload.runId !== this.options.runId || payload.instanceId !== this.instanceId) return;
       this.stderr = `${this.stderr}\n${payload.line}`.trim().slice(-5000);
-    }));
-    this.unlisten.push(await listen<DshAcpLineEvent>('dsh-acp-closed', ({ payload }) => {
+    });
+    await this.registerListener<DshAcpLineEvent>('dsh-acp-closed', ({ payload }) => {
       if (payload.runId !== this.options.runId || payload.instanceId !== this.instanceId || this.closed) return;
       this.channelError = new Error(this.stderr || payload.line || 'DeepSeek Harness 已关闭');
       this.rejectAll(this.channelError);
-    }));
+    });
     await invoke('dsh_start', { request: { ...this.options, instanceId: this.instanceId } });
-    this.started = true;
+    if (this.closed) {
+      // An earlier stop can arrive before Rust has inserted the new child.
+      // Stop again after spawn completes so an aborted startup cannot leak it.
+      await invoke('dsh_stop', { runId: this.options.runId, instanceId: this.instanceId }).catch(() => {});
+      throw new DOMException('Aborted', 'AbortError');
+    }
     await this.request('initialize', {
       protocolVersion: 1,
       clientCapabilities: {},
@@ -70,12 +95,12 @@ export class DshAcpClient {
     }) as { sessionId?: string };
     if (!session?.sessionId) throw new Error('DeepSeek Harness 未返回 ACP sessionId');
     this.sessionId = session.sessionId;
+    this.started = true;
   }
 
   async prompt(text: string, mediaBlocks: AgentUserContentBlock[] = []): Promise<{ stopReason?: string }> {
     if (!this.sessionId) throw new Error('DeepSeek Harness 会话尚未建立');
-    // dsh-acp rejects image prompt blocks with invalidParams before any model
-    // call; mediaFilter drops them so a stray image can never kill the turn.
+    // Native images pass through ACP; unsupported media uses analysis tools.
     const prompt = buildAcpPromptContent(mediaBlocks, () => {
       if (warnedDroppedMedia) return;
       warnedDroppedMedia = true;
@@ -95,8 +120,8 @@ export class DshAcpClient {
     if (this.closed) return;
     this.closed = true;
     this.rejectAll(new DOMException('Aborted', 'AbortError'));
-    await invoke('dsh_stop', { runId: this.options.runId, instanceId: this.instanceId }).catch(() => {});
     for (const stop of this.unlisten.splice(0)) stop();
+    await invoke('dsh_stop', { runId: this.options.runId, instanceId: this.instanceId }).catch(() => {});
   }
 
   private async request(method: string, params: Record<string, unknown>): Promise<unknown> {

@@ -64,3 +64,11 @@ test('generated voice media is visible and directly selectable without becoming 
   assert.equal(selected.media?.media.path, '/voice.wav');
   assert.equal(selected.media?.media.purpose, 'candidate-version');
 });
+
+test('a shot with only input references is not marked generated and does not use an input as its output thumbnail', () => {
+  const data = migrateWorkshopProjectObjects({ ...emptyWorkshopData('references-only'), shots: [
+    { id: 's', shotNo: '01', description: '', characterIds: [], extraRefImages: ['/reference.png'] },
+  ] });
+  const item = workspaceContentGroups(data).flatMap(group => group.items).find(item => item.id === 'shot:s')!;
+  assert.equal(item.thumbnailPath, undefined); assert.equal(item.status, '待生成');
+});

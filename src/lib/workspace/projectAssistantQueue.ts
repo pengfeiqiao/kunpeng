@@ -120,7 +120,8 @@ export class ProjectAssistantQueue {
     const key = assistantThreadKey(target);
     // 同一对象仅权限范围不同的线程：新建时继承无 scope 兄弟线程的输入草稿，避免用户已输入文字在目标切换后丢失
     const siblingKey = target.accessScope ? assistantThreadKey({ ...target, accessScope: undefined }) : key;
-    const sibling = siblingKey !== key ? this.state.drafts[siblingKey] : undefined;
+    const sibling = (siblingKey !== key ? this.state.drafts[siblingKey] : undefined)
+      ?? Object.entries(this.state.drafts).reverse().find(([storedKey]) => assistantThreadCore(storedKey) === assistantThreadCore(key))?.[1];
     this.publish({ ...this.state, active: { ...this.state.active, [assistantSessionKey(target.projectId, target.sessionId, target.surface)]: key },
       drafts: { ...this.state.drafts, [key]: this.state.drafts[key]
         ?? { target: { ...target }, text: sibling?.text ?? '', files: sibling ? [...sibling.files] : [] } } });

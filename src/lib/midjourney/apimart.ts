@@ -1,3 +1,4 @@
+import { collectResultUrls } from './resultUrls';
 import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
 import { uploadMediaSmart } from '@/lib/minioUpload';
 import { assetUrlToLocalPath } from '@/lib/rhtv/upload';
@@ -97,27 +98,6 @@ function errorFrom(body: unknown): string {
   return (errorText(item?.fail_reason) || errorText(item?.error) || errorText(root?.fail_reason) || errorText(root?.message)).trim();
 }
 
-function collectResultUrls(body: unknown): string[] {
-  const found: string[] = [];
-  const visit = (value: unknown, key = '') => {
-    if (typeof value === 'string') {
-      if (/^https?:\/\//i.test(value) && /(?:url|image|output|result|file)/i.test(key)) found.push(value);
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.forEach((item) => visit(item, key));
-      return;
-    }
-    if (!value || typeof value !== 'object') return;
-    for (const [childKey, child] of Object.entries(value as Record<string, unknown>)) {
-      if (/^(result|results|images?|outputs?|files?|urls?|url|output_url|image_url)$/i.test(childKey) || /result|image|output|file|url/i.test(key)) {
-        visit(child, childKey);
-      }
-    }
-  };
-  visit(body, 'result');
-  return [...new Set(found)];
-}
 
 function statusFrom(body: unknown): ApimartMidjourneyTaskStatus {
   const root = body as Record<string, unknown> | undefined;

@@ -533,9 +533,12 @@ export const useCanvasStore = create<CanvasState>()(
         state.nodes = repairNodeIntegrity(state.nodes);
         // Async migration sweep: persist residual data-URL images (from
         // older builds) to disk and reset stale isGenerating flags.
-        migrateNodeImages(state.nodes)
+        const migrationSource = state.nodes;
+        migrateNodeImages(migrationSource)
           .then(({ nodes, changed }) => {
-            if (changed) useCanvasStore.setState({ nodes });
+            // Disk loading, project switching or editing may have replaced this snapshot.
+            // Never publish an old migration over the live canvas.
+            if (changed && useCanvasStore.getState().nodes === migrationSource) useCanvasStore.setState({ nodes });
           })
           .catch((err) => console.warn('[canvasStore] image migration skipped', err));
       },

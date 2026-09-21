@@ -47,7 +47,7 @@ Object.assign(modules, {
   'framer-motion': { AnimatePresence: ({ children }) => children, motion: { div: React.forwardRef(({ initial, animate, exit, transition, ...props }, ref) => React.createElement('div', { ...props, ref })) } },
   '../projects/ProjectSessionSwitcher': { default: () => React.createElement('span', null, 'session-switcher') },
   '../canvas/ArtifactPickerPanel': { default: empty }, './ContextUsagePill': { default: empty },
-  './ProjectChangeReview': { default: empty },
+  './ProjectChangeReview': { default: empty }, './ConfirmModeSelect': { default: empty },
   './WorkspaceAgentModelPicker': { default: ({ scope, disabled }) => React.createElement('button', { 'data-model-scope': scope, disabled }, '原模型选择') },
   '../AskUserDialog': { AskUserDecisionCard: ({ request }) => React.createElement('div', { role: 'alert' }, request.question) },
 });
@@ -74,12 +74,12 @@ function reset(currentRun = run()) {
 const drawerProps = { open: true, onOpenChange() {}, title: '旧版标题', greeting: { hello: '旧版问候', title: '旧版品牌空态' },
   suggestions: [], onSend() {}, onAbort() {}, stripPrefixRe: /^NEVER_MATCH/, embedded: true, variant: 'dark', modelScope: 'workshop' };
 
-test('embedded reply has prose before actual stages, no author branding, and never cuts markdown mid-reply', () => {
+test('embedded reply keeps a compact process before complete prose without decorative badges', () => {
   reset();
   const content = `${'长段正文'.repeat(160)}完整结尾`;
   const html = render(Message, { message: { ...message({ runId: 'run' }), content }, tone: 'dark' });
-  assert.ok(html.indexOf('完整结尾') < html.indexOf('workspace-assistant-stage'));
-  assert.doesNotMatch(html, /workspace-assistant-author|lucide-sparkles|鲲鹏|完整回复/);
+  assert.ok(html.indexOf('完整结尾') > html.indexOf('workspace-assistant-stage'));
+  assert.doesNotMatch(html, /workspace-assistant-author|lucide-sparkles|完整回复/);
   assert.doesNotMatch(html, /<details[^>]* open/);
 });
 
@@ -142,13 +142,13 @@ function resultFixture() {
 
 test('receipt thumbnails, shared preview, snapshot, field changes and prompt receipt remain present', () => {
   const m = resultFixture(); const html = render(Message, { message: m, tone: 'dark' });
-  assert.match(html, /aria-label="1 个已返回媒体"/);
+  assert.match(html, /aria-label="本次返回的媒体"/);
   assert.match(html, /打开镜头一/);
   for (const label of ['回到此项目快照', '查看本次字段改动', '提示词改动回执', '修订 2', '执行记录']) assert.ok(html.includes(label));
   const noReceipt = render(Message, { message: message({ runId: 'run' }), tone: 'dark' });
   assert.doesNotMatch(noReceipt, /已返回媒体|workspace-assistant-result-grid|已更新 .*提示词/);
   state.runs.runsById = {};
-  assert.match(render(Message, { message: m, tone: 'dark' }), /已返回媒体/);
+  assert.match(render(Message, { message: m, tone: 'dark' }), /本次返回的媒体/);
 });
 
 test('embedded drawer removes duplicate header/brand empty state, but keeps model scope, composer and pending decisions', () => {
@@ -163,10 +163,10 @@ test('embedded drawer removes duplicate header/brand empty state, but keeps mode
   assert.doesNotMatch(html, /PRIVATE_CONTEXT/); assert.match(html, /确认此次生成？/);
 });
 
-test('streaming embedded prose stays first and thinking stays folded; nonembedded drawer remains unchanged', () => {
+test('streaming process stays compact and thinking folded; nonembedded drawer retains existing controls', () => {
   reset(); state.chat.streamingPhase = 'thinking'; state.chat.streamingContent = '正在核对原对白。'; state.chat.streamingThinkingContent = 'PRIVATE_THINKING';
   const embedded = render(Drawer, drawerProps);
-  assert.ok(embedded.indexOf('正在核对原对白') < embedded.indexOf('workspace-assistant-stage'));
+  assert.ok(embedded.indexOf('正在核对原对白') > embedded.indexOf('workspace-assistant-stage'));
   assert.doesNotMatch(embedded, /PRIVATE_THINKING/); assert.match(embedded, /title="停止"/);
   state.chat.streamingPhase = 'idle';
   const legacy = render(Drawer, { ...drawerProps, embedded: false });
@@ -207,4 +207,17 @@ test('optional offline component screenshots keep collapsed media, visible failu
       await page.screenshot({ path: path.join(evidence, `assistant-refine-expanded-${width}.png`) });
     }
   } finally { await browser.close(); await rm(profile, { recursive: true, force: true }); }
+});
+
+
+test('folded timeline exposes the current action and preserves failure and stop semantics', () => {
+  const active = run([step('active', [tool('running')])], 'running');
+  reset(active);
+  assert.match(render(timeline.default, { embedded: true }), /conversation-run-preview/);
+  assert.equal(timeline.embeddedRunPreview(active), '正在准备素材');
+  assert.equal(timeline.embeddedRunPreview(run([step('active', [tool('running')]), step('active', [tool('running')])], 'running')), '正在准备素材 · 另有 1 项进行中');
+  assert.equal(timeline.embeddedRunPreview(run([step('skipped', [])])), '0 项完成 · 1 项跳过');
+  assert.match(timeline.embeddedRunPreview(run([step('done', []), step('failed', [])])), /1 项完成 · 1 项未完成/);
+  assert.match(timeline.embeddedRunPreview(run([step('done', [])], 'aborted')), /已停止/);
+  assert.equal(timeline.embeddedRunPreview(run([], 'running')), '等待工具返回结果');
 });

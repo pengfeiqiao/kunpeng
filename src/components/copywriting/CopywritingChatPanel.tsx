@@ -538,10 +538,10 @@ function CopywritingChatPanel({ onSendMessage, onAbort }: Props) {
     <AgentDrawer
       open={open}
       onOpenChange={setOpen}
-      title="文案大师"
+      title="文案对话"
       variant="light"
       stripPrefixRe={STRIP_RE}
-      greeting={{ hello: 'Hi，文案工作室就绪！', title: '告诉我你要写什么' }}
+      greeting={{ hello: '文案对话', title: '告诉我你要写什么' }}
       suggestions={[
         '帮品牌 XX 策划一条抖音短视频广告',
         '分析诊断我这个剧本的结构和角色',

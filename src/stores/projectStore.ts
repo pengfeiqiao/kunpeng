@@ -15,6 +15,7 @@ import { safeLocalStorage } from '@/lib/safeStorage';
 import {
   readTextFile,
   writeTextFile,
+  renameFile,
   createDir,
   exists,
   removeDir,
@@ -48,13 +49,11 @@ const projRel = (id: string) => `${PROJECTS_DIR}/${id}`;
 const canvasRel = (id: string) => `${projRel(id)}/canvas.json`;
 
 async function readCanvasFile(projectId: string): Promise<CanvasFile | null> {
-  try {
-    if (!(await exists(canvasRel(projectId), { dir: BaseDirectory.Home }))) return null;
-    const raw = await readTextFile(canvasRel(projectId), { dir: BaseDirectory.Home });
-    return JSON.parse(raw) as CanvasFile;
-  } catch {
-    return null;
-  }
+  if (!(await exists(canvasRel(projectId), { dir: BaseDirectory.Home }))) return null;
+  const raw = await readTextFile(canvasRel(projectId), { dir: BaseDirectory.Home });
+  const file = JSON.parse(raw) as CanvasFile;
+  if (!Array.isArray(file.nodes) || !Array.isArray(file.edges)) throw new Error('画布文件格式损坏，已保留原文件');
+  return file;
 }
 
 interface QueuedCanvasWrite {
@@ -68,7 +67,7 @@ interface CanvasWriteQueue {
   writtenSeq: number;
   pending: QueuedCanvasWrite | null;
   running: Promise<void> | null;
-  waiters: { seq: number; resolve: () => void }[];
+  waiters: { seq: number; resolve: () => void; reject: (error: unknown) => void }[];
 }
 
 // Each project keeps at most the snapshot currently being written and the
@@ -91,12 +90,13 @@ async function writeCanvasFile(projectId: string, nodes: Node[], edges: Edge[]):
 
   const seq = ++queue.nextSeq;
   queue.pending = { seq, nodes, edges };
-  const completed = new Promise<void>((resolve) => {
-    queue!.waiters.push({ seq, resolve });
+  const completed = new Promise<void>((resolve, reject) => {
+    queue!.waiters.push({ seq, resolve, reject });
   });
 
-  if (!queue.running) {
-    const activeQueue = queue;
+  const activeQueue = queue;
+  const drain = () => {
+    if (activeQueue.running) return;
     activeQueue.running = (async () => {
       while (activeQueue.pending) {
         const snapshot = activeQueue.pending;
@@ -109,9 +109,14 @@ async function writeCanvasFile(projectId: string, nodes: Node[], edges: Edge[]):
             edges: snapshot.edges,
             updatedAt: Date.now(),
           };
-          await writeTextFile(canvasRel(projectId), JSON.stringify(payload), { dir: BaseDirectory.Home });
+          const temp = `${canvasRel(projectId)}.tmp`;
+          await writeTextFile(temp, JSON.stringify(payload), { dir: BaseDirectory.Home });
+          await renameFile(temp, canvasRel(projectId), { dir: BaseDirectory.Home });
         } catch (err) {
-          console.warn('[projectStore] writeCanvasFile failed:', err);
+          const failed = activeQueue.waiters.filter((waiter) => waiter.seq <= snapshot.seq);
+          activeQueue.waiters = activeQueue.waiters.filter((waiter) => waiter.seq > snapshot.seq);
+          failed.forEach((waiter) => waiter.reject(err));
+          continue;
         }
         activeQueue.writtenSeq = Math.max(activeQueue.writtenSeq, snapshot.seq);
         const ready = activeQueue.waiters.filter((waiter) => waiter.seq <= activeQueue.writtenSeq);
@@ -120,11 +125,11 @@ async function writeCanvasFile(projectId: string, nodes: Node[], edges: Edge[]):
       }
     })().finally(() => {
       activeQueue.running = null;
-      if (!activeQueue.pending && activeQueue.waiters.length === 0) {
-        writeQueues.delete(projectId);
-      }
+      if (activeQueue.pending) drain();
+      else if (activeQueue.waiters.length === 0) writeQueues.delete(projectId);
     });
-  }
+  };
+  drain();
 
   await completed;
 }
@@ -154,7 +159,7 @@ function scheduleCanvasFlush(): void {
   if (flushTimer) clearTimeout(flushTimer);
   flushTimer = setTimeout(() => {
     flushTimer = null;
-    void useProjectStore.getState().flushActiveCanvas();
+    void useProjectStore.getState().flushActiveCanvas().catch((error) => console.error('[projectStore] 画布保存失败，内存修改仍保留', error));
   }, 3000);
 }
 

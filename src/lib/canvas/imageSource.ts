@@ -14,7 +14,7 @@
 import { readBinaryFile } from '@tauri-apps/api/fs';
 import { fetch as tauriFetch, ResponseType } from '@tauri-apps/api/http';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
-import { stripDriveLeadingSlash } from '@/lib/platform';
+import { localMediaPath } from './mediaPath';
 
 /**
  * 展示用 URL 归一化：历史数据里存在未经 convertFileSrc 转换的裸绝对路径
@@ -23,23 +23,13 @@ import { stripDriveLeadingSlash } from '@/lib/platform';
  */
 export function toCanvasDisplayUrl(url: string): string {
   if (!url) return url;
-  if (/^(https?:|data:|asset:|ms:|blob:)/i.test(url)) return url;
-  if (url.startsWith('/') || /^[A-Za-z]:[\\/]/.test(url)) return convertFileSrc(url);
-  return url;
+  const path = localMediaPath(url);
+  return path ? convertFileSrc(path) : url;
 }
 
 /** asset URL / 绝对路径 → 本地绝对路径；解不出来返回 null。 */
 export function assetUrlToLocalPath(url: string): string | null {
-  // Windows 原生绝对路径（C:\... 或 C:/...）直通
-  if (/^[A-Za-z]:[\\/]/.test(url)) return url;
-  if (url.startsWith('/')) return stripDriveLeadingSlash(url);
-  if (url.startsWith('https://asset.localhost/')) {
-    return stripDriveLeadingSlash(decodeURIComponent(url.replace('https://asset.localhost/', '/').replace(/^\/+/, '/')));
-  }
-  if (url.startsWith('asset://localhost/')) {
-    return stripDriveLeadingSlash(decodeURIComponent(url.replace('asset://localhost/', '/').replace(/^\/+/, '/')));
-  }
-  return null;
+  return localMediaPath(url);
 }
 
 /**

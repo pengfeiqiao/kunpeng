@@ -1,3 +1,4 @@
+import { retainImportedMedia } from '@/lib/canvas/importedMedia';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Boxes, FolderOpen, Image as ImageIcon, Library, Mic, Package, SlidersHorizontal, Sparkles, Video, X } from 'lucide-react';
 import { open as openDialog } from '@tauri-apps/api/dialog';
@@ -121,17 +122,20 @@ export default function WorkspaceMediaPanel(props: Props) {
     setPickerSource('project');
   };
   const pickLocalReferences = async (target: WorkspaceDraft) => {
-    const chosen = await openDialog({ multiple: true, filters: [{ name: '媒体文件', extensions: LOCAL_MEDIA_EXTENSIONS }] });
-    if (!chosen) return;
-    let current = target;
-    for (const path of Array.isArray(chosen) ? chosen : [chosen]) {
-      if (current.references.some((item) => item.path === path)) continue;
-      const saved = save(changeWorkspaceReferences(current, [...current.references,
-        { id: `local:${path}`, type: mediaTypeFromPath(path), path, label: path.split(/[\\/]/).pop() ?? '本地文件' }]));
-      if (!saved) return;
-      current = saved;
-    }
-    setReferenceTarget(null);
+    try {
+      const chosen = await openDialog({ multiple: true, filters: [{ name: '媒体文件', extensions: LOCAL_MEDIA_EXTENSIONS }] });
+      if (!chosen) return;
+      let current = target;
+      for (const path of Array.isArray(chosen) ? chosen : [chosen]) {
+        if (current.references.some((item) => item.id === `local:${path}` || item.path === path)) continue;
+        const retained = await retainImportedMedia(path);
+        const saved = save(changeWorkspaceReferences(current, [...current.references,
+          { id: `local:${path}`, type: mediaTypeFromPath(path), path: retained, label: path.split(/[\\/]/).pop() ?? '本地文件' }]));
+        if (!saved) return;
+        current = saved;
+      }
+      setReferenceTarget(null);
+    } catch (error) { setError(target.id, `导入参考素材失败：${String(error)}`); }
   };
   if (selected && outputType === 'audio') return <MediaInspector title={selected.label} versions={versions} selected={media}
     mediaSrc={props.mediaSrc} onSelect={(id) => props.onViewState({ workspaceMediaId: id })} onAdopt={props.onAdopt}

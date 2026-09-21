@@ -31,6 +31,8 @@ function runtime(file, extra = {}) {
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'lucide-react': {},
+    '@tauri-apps/api/tauri': { invoke: async () => null },
+    '@/lib/canvas/imageSource': { assetUrlToLocalPath: path => path },
     '../canvas/StyleLibraryPicker': { default: 'style-picker' },
     './WorkspaceEngineMenu': { default: 'engine-menu' },
     // 功能等价的最小 mock：保留 textarea 语义（aria-label/受控 onChange），不含 @ 选择器 UI
@@ -118,6 +120,7 @@ test('retained A editor callback never writes A text into B after object selecti
 
 test('component identity remounts dialogs for project, object, output type and draft switches', () => {
   const run = runtime('./WorkspaceMediaPanel.tsx', {
+    '@/lib/canvas/importedMedia': { retainImportedMedia: async path => path },
     '@/lib/workspace/drafts': { ...drafts, initialWorkspaceDraft: (data) => data.fixture },
     '@/lib/workspace/contentModel': { workspaceSelection: (data) => ({ selected: { id: data.fixture.objectId, kind: 'shot', label: 'Shot' }, outputType: data.fixture.outputType, versions: [] }) },
     '@/lib/workspace/submissions': { pendingWorkspaceSubmission: () => null },

@@ -7,7 +7,7 @@ import { ImageIcon, Loader2, MapPin, Mic, MonitorPlay, MoreHorizontal, Package, 
 import { open as openDialog, confirm } from '@tauri-apps/api/dialog';
 import { copyFile, createDir, BaseDirectory } from '@tauri-apps/api/fs';
 import { homeDir } from '@tauri-apps/api/path';
-import { convertFileSrc } from '@tauri-apps/api/tauri';
+import { toCanvasDisplayUrl } from '@/lib/canvas/imageSource';
 import { useShallow } from 'zustand/react/shallow';
 import { useWorkshopStore } from '@/stores/workshopStore';
 import { useCanvasStore } from '@/stores/canvasStore';
@@ -456,7 +456,7 @@ export function AssetCard({
   const voiceControls = <div className="flex flex-col gap-3 min-w-0">
     {voicePath && <div className="flex items-center gap-2 min-w-0">
       <Mic size={14} className="shrink-0" />
-      <audio src={convertFileSrc(voicePath)} controls className="h-8 flex-1 min-w-0" />
+      <audio src={toCanvasDisplayUrl(voicePath)} controls className="h-8 flex-1 min-w-0" />
       <span className="text-[11px] text-[var(--canvas-text-3)]">{voiceSource === 'tts' ? '生成' : voiceSource === 'canvas' ? '画布' : '上传'}</span>
       <button title="移除音色" onClick={() => voiceActions ? voiceActions.remove() : removeCharacterVoice(id)}><Trash2 size={14} /></button>
     </div>}
@@ -497,7 +497,7 @@ export function AssetCard({
         title="点击查看候选图集 / 放大"
       >
         {imagePath ? (
-          <img src={convertFileSrc(imagePath)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+          <img src={toCanvasDisplayUrl(imagePath)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
         ) : generating ? (
           <Loader2 size={20} className="animate-spin text-[var(--canvas-text-3)]" />
         ) : (
@@ -562,7 +562,7 @@ export function AssetCard({
                           position: { x: 400 + Math.random() * 200, y: 300 + Math.random() * 200 },
                           style: defaultNodeStyle('image'),
                           data: {
-                            generatedImageUrl: convertFileSrc(imagePath),
+                            generatedImageUrl: toCanvasDisplayUrl(imagePath),
                             localPath: imagePath,
                             description: name,
                             ...(project ? { workshopRef: { projectId: project.id, kind, id, role: 'asset' } } : {}),
@@ -648,7 +648,7 @@ export function AssetCard({
             {voicePath ? (
               <>
                 <Mic size={10} className="text-[var(--canvas-accent)] shrink-0" />
-                <audio src={convertFileSrc(voicePath)} controls className="h-6 flex-1 min-w-0" style={{ maxWidth: '100%' }} />
+                <audio src={toCanvasDisplayUrl(voicePath)} controls className="h-6 flex-1 min-w-0" style={{ maxWidth: '100%' }} />
                 <span className="text-[10px] text-[var(--canvas-text-3)] shrink-0">{voiceSource === 'canvas' ? '画布' : '上传'}</span>
                 <button
                   onClick={() => removeCharacterVoice(id)}

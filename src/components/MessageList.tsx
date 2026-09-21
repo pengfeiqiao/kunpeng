@@ -11,6 +11,7 @@ import { artifactsFromMessage } from '@/lib/chat/artifacts';
 import { ArtifactGrid } from './chat/ArtifactPreview';
 import { AskUserDecisionCard } from './AskUserDialog';
 import { useAskUserStore } from '@/stores/askUserStore';
+import { createLegacyToolPresentation, labelToolPresentation } from '@/lib/agent/runStepPresentation';
 import { formatElapsedDuration } from '@/lib/chat/formatElapsedDuration';
 import { useUnifiedProjectStore } from '@/stores/unifiedProjectStore';
 
@@ -29,7 +30,7 @@ function StreamingCard({ phase, sentAt }: StreamingCardProps) {
   const toolName = useChatStore((s) => s.streamingToolName);
   const subAgentText = useChatStore((s) => s.streamingSubAgentText);
   const [elapsed, setElapsed] = useState(0);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const thinkingRef = useRef<HTMLDivElement>(null);
   const streamingRef = useRef<HTMLDivElement>(null);
@@ -75,15 +76,17 @@ function StreamingCard({ phase, sentAt }: StreamingCardProps) {
 
   return (
     <motion.div
-      className="space-y-3"
+      className="conversation-reply space-y-3"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
     >
+      <div className="conversation-author">鲲鹏</div>
       <div>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
           className="flex w-full items-center gap-2 py-1 text-left text-[13px] text-[rgb(var(--c-text-muted))] transition-colors hover:text-[rgb(var(--c-text))]"
         >
           <Loader2 size={14} className="animate-spin text-[rgb(var(--c-text-muted))]" />
@@ -172,24 +175,24 @@ function WorkLogCard({
   defaultExpanded: boolean;
   animateEntry: boolean;
 }) {
-  // Keep the user-facing task narrative visible after completion. Users can
-  // still collapse it, but progress updates should read like part of the
-  // conversation instead of disappearing behind a generic summary.
+  // Keep the reply and results primary; the full work log stays available on demand.
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
 
-  if (!thinkingContent && !runId) return null;
+  if (!thinkingContent && !runId && !toolExecutions?.length) return null;
 
   const tools = (toolExecutions ?? []).filter((value): value is Record<string, unknown> => Boolean(value && typeof value === 'object'));
-  const writes = tools.filter((tool) => /write|edit|generate|export|render/i.test(String(tool.toolName ?? ''))).length;
-  const reads = tools.filter((tool) => /read|grep|glob|search|fetch/i.test(String(tool.toolName ?? ''))).length;
-  const summary = writes > 0
-    ? `已编辑 ${writes} 项内容`
+  const completed = tools.filter((tool) => tool.status === 'completed' && (tool.result as { success?: boolean } | undefined)?.success === true);
+  const failed = tools.filter((tool) => tool.status === 'failed' || (tool.result as { success?: boolean } | undefined)?.success === false).length;
+  const writes = completed.filter((tool) => /write|edit|generate|export|render/i.test(String(tool.toolName ?? ''))).length;
+  const reads = completed.filter((tool) => /read|grep|glob|search|fetch/i.test(String(tool.toolName ?? ''))).length;
+  const summary = failed > 0 ? `${failed} 项操作未完成` : writes > 0
+    ? `已完成 ${completed.length} 项操作`
     : reads > 0
-      ? `已读取 ${reads} 项资料`
-      : tools.length > 0
-        ? `已运行 ${tools.length} 个操作`
-        : '完成任务';
+      ? `已完成 ${completed.length} 项操作`
+      : completed.length > 0
+        ? `已完成 ${completed.length} 个操作`
+        : '处理记录';
   const SummaryIcon = writes > 0 ? PencilLine : reads > 0 ? BookOpen : Wrench;
 
   return (
@@ -203,6 +206,7 @@ function WorkLogCard({
         type="button"
         className="flex w-full cursor-pointer select-none items-center gap-2 py-1 text-left text-[13px] text-[rgb(var(--c-text-muted))] transition-colors hover:text-[rgb(var(--c-text))]"
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
       >
         <SummaryIcon size={14} className="text-[rgb(var(--c-text-muted))]" />
         <span className="min-w-0 truncate font-medium text-[rgb(var(--c-text-muted))]">{summary}</span>
@@ -224,6 +228,14 @@ function WorkLogCard({
           >
             <div className="pb-2 pt-1">
               {runId && <RunStepTimeline compact showHeader={false} runId={runId} />}
+              {!runId && tools.length > 0 && <ol className="conversation-receipts">{tools.map((tool, index) => {
+                const success = tool.status === 'completed' && (tool.result as { success?: boolean } | undefined)?.success === true;
+                const failure = tool.status === 'failed' || (tool.result as { success?: boolean } | undefined)?.success === false;
+                return <li key={index} data-status={failure ? 'failed' : success ? 'done' : 'waiting'}>
+                  <span>{labelToolPresentation(createLegacyToolPresentation(String(tool.toolName ?? ''), ''), failure ? 'failed' : success ? 'done' : 'running')}</span>
+                  <span>{failure ? '未完成' : success ? '已完成' : '未确认结果'}</span>
+                </li>;
+              })}</ol>}
 
               {thinkingContent && (
                 <div className="mt-2">
@@ -307,7 +319,7 @@ export default function MessageList({
   }, [isStreaming]);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8 px-6 py-8">
+    <div className="conversation-main-feed mx-auto max-w-3xl space-y-8 px-6 py-8">
       {firstVisibleIndex > 0 && (
         <div className="flex justify-center">
           <button
@@ -335,14 +347,15 @@ export default function MessageList({
         const index = messageIndex >= 0 ? messageIndex : firstVisibleIndex + visibleIndex;
         const isRecent = index >= messages.length - 4;
         return (
-        <div key={message.id} className={message.role === 'assistant' ? 'space-y-3' : undefined}>
+        <div key={message.id} className={message.role === 'assistant' ? 'conversation-reply space-y-3' : undefined}>
+          {message.role === 'assistant' && <div className="conversation-author">鲲鹏</div>}
           {message.role === 'assistant' && (
             <WorkLogCard
               thinkingContent={message.thinkingContent}
               duration={message.workingDuration ?? null}
               runId={typeof message.metadata?.runId === 'string' ? message.metadata.runId : undefined}
               toolExecutions={Array.isArray(message.metadata?.toolExecutions) ? message.metadata.toolExecutions : undefined}
-              defaultExpanded={isRecent}
+              defaultExpanded={false}
               animateEntry={isRecent}
             />
           )}
@@ -528,7 +541,7 @@ function MessageItem({ message, index, animateEntry = true, isStreaming, onOptio
       >
         {artifacts.length > 0 && <div className="w-full max-w-[78%]"><ArtifactGrid artifacts={artifacts} compact /></div>}
         {displayContent && (
-          <div className="mt-2 max-w-[72%] whitespace-pre-wrap rounded-2xl rounded-tr-[6px] bg-[rgb(var(--c-card))] px-4 py-2.5 text-[15px] leading-relaxed text-[rgb(var(--c-text))]">
+          <div className="conversation-user mt-2 max-w-[72%] whitespace-pre-wrap rounded-2xl rounded-tr-[6px] bg-[rgb(var(--c-card))] px-4 py-2.5 text-[15px] leading-relaxed text-[rgb(var(--c-text))]">
             {displayContent}
           </div>
         )}

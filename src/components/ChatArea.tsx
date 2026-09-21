@@ -1,3 +1,4 @@
+import './chat/conversation.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, PanelRight } from 'lucide-react';
@@ -90,9 +91,31 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
   }, [currentSessionId, outputCount]);
 
   useEffect(() => {
-    if (!followOutputRef.current || !listRef.current) return;
+    if (activeView !== 'chat') return;
+    followOutputRef.current = true;
+    const frame = requestAnimationFrame(() => {
+      if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeView, currentSessionId]);
+
+  useEffect(() => {
+    if (activeView !== 'chat' || !followOutputRef.current || !listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [messages, isCurrentStreaming, pendingDecision?.id, decisionHistoryLength]);
+  }, [activeView, messages, isCurrentStreaming, pendingDecision?.id, decisionHistoryLength]);
+
+  useEffect(() => {
+    const list = listRef.current;
+    const content = list?.firstElementChild;
+    if (activeView !== 'chat' || !list || !content) return;
+    // Images/markdown may grow after the first layout. Keep the latest message
+    // visible only while the user is following output, never while reading above.
+    const observer = new ResizeObserver(() => {
+      if (followOutputRef.current) list.scrollTop = list.scrollHeight;
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [activeView, messages.length]);
 
   useEffect(() => {
     let scrollFrame: number | null = null;
@@ -157,8 +180,8 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
   }, [queuedRepair, streamingPhase]);
 
   return (
-    <div className="relative flex h-full flex-col bg-[rgb(var(--c-bg))]">
-      <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-[rgb(var(--c-border))] px-4">
+    <div className="conversation-shell conversation-main relative flex h-full flex-col bg-[rgb(var(--c-bg))]">
+      <div className="conversation-header flex h-[52px] shrink-0 items-center justify-between border-b border-[rgb(var(--c-border))] px-4">
         <div className="flex min-w-0 items-center gap-2.5">
           {/* 收起时留原把手等宽占位：App 层全局 SidebarHandle 浮在此处，标题不位移 */}
           {sidebarCollapsed && <div className="h-8 w-8 shrink-0" />}
@@ -222,7 +245,7 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
             )}
           </div>
 
-          <div className="shrink-0 bg-gradient-to-t from-[rgb(var(--c-bg))] via-[rgb(var(--c-bg))]/94 to-transparent px-4 pb-4 pt-3">
+          <div className="conversation-main-composer shrink-0 px-4 pb-4 pt-3">
             {currentSession?.channel === 'feishu' ? (
               <div className="flex items-center justify-center gap-2 rounded-lg border border-[rgb(var(--c-border))] bg-[rgb(var(--c-card))] px-4 py-3">
                 <FeishuIcon size={14} />
@@ -264,46 +287,19 @@ function WelcomeScreen({ agent, onSend }: { agent: { id?: string; name: string; 
     <div className="h-full flex items-center justify-center px-8 py-12 overflow-y-auto">
       <motion.div
         key={agentId}
-        className="text-center w-full max-w-2xl"
+        className="conversation-welcome w-full max-w-xl"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
         {showKeySetup && <ChatKeySetupCard />}
-        <div className="flex justify-center mb-5">
-          <img
-            src="/logo-char.png"
-            alt={displayName}
-            className="w-40 h-40 object-contain"
-          />
-        </div>
-        <h2 className="mb-1">
-          <span className="block text-[0.85rem] tracking-[0.45em] text-gray-400 mb-1 uppercase">我是</span>
-          <span
-            className="text-[3rem] tracking-[0.18em] font-normal leading-tight"
-            style={{ fontFamily: "'STFangsong', 'FangSong', '仿宋', 'NSimSun', serif" }}
-          >
-            {displayName}
-          </span>
-        </h2>
-        <p className="text-gray-500 mb-12 text-[0.88rem] tracking-[0.2em] mt-3">
-          {meta.slogan}
-        </p>
-        <div className="flex flex-wrap justify-center gap-2.5">
-          {meta.suggestions.map((s, i) => (
-            <motion.button
-              key={s}
-              onClick={() => onSend(s)}
-              className="px-4 py-2 rounded-full border border-dark-border text-sm hover:bg-dark-card transition-colors"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.04, duration: 0.3 }}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-            >
-              {s}
-            </motion.button>
-          ))}
+        <div className="conversation-author">{displayName}</div>
+        <h2 className="conversation-welcome-title">今天想创作什么？</h2>
+        <p className="conversation-welcome-description">{agentId === 'main' ? '写下你的想法，或添加一些参考素材。' : meta.slogan}</p>
+        <div className="conversation-suggestions">
+          {meta.suggestions.map((suggestion) => <button key={suggestion} onClick={() => onSend(suggestion)}>
+            {suggestion}<span aria-hidden="true">↗</span>
+          </button>)}
         </div>
       </motion.div>
     </div>

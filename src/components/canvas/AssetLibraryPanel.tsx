@@ -1,3 +1,4 @@
+import { toCanvasDisplayUrl } from '@/lib/canvas/imageSource';
 /**
  * AssetLibraryPanel — left drawer for reusable subjects/voices/styles.
  * Tabs: 角色/商品/场景 (image subjects) · 音色 (voice) · 风格 (director DNA).
@@ -8,7 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Trash2, UserRound, Package, Mountain, AudioLines, Palette, Check } from 'lucide-react';
-import { convertFileSrc } from '@tauri-apps/api/tauri';
+
 import { open as openDialog } from '@tauri-apps/api/dialog';
 import { useAssetLibraryStore, type AssetType, type LibraryAsset } from '@/stores/assetLibraryStore';
 import { useMemoryStore } from '@/stores/memoryStore';
@@ -184,7 +185,7 @@ export default function AssetLibraryPanel({ open, onClose, selected, onToggleAss
                           >
                             <div className="w-full aspect-[4/3] rounded-md overflow-hidden bg-[rgba(0,0,0,0.2)]">
                               <img
-                                src={convertFileSrc(s.thumbnailPath)}
+                                src={toCanvasDisplayUrl(s.thumbnailPath)}
                                 alt={s.name}
                                 className="w-full h-full object-cover"
                                 loading="lazy"
@@ -255,7 +256,7 @@ export default function AssetLibraryPanel({ open, onClose, selected, onToggleAss
                           </div>
                         ) : (
                           <div className="h-20 bg-[rgba(255,255,255,0.05)] relative">
-                            {a.images[0] && <img src={convertFileSrc(a.images[0])} alt="" loading="lazy" className="w-full h-full object-cover" />}
+                            {a.images[0] && <img src={toCanvasDisplayUrl(a.images[0])} alt="" loading="lazy" className="w-full h-full object-cover" />}
                             {a.images.length > 1 && (
                               <span className="absolute bottom-1 right-1 text-[8px] px-1 rounded bg-black/60 text-white">{a.images.length} 图</span>
                             )}

@@ -1,3 +1,4 @@
+import { VIDEO_RECREATION_GUIDANCE, normalizeRecreationDetails, formatRecreationDetails } from '../videoAnalysis/recreation';
 /**
  * Kimi edit agent — reference-video analysis and edit planning for Kunpeng's
  * internal editor. It mirrors the Kimi Code idea: keep video/time context
@@ -373,8 +374,9 @@ async function dmxKimiChat(messages: unknown[], extra: Record<string, unknown> =
   const model = await resolveKimiModel(false);
   const mediaFirst = hasMediaParts(messages);
   if (mediaFirst) {
-    try { return await dmxKimiOpenAI(model, key, messages, extra); } catch { /* Anthropic text fallback below */ }
-    return dmxKimiAnthropic(model, key, messages, extra);
+    // Do not silently discard audiovisual evidence and label a text response as native viewing.
+    // Callers can explicitly retry as indexed/text-only analysis and record that limitation.
+    return dmxKimiOpenAI(model, key, messages, extra);
   }
   try {
     return await dmxKimiAnthropic(model, key, messages, extra);
@@ -456,6 +458,9 @@ async function askKimiForProfile(args: {
   "transitions": ["..."],
   "textAndFx": ["..."],
   "reusablePrinciples": ["..."],
+  "semanticEvents": ["源片时间范围 | 触发词句/动作 | 响应元素 | 进入/保持/退出 | 跨镜头持续关系"],
+  "recreationPlan": ["保留结构 | 替换内容 | 相关影响；无新目标时只写可借鉴关系"],
+  "evidenceLimits": ["证据缺口及需要精看的时间范围，近似时间须说明"],
   "editAgentNotes": "给剪辑 agent 的执行建议"
 }`;
 
@@ -474,6 +479,8 @@ ${clampText(frameLines, 18000)}
 完整转写：
 ${clampText(transcript, 26000)}
 
+${VIDEO_RECREATION_GUIDANCE}
+
 ${schema}`;
 
   const content: unknown[] = [{ type: 'text', text }];
@@ -485,15 +492,19 @@ ${schema}`;
   }
 
   let raw = '';
+  let textOnly = !hasMediaParts([{ content }]);
   try {
     raw = await dmxKimiChat([{ role: 'user', content }]);
   } catch {
-    raw = await dmxKimiChat([{ role: 'user', content: text }]);
+    textOnly = true;
+    raw = await dmxKimiChat([{ role: 'user', content: `${text}\n本次仅有文字索引和转写，未提供原始画面或声音。不要声称直接观看视频；视觉和运动结论仅作待核实线索。` }]);
   }
   const parsed = extractJson<Partial<EditReferenceProfile>>(raw, {});
   return {
     id: `ref-${shortHash(`${args.path}:${args.duration}:${Date.now()}`)}`,
     sourcePath: args.path,
+    ...normalizeRecreationDetails(parsed),
+    ...(textOnly ? { evidenceLimits: ['本次仅依据文字索引和转写，未直接观看视频。', ...(normalizeRecreationDetails(parsed).evidenceLimits ?? [])] } : {}),
     title: parsed.title || args.path.split('/').pop() || '参考视频',
     duration: args.duration,
     frameCount: args.frames.length,
@@ -527,6 +538,9 @@ async function askKimiForNativeVideoProfile(args: {
   "transitions": ["..."],
   "textAndFx": ["..."],
   "reusablePrinciples": ["..."],
+  "semanticEvents": ["源片时间范围 | 触发词句/动作 | 响应元素 | 进入/保持/退出 | 跨镜头持续关系"],
+  "recreationPlan": ["保留结构 | 替换内容 | 相关影响；无新目标时只写可借鉴关系"],
+  "evidenceLimits": ["证据缺口及需要精看的时间范围，近似时间须说明"],
   "editAgentNotes": "给剪辑 agent 的执行建议"
 }`;
   const text = `你是 Kimi 剪辑 Agent。请直接观看参考视频，做专业拉片，不要只做概括。
@@ -545,6 +559,8 @@ Kimi 视频文件引用：${args.videoUrl}
 - 叙事结构：开场 hook、信息展开、高潮、收束
 - 可复用剪辑原则：抽象规律，不要照抄具体博主表达
 
+${VIDEO_RECREATION_GUIDANCE}
+
 ${schema}`;
   const content: unknown[] = [
     { type: 'text', text },
@@ -555,6 +571,7 @@ ${schema}`;
   return {
     id: `ref-${shortHash(`${args.path}:${args.duration}:native:${Date.now()}`)}`,
     sourcePath: args.path,
+    ...normalizeRecreationDetails(parsed),
     title: parsed.title || args.path.split('/').pop() || '参考视频',
     duration: args.duration,
     frameCount: 0,
@@ -743,6 +760,7 @@ duration=${note.duration ?? p?.duration ?? '?'}s
 转场：${(p?.transitions ?? []).join(' / ')}
 图文特效：${(p?.textAndFx ?? []).join(' / ')}
 原则：${(p?.reusablePrinciples ?? []).join(' / ')}
+${formatRecreationDetails(p)}
 转写摘录：${clampText(note.transcript ?? '', 4000)}`;
   }).join('\n\n');
   const prompt = `你是 Kimi 剪辑 Agent。基于参考视频风格和当前鲲鹏时间轴，输出一个可执行剪辑计划。

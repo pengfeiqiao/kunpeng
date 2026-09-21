@@ -1,3 +1,5 @@
+import { retainImportedMedia } from '@/lib/canvas/importedMedia';
+import { useProjectStore } from '@/stores/projectStore';
 import { memo, useState, useCallback, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { Handle, Position, NodeResizer } from 'reactflow';
@@ -8,7 +10,7 @@ import { useCanvasTaskStore } from '@/stores/canvasTaskStore';
 import { captureSnapshot } from '@/lib/canvas/history';
 import { invoke } from '@tauri-apps/api/tauri';
 import { open as openDialog, message as tauriMessage } from '@tauri-apps/api/dialog';
-import { convertFileSrc } from '@tauri-apps/api/tauri';
+import { toCanvasDisplayUrl } from '@/lib/canvas/imageSource';
 import type { VideoNodeData } from '@/types/canvas';
 import ProgressRing from './ProgressRing';
 import NodeParamBadge from './NodeParamBadge';
@@ -186,14 +188,14 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeData>) {
   const [editing, setEditing] = useState(false);
 
   const handleReplace = async () => {
-    const file = await openDialog({ filters: [{ name: '视频', extensions: ['mp4', 'mov', 'webm'] }] });
-    if (!file || Array.isArray(file)) return;
-    updateNode(id, {
-      generatedVideoUrl: convertFileSrc(file),
-      localPath: file,
-      sourceVideoPath: file,
-      mediaRole: 'reference',
-    });
+    const projectId = useProjectStore.getState().activeProjectId;
+    try {
+      const selected = await openDialog({ filters: [{ name: '视频', extensions: ['mp4', 'mov', 'webm'] }] });
+      if (!selected || Array.isArray(selected)) return;
+      const file = await retainImportedMedia(selected);
+      if (projectId !== useProjectStore.getState().activeProjectId) return;
+      updateNode(id, { generatedVideoUrl: toCanvasDisplayUrl(file), localPath: file, sourceVideoPath: file, mediaRole: 'reference' });
+    } catch (error) { await tauriMessage(`替换视频失败：${String(error)}`, { type: 'error' }); }
   };
   const [editValue, setEditValue] = useState('');
   const title = data.isMgAnimationNode || data.modelVersion === 'omni-mg-animation' ? 'MG动画' : 'Video';
@@ -267,7 +269,7 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeData>) {
           style={{ background: 'rgba(38,38,38,0.92)', backdropFilter: 'blur(12px) saturate(1.5)', boxShadow: '0 2px 12px rgba(0,0,0,0.1), 0 0 0 1px rgba(255,255,255,0.08)' }}
         >
           {data.generatedVideoUrl && (<>
-            <ToolBtnV onClick={() => window.dispatchEvent(new CustomEvent('kunpeng-open-video-fullscreen', { detail: { url: data.localPath ? convertFileSrc(data.localPath) : data.generatedVideoUrl } }))} icon={Maximize2} label="全屏" title="全屏查看视频" />
+            <ToolBtnV onClick={() => window.dispatchEvent(new CustomEvent('kunpeng-open-video-fullscreen', { detail: { url: data.localPath ? toCanvasDisplayUrl(data.localPath) : data.generatedVideoUrl } }))} icon={Maximize2} label="全屏" title="全屏查看视频" />
             <ToolBtnV onClick={() => void handleCopyLink()} icon={Copy} label="复制链接" title="复制视频公网链接" />
             <ToolBtnV onClick={() => void handleOpenFolder()} icon={FolderOpen} label="打开" title="在 Finder 中定位视频文件" />
             <ToolBtnV onClick={() => void sendToEditor(id)} icon={Scissors} label="剪辑" title="加入剪辑时间轴" />
@@ -348,7 +350,7 @@ function VideoNodeComponent({ id, data, selected }: NodeProps<VideoNodeData>) {
           <VideoPlayer
             key={data.localPath || data.generatedVideoUrl}
             id={id}
-            src={data.localPath ? convertFileSrc(data.localPath) : data.generatedVideoUrl}
+            src={toCanvasDisplayUrl(data.localPath || data.generatedVideoUrl || '')}
             localPath={data.localPath}
             fallbackPoster={data.imageUrl}
           />

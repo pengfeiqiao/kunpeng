@@ -1,3 +1,4 @@
+import { formatRecreationDetails } from '../../videoAnalysis/recreation';
 /**
  * timelineTools — agent tools that operate the editor timeline directly
  * (AI 剪辑). Mirrors the canvasTools pattern: tools mutate editorStore,
@@ -3481,7 +3482,7 @@ const analyzeReferenceVideoTool: Tool = {
       const sourceHash = await getVideoSourceFingerprint(path);
       const cached = useEditorStore.getState().mediaNotes[path];
       if (cached?.referenceProfile && cached.sourceHash === sourceHash && !params.force) {
-        reports.push(`（缓存）${cached.referenceId} · ${cached.referenceProfile.title} · ${cached.frameNotes?.length ?? cached.frames.length} 帧 · ${cached.transcriptSegments?.length ?? 0} 段转写`);
+        reports.push(`（缓存）${cached.referenceId} · ${cached.referenceProfile.title} · ${cached.frameNotes?.length ?? cached.frames.length} 帧 · ${cached.transcriptSegments?.length ?? 0} 段转写\n${formatRecreationDetails(cached.referenceProfile)}`);
         continue;
       }
       const fileName = path.split('/').pop() ?? path;
@@ -3512,6 +3513,7 @@ const analyzeReferenceVideoTool: Tool = {
           p?.narrativeStructure?.length ? `叙事：${p.narrativeStructure.slice(0, 3).join('；')}` : '',
           p?.rhythm?.length ? `节奏：${p.rhythm.slice(0, 3).join('；')}` : '',
           p?.reusablePrinciples?.length ? `原则：${p.reusablePrinciples.slice(0, 3).join('；')}` : '',
+          formatRecreationDetails(p),
         ].filter(Boolean).join('\n'));
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);

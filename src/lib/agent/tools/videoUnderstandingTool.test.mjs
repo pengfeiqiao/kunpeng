@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
+import { buildVideoAnalysisQuestion } from '../../videoAnalysis/recreation.ts';
 
 // Mirror visionTool.test.mjs: strip single-line imports, inject stubs, execute.
 async function fixture(options = {}) {
@@ -11,6 +12,8 @@ async function fixture(options = {}) {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
   }).outputText;
   const stubs = `
+    const buildVideoAnalysisQuestion = ${buildVideoAnalysisQuestion.toString()};
+    const VIDEO_RECREATION_GUIDANCE = ${JSON.stringify((await import('../../videoAnalysis/recreation.ts')).VIDEO_RECREATION_GUIDANCE)};
     let k3Calls = []; let uploads = []; let sizes = {};
     export const stats = () => ({ k3Calls, uploads });
     export const setSize = (p, s) => { sizes[p] = s; };
@@ -104,4 +107,16 @@ test('non-Kimi route without a Kimi key fails with guidance, never silently pret
   assert.equal(result.success, false);
   assert.match(result.error, /timeline_analyze_reference_video/);
   assert.equal(stats().k3Calls.length, 0);
+});
+
+test('detailed analysis protocol reaches both native feedback and direct K3 without extra calls', async () => {
+  const { videoUnderstandingTool, stats } = await fixture();
+  const prompt = '分析这段视频，换主题复刻';
+  const expected = buildVideoAnalysisQuestion(prompt);
+  const native = await videoUnderstandingTool.execute({video:'ms://existing',prompt},undefined,{nativeVideo:true});
+  assert.ok(native.output.endsWith(expected));
+  assert.equal(stats().k3Calls.length,0);
+  await videoUnderstandingTool.execute({video:'https://example.com/ref.mp4',prompt});
+  assert.equal(stats().k3Calls.length,1);
+  assert.equal(stats().k3Calls[0][1].content[1].text,expected);
 });

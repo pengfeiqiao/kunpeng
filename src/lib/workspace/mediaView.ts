@@ -17,7 +17,7 @@ export function workspaceMediaVersions(data: Pick<WorkshopData, 'projectObjects'
   const shot = owner?.kind === 'shot' ? data.shots.find((item) => (item.id ?? item.shotNo) === owner.sourceId) : undefined;
   const currentPath = outputType === 'video' ? shot?.videoPath : outputType === 'image' ? shot?.imagePath : undefined;
   return registry.media.filter((media) => (media.ownerObjectId === objectId || (media.id === objectId && (media.purpose === 'unclassified' || media.mediaType === 'audio'))) && media.mediaType === outputType
-    && !media.archived && media.purpose !== 'historical' && media.source !== 'legacy-storyboard'
+    && !media.archived && media.purpose !== 'generation-reference' && media.purpose !== 'ordinary-material' && media.purpose !== 'historical' && media.source !== 'legacy-storyboard'
     && (media.versionObjectId || media.purpose === 'current-version' || media.purpose === 'candidate-version' || media.purpose === 'unclassified'))
     .map((media, index) => {
       const version = registry.versions.find((item) => item.id === media.versionObjectId || item.mediaObjectId === media.id);

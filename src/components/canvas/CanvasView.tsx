@@ -310,11 +310,17 @@ function CanvasViewInner({ onSendMessage, onAbort, embedded = false, onSelectNod
       : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   }, []);
 
-  const createNodesFromDroppedPaths = useCallback((paths: string[], point?: { x: number; y: number } | null) => {
+  const createNodesFromDroppedPaths = useCallback(async (paths: string[], point?: { x: number; y: number } | null) => {
     if (paths.length === 0) return;
     const screenPoint = point && isInsideCanvas(point) ? point : getFallbackDropPoint();
     const base = screenToFlowPosition(screenPoint);
-    const { unsupportedPaths } = createMediaNodesFromPaths(paths, base);
+    let unsupportedPaths: string[];
+    try { ({ unsupportedPaths } = await createMediaNodesFromPaths(paths, base)); }
+    catch {
+      const { message } = await import('@tauri-apps/api/dialog');
+      await message('媒体导入未完成，请确认文件可读、磁盘空间充足，并在原项目中重试。', { title: '导入失败' });
+      return;
+    }
     // 不支持的文件曾被静默丢弃，用户拖了没反应也不知道为什么
     if (unsupportedPaths.length > 0) {
       const names = unsupportedPaths.map((p) => p.split('/').pop()).slice(0, 3).join('、');
@@ -333,9 +339,8 @@ function CanvasViewInner({ onSendMessage, onAbort, embedded = false, onSelectNod
     });
     if (!selected) return;
     const files = Array.isArray(selected) ? selected : [selected];
-    const base = screenToFlowPosition({ x: screenX, y: screenY });
-    createMediaNodesFromPaths(files, base);
-  }, [screenToFlowPosition]);
+    await createNodesFromDroppedPaths(files, { x: screenX, y: screenY });
+  }, [createNodesFromDroppedPaths]);
 
   const normalizeNativeDropPoint = useCallback((payload: unknown): { x: number; y: number } | null => {
     const raw = payload as { position?: { x?: number; y?: number }; x?: number; y?: number } | undefined;

@@ -1,3 +1,4 @@
+import { assistantConversationKey, assistantHistoryTarget } from '@/lib/workspace/assistantHistory';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { ArrowLeft, Crosshair, X } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
@@ -18,7 +19,7 @@ import { useRunStepStore } from '@/stores/runStepStore';
 import { useAskUserStore } from '@/stores/askUserStore';
 import { useToolConfirmStore } from '@/stores/toolConfirmStore';
 import { projectAssistantQueue as queue } from '@/stores/projectAssistantQueueStore';
-import { AssistantQueueFailure, assistantThreadCore, assistantThreadKey, type AssistantTarget, type AssistantQueueItem } from '@/lib/workspace/projectAssistantQueue';
+import { AssistantQueueFailure, assistantThreadKey, type AssistantTarget, type AssistantQueueItem } from '@/lib/workspace/projectAssistantQueue';
 import { buildWorkspaceAgentContext } from '@/lib/workspace/agentContext';
 import { workspaceSelection } from '@/lib/workspace/contentModel';
 import { ensureProjectSession } from '@/lib/projectSessions';
@@ -237,21 +238,21 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
 
   if (!data || !target) return null;
   const key = assistantThreadKey(target);
-  const coreKey = assistantThreadCore(key);
+  const coreKey = assistantConversationKey(target);
   const items = snapshot.items.filter((item) => item.target.projectId === projectId);
   const session = sessions.find((entry) => entry.id === sessionId);
   const currentItems = items.filter((item) => item.target.sessionId === sessionId);
-  let messageThread: string | undefined;
+  let messageTarget: AssistantTarget | undefined;
   const visibleMessageIds = new Set<string>();
   for (const message of messages) {
-    if (message.role === 'user') messageThread = currentItems.find((item) => item.messageIds?.includes(message.id)
+    if (message.role === 'user') messageTarget = currentItems.find((item) => item.messageIds?.includes(message.id)
       || message.content === serializeWorkspaceAssistantMessage(item.target, item.prompt)
-      || message.content === item.target.context + item.prompt || (message.content.endsWith(item.prompt) && message.content.includes(item.target.context.trim())))?.threadKey;
+      || message.content === item.target.context + item.prompt || (message.content.endsWith(item.prompt) && message.content.includes(item.target.context.trim())))?.target ?? assistantHistoryTarget(message.content, sessionId);
     const owner = currentItems.find((item) => item.messageIds?.includes(message.id));
     // 线程归属比对用稳定核心（不含 context 文案），提示词措辞演进不会隐藏历史对话
-    const thread = owner?.threadKey ?? messageThread;
-    if (session?.projectId === projectId && ((thread !== undefined && assistantThreadCore(thread) === coreKey)
-      || (!target.objectId && !owner && !messageThread))) visibleMessageIds.add(message.id);
+    const thread = owner?.target ?? messageTarget;
+    if (session?.projectId === projectId && ((thread !== undefined && assistantConversationKey(thread) === coreKey)
+      || (!target.objectId && !owner && !messageTarget))) visibleMessageIds.add(message.id);
   }
   const running = items.find((item) => item.status === 'running');
   const scopeChanged = target.objectId && (proposed?.objectId !== target.objectId || proposed?.mediaId !== target.mediaId);
@@ -268,7 +269,7 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
       queue.enqueue(next, text, files);
     }}
     workspaceComposer={{ key, text: saved?.text ?? '', files: saved?.files ?? [], onChange: (text, files) => queue.writeDraft(target, text, files) }}
-    workspaceMessageIds={visibleMessageIds} workspaceStreamingVisible={running?.threadKey === key}
+    workspaceMessageIds={visibleMessageIds} workspaceStreamingVisible={Boolean(running && assistantConversationKey(running.target) === coreKey)}
     onWorkspaceReference={(reference) => updateReferences(mergeProjectConversationReferences(target.references, [reference]))}
     queueItems={items.filter(isPendingQueueItem).map((item) => ({ id: item.id, prompt: item.prompt,
       label: item.prompt.split('\n')[0], targetLabel: item.target.label, status: item.status, error: item.error }))}

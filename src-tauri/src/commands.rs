@@ -290,6 +290,8 @@ pub async fn save_file_dialog(
         let bytes = reqwest::get(&source_path)
             .await
             .map_err(|e| format!("下载失败: {}", e))?
+            .error_for_status()
+            .map_err(|e| format!("下载失败: {}", e))?
             .bytes()
             .await
             .map_err(|e| format!("读取失败: {}", e))?;
@@ -299,6 +301,10 @@ pub async fn save_file_dialog(
         source_path.clone()
     };
 
+    // Saving onto the source itself must not truncate the original.
+    if let (Ok(source), Ok(target)) = (fs::canonicalize(&resolved), fs::canonicalize(&dest)) {
+        if source == target { return Ok(Some(dest.to_string_lossy().to_string())); }
+    }
     fs::copy(&resolved, &dest)
         .map_err(|e| format!("复制失败: {} → {}: {}", resolved, dest.display(), e))?;
     Ok(Some(dest.to_string_lossy().to_string()))

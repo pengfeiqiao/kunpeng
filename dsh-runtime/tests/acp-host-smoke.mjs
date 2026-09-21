@@ -2,23 +2,26 @@ import { spawn } from 'node:child_process';
 import net from 'node:net';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { tmpdir } from 'node:os';
 
 // Node-level reproduction of the exact desktop config from src-tauri/src/dsh.rs:
 // llm-deepseek + kunpeng-acp-host.mjs (custom composition with MCP stdio client).
 // A minimal fake Kunpeng tool bridge (TCP) stands in for the Rust bridge.
 
-const root = resolve(import.meta.dirname, '..');
+const root = process.env.DSH_SMOKE_RUNTIME_ROOT || resolve(import.meta.dirname, '..');
+const startupOnly = process.argv.includes('--startup-only');
 // Windows 布局是 node/node.exe，Unix 是 node/bin/node。
 const node = join(root, 'node', ...(process.platform === 'win32' ? ['node.exe'] : ['bin', 'node']));
 // cordis/loader entry 的 name 直接进 import()：Windows 裸绝对路径会被当成
 // URL scheme 'c:'，必须 file:// URL（与 dsh.rs 的 module_specifier 一致）。
-const fileUrl = (p) => 'file:///' + p.replace(/\\/g, '/');
+const fileUrl = (p) => pathToFileURL(p).href;
 const bin = join(root, 'kunpeng-dsh.mjs');
-const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
+const apiKey = startupOnly ? 'startup-smoke-no-provider-call' : process.env.DEEPSEEK_API_KEY?.trim();
 if (!apiKey) throw new Error('DEEPSEEK_API_KEY is required');
 
 const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
-const baseURL = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
+const baseURL = startupOnly ? 'http://127.0.0.1:1' : (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
 
 // ---- fake Kunpeng tool bridge ----
 const bridgeToken = 'smoke-token';
@@ -74,7 +77,7 @@ const bridgePort = bridge.address().port;
 
 // Desktop writes the config under ~/.kunpeng/dsh/runs/<id>/ (outside the
 // runtime root); SMOKE_WORK_DIR replicates that to test module resolution.
-const work = await mkdtemp(join(process.env.SMOKE_WORK_DIR || root, '.host-smoke-'));
+const work = await mkdtemp(join(process.env.SMOKE_WORK_DIR || tmpdir(), '.host-smoke-'));
 const configPath = join(work, 'cordis.json');
 const persistenceRoot = join(work, 'sessions');
 
@@ -220,12 +223,13 @@ try {
   await new Promise((resolveDelay) => setTimeout(resolveDelay, 3_000));
   const session = await request('session/new', { cwd: process.cwd(), mcpServers: [] });
   await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000));
-  const prompt = await request('session/prompt', {
+  const prompt = startupOnly ? undefined : await request('session/prompt', {
     sessionId: session.sessionId,
     prompt: [{ type: 'text', text: promptText }],
   });
   process.stdout.write(`${JSON.stringify({
     ok: true,
+    startupOnly,
     agent: initialized?.agentInfo?.name,
     session: Boolean(session?.sessionId),
     stopReason: prompt?.stopReason,

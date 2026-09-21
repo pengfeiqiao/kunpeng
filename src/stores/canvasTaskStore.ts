@@ -23,6 +23,8 @@ export type CanvasTaskStatus =
   | 'failed';
 
 export interface CanvasTask {
+  /** Canvas identity is separate from the linked workshop project. */
+  canvasProjectId?: string;
   /** Frozen owner and request for candidate recovery, not the currently selected node. */
   workspaceBinding?: import('@/lib/workspace/types').WorkspaceTaskBinding;
   id: string;

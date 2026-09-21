@@ -1,3 +1,4 @@
+import { toCanvasDisplayUrl } from '@/lib/canvas/imageSource';
 /**
  * StepPrompts — ④分镜表 + 提示词：全字段表格，行展开编辑提示词，
  * 行内「AI 优化此条」走抽屉助手。
@@ -5,7 +6,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, ChevronRight, ChevronUp, Boxes, Clapperboard, Crosshair, Grid2X2, ImagePlus, LayoutList, Loader2, Maximize2, MessageSquarePlus, MonitorPlay, MoreHorizontal, Palette, Pause, Play, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react';
-import { convertFileSrc } from '@tauri-apps/api/tauri';
+
 import { copyFile, createDir, BaseDirectory } from '@tauri-apps/api/fs';
 import { homeDir } from '@tauri-apps/api/path';
 import { useShallow } from 'zustand/react/shallow';
@@ -301,7 +302,7 @@ function ReferencePlacementDialog({ open, path, title, onClose, onPick }: {
         </div>
         <div className="grid grid-cols-[160px_1fr] gap-3 p-4">
           <div className="overflow-hidden rounded-xl border border-[var(--canvas-node-border)] bg-black/30">
-            <img src={convertFileSrc(path)} alt="" loading="lazy" decoding="async" className="h-[110px] w-full object-cover" />
+            <img src={toCanvasDisplayUrl(path)} alt="" loading="lazy" decoding="async" className="h-[110px] w-full object-cover" />
           </div>
           <div className="space-y-2">
             {options.map((option) => (
@@ -422,7 +423,7 @@ function PalettePreview({ palette, compact = false }: { palette?: PaletteOption;
   if (palette.assetImagePath) {
     return (
       <div className={`${compact ? 'w-10 h-8' : 'w-16 h-11'} rounded-md overflow-hidden border border-[var(--canvas-node-border)] bg-black/30 shrink-0`}>
-        <img src={convertFileSrc(palette.assetImagePath)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+        <img src={toCanvasDisplayUrl(palette.assetImagePath)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
       </div>
     );
   }
@@ -956,27 +957,27 @@ function buildShotRefImages(
   });
   const items: PromptRefItem[] = bindings.map((binding) => ({
     label: `@图片${numToCn(binding.index)}${binding.kind === 'palette' ? ' 色卡' : ''}`,
-    url: convertFileSrc(binding.path),
+    url: toCanvasDisplayUrl(binding.path),
     path: binding.path,
     removable: true,
     removeKind: binding.kind,
     id: binding.id,
   }));
   (shot.storyboardBoards ?? []).forEach((board, i) => {
-    if (board.imagePath) items.push({ label: `分镜板${i + 1}`, url: convertFileSrc(board.imagePath), path: board.imagePath, removable: true, removeKind: 'storyboardBoard', id: board.id });
+    if (board.imagePath) items.push({ label: `分镜板${i + 1}`, url: toCanvasDisplayUrl(board.imagePath), path: board.imagePath, removable: true, removeKind: 'storyboardBoard', id: board.id });
   });
   let audioIdx = 1;
   if (shot.audioInjected && shot.generatedAudios?.length) {
     for (const ga of shot.generatedAudios) {
       const audioPath = ga.trimmedPath || ga.path;
-      items.push({ label: `@配音${numToCn(audioIdx)} (${ga.characterName})`, url: convertFileSrc(audioPath), type: 'audio', path: audioPath, removable: true, removeKind: 'generatedAudio', id: ga.characterId });
+      items.push({ label: `@配音${numToCn(audioIdx)} (${ga.characterName})`, url: toCanvasDisplayUrl(audioPath), type: 'audio', path: audioPath, removable: true, removeKind: 'generatedAudio', id: ga.characterId });
       audioIdx++;
     }
   } else {
     for (const cid of (shot.voiceCharacterIds ?? [])) {
       const ch = characters.find((c) => c.id === cid);
       if (ch?.voicePath) {
-        items.push({ label: `@音频${numToCn(audioIdx)} ${ch.name}`, url: convertFileSrc(ch.voicePath), type: 'audio', path: ch.voicePath, removable: true, removeKind: 'voice', id: cid });
+        items.push({ label: `@音频${numToCn(audioIdx)} ${ch.name}`, url: toCanvasDisplayUrl(ch.voicePath), type: 'audio', path: ch.voicePath, removable: true, removeKind: 'voice', id: cid });
         audioIdx++;
       }
     }
@@ -994,7 +995,7 @@ function buildShotVideoRefImages(
 ): PromptRefItem[] {
   const items: PromptRefItem[] = [];
   for (const [videoIndex, path] of (shot.directorPrevisVideoPaths ?? []).entries()) {
-    items.push({ label: `@视频${numToCn(videoIndex + 1)} 白模预演`, url: convertFileSrc(path), path, type: 'video', removable: false });
+    items.push({ label: `@视频${numToCn(videoIndex + 1)} 白模预演`, url: toCanvasDisplayUrl(path), path, type: 'video', removable: false });
   }
   const bindings = buildVideoRefBindings(shot, {
     characters,
@@ -1005,7 +1006,7 @@ function buildShotVideoRefImages(
   });
   items.push(...bindings.map((binding) => ({
     label: `@图片${numToCn(binding.index)} ${binding.label}`,
-    url: convertFileSrc(binding.path),
+    url: toCanvasDisplayUrl(binding.path),
     path: binding.path,
     removable: true,
     removeKind: binding.kind,
@@ -1015,14 +1016,14 @@ function buildShotVideoRefImages(
   if (shot.audioInjected && shot.generatedAudios?.length) {
     for (const ga of shot.generatedAudios) {
       const audioPath = ga.trimmedPath || ga.path;
-      items.push({ label: `@配音${numToCn(audioIdx)} (${ga.characterName})`, url: convertFileSrc(audioPath), type: 'audio', path: audioPath, removable: true, removeKind: 'generatedAudio', id: ga.characterId });
+      items.push({ label: `@配音${numToCn(audioIdx)} (${ga.characterName})`, url: toCanvasDisplayUrl(audioPath), type: 'audio', path: audioPath, removable: true, removeKind: 'generatedAudio', id: ga.characterId });
       audioIdx++;
     }
   } else {
     for (const cid of (shot.voiceCharacterIds ?? [])) {
       const ch = characters.find((c) => c.id === cid);
       if (ch?.voicePath) {
-        items.push({ label: `@音频${numToCn(audioIdx)} ${ch.name}`, url: convertFileSrc(ch.voicePath), type: 'audio', path: ch.voicePath, removable: true, removeKind: 'voice', id: cid });
+        items.push({ label: `@音频${numToCn(audioIdx)} ${ch.name}`, url: toCanvasDisplayUrl(ch.voicePath), type: 'audio', path: ch.voicePath, removable: true, removeKind: 'voice', id: cid });
         audioIdx++;
       }
     }
@@ -1197,7 +1198,7 @@ function WorkshopAssetImagePicker({ open, onClose, characters, scenes, props, co
                   title={item.name}
                 >
                   <div className="aspect-video bg-black/30">
-                    <img src={convertFileSrc(item.path)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                    <img src={toCanvasDisplayUrl(item.path)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   </div>
                   <div className="truncate px-2 py-1.5 text-[10px] text-[var(--canvas-text-2)] group-hover:text-[var(--canvas-text-1)]">{item.name}</div>
                 </button>
@@ -1284,7 +1285,7 @@ function SceneRefSelector({ shot, scene, scenes, characters, props, colorPalette
               style={{ borderColor: checked ? 'var(--canvas-accent)' : 'var(--canvas-node-border)' }}
               title={checked ? '点击移出本镜场景参考' : '点击加入本镜场景参考'}
             >
-              <img src={convertFileSrc(c.path)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+              <img src={toCanvasDisplayUrl(c.path)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
               {checked && (
                 <span className="absolute right-1 top-1 w-4 h-4 rounded-full bg-[var(--canvas-accent)] flex items-center justify-center">
                   <Check size={10} className="text-white" />
@@ -1412,7 +1413,7 @@ export function AudioPromptsSection({ shot, characters, onPatch, actions }: {
   const playAudio = (charId: string, path: string) => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     if (playingId === charId) { setPlayingId(null); return; }
-    const audio = new Audio(convertFileSrc(path));
+    const audio = new Audio(toCanvasDisplayUrl(path));
     audio.onended = () => setPlayingId(null);
     audio.play();
     audioRef.current = audio;
@@ -1744,7 +1745,7 @@ export function LegacyStoryboardModal({ shot, characters, scenes, props, colorPa
 
   const storyboardPromptRefs: PromptRefItem[] = storyboardRefs.map((ref) => ({
     label: ref.label,
-    url: convertFileSrc(ref.path),
+    url: toCanvasDisplayUrl(ref.path),
     path: ref.path,
     removable: ref.removable,
     removeKind: ref.removeKind,
@@ -2309,9 +2310,9 @@ ${currentPrompts}
         <div className="flex-1 min-h-0 flex items-center justify-center bg-black/40 relative" style={{ minHeight: 320 }}>
           {candidateCurrent ? (
             <>
-              <img src={convertFileSrc(candidateCurrent)} alt="" decoding="async" className="max-w-full object-contain" style={{ maxHeight: '52vh' }} />
+              <img src={toCanvasDisplayUrl(candidateCurrent)} alt="" decoding="async" className="max-w-full object-contain" style={{ maxHeight: '52vh' }} />
               <button
-                onClick={() => setFullscreen(convertFileSrc(candidateCurrent))}
+                onClick={() => setFullscreen(toCanvasDisplayUrl(candidateCurrent))}
                 className="absolute top-3 right-3 p-2 rounded-lg bg-black/60 text-white hover:bg-black/80 transition-colors"
                 title="全屏查看"
               >
@@ -2356,7 +2357,7 @@ ${currentPrompts}
                 }}
                 title={`${candidate.source}${candidate.engineId ? ` · ${candidate.engineId}` : ''}`}
               >
-                <img src={convertFileSrc(candidate.path)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                <img src={toCanvasDisplayUrl(candidate.path)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 <span className="absolute left-0.5 bottom-0.5 px-1 rounded bg-black/60 text-white text-[10px]">
                   候选 {index + 1}
                 </span>
@@ -2673,11 +2674,11 @@ ${currentPrompts}
               >
                 <button
                   type="button"
-                  onClick={() => setFullscreen(convertFileSrc(directorCard.imagePath))}
+                  onClick={() => setFullscreen(toCanvasDisplayUrl(directorCard.imagePath))}
                   className="group relative aspect-video overflow-hidden rounded-lg border border-[var(--canvas-node-border)] bg-black/30"
                   title="放大查看导演约束卡"
                 >
-                  <img src={convertFileSrc(directorCard.imagePath)} alt="导演约束卡" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                  <img src={toCanvasDisplayUrl(directorCard.imagePath)} alt="导演约束卡" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   <span className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-lg bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100">
                     <Maximize2 size={13} />
                   </span>
@@ -2787,12 +2788,12 @@ ${currentPrompts}
                   {frame.imagePath ? (
                     <button
                       type="button"
-                      onClick={() => setFullscreen(convertFileSrc(frame.imagePath!))}
+                      onClick={() => setFullscreen(toCanvasDisplayUrl(frame.imagePath!))}
                       className="block w-full h-full group cursor-zoom-in"
                       title="放大预览这张分镜图"
                       aria-label={`放大预览第 ${idx + 1} 张分镜图`}
                     >
-                      <img src={convertFileSrc(frame.imagePath)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      <img src={toCanvasDisplayUrl(frame.imagePath)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                       <span className="pointer-events-none absolute bottom-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-lg bg-black/70 text-white opacity-90 transition-opacity group-hover:opacity-100">
                         <Maximize2 size={14} />
                       </span>
@@ -2864,7 +2865,7 @@ ${currentPrompts}
                             : `@图片${numToCn(ref.index)} · ${ref.label}`}
                         >
                           <img
-                            src={convertFileSrc(ref.path)}
+                            src={toCanvasDisplayUrl(ref.path)}
                             alt=""
                             loading="lazy"
                             decoding="async"
@@ -2982,12 +2983,12 @@ ${currentPrompts}
                   <div key={board.id} className="rounded-lg overflow-hidden border border-[var(--canvas-node-border)] bg-black/25">
                     <button
                       type="button"
-                      onClick={() => setFullscreen(convertFileSrc(board.imagePath))}
+                      onClick={() => setFullscreen(toCanvasDisplayUrl(board.imagePath))}
                       className="relative block w-full aspect-video group cursor-zoom-in bg-black/30"
                       title="放大预览这张分镜板"
                       aria-label={`放大预览第 ${i + 1} 张分镜板`}
                     >
-                      <img src={convertFileSrc(board.imagePath)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      <img src={toCanvasDisplayUrl(board.imagePath)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                       <span className="absolute left-2 bottom-2 rounded-md bg-black/70 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
                         点击放大
                       </span>
@@ -3201,8 +3202,8 @@ function DirectorConstraintSection({
       </div>
       {card?.imagePath ? (
         <div className="mt-3 grid gap-3 md:grid-cols-[190px_minmax(0,1fr)]">
-          <button type="button" onClick={() => onPreview(convertFileSrc(card.imagePath))} className="group relative aspect-video overflow-hidden rounded-lg border border-[var(--canvas-node-border)] bg-black/30">
-            <img src={convertFileSrc(card.imagePath)} alt="导演约束卡" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+          <button type="button" onClick={() => onPreview(toCanvasDisplayUrl(card.imagePath))} className="group relative aspect-video overflow-hidden rounded-lg border border-[var(--canvas-node-border)] bg-black/30">
+            <img src={toCanvasDisplayUrl(card.imagePath)} alt="导演约束卡" loading="lazy" decoding="async" className="h-full w-full object-cover" />
             <span className="absolute bottom-2 right-2 rounded-md bg-black/70 p-1.5 text-white opacity-0 transition-opacity group-hover:opacity-100"><Maximize2 size={12} /></span>
           </button>
           <div className="min-w-0">
@@ -3305,7 +3306,7 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
       })
       .map((path, i): PromptRefItem => ({
         label: `@图片${numToCn(i + 1)}`,
-        url: convertFileSrc(path),
+        url: toCanvasDisplayUrl(path),
         path,
       }));
     const mediaRefs = videoRefImages.filter((ref) => ref.type === 'audio' || ref.type === 'video');
@@ -3355,10 +3356,10 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
         position: { x: x - 300, y: y + idx * 92 },
         ...(kind !== 'audio' ? { style: defaultNodeStyle(kind) } : {}),
         data: kind === 'audio'
-          ? { audioUrl: convertFileSrc(path), localPath: path, fileName: ref.label, description: `${shot.shotNo} ${ref.label}`, workshopPromptRefTarget: targetNodeId }
+          ? { audioUrl: toCanvasDisplayUrl(path), localPath: path, fileName: ref.label, description: `${shot.shotNo} ${ref.label}`, workshopPromptRefTarget: targetNodeId }
           : kind === 'video'
             ? {
-                generatedVideoUrl: convertFileSrc(path),
+                generatedVideoUrl: toCanvasDisplayUrl(path),
                 localPath: path,
                 sourceVideoPath: path,
                 mediaRole: 'reference',
@@ -3366,7 +3367,7 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
                 workshopPromptRefTarget: targetNodeId,
               }
             : {
-                generatedImageUrl: convertFileSrc(path),
+                generatedImageUrl: toCanvasDisplayUrl(path),
                 localPath: path,
                 description: `${shot.shotNo} ${ref.label}`,
                 workshopPromptRefTarget: targetNodeId,
@@ -3389,7 +3390,7 @@ const ShotRows = memo(function ShotRows({ shot, isOpen, onToggle, onPatch: onPat
       style: defaultNodeStyle('image'),
       data: {
         description: shot.imagePrompt,
-        ...(shot.imagePath ? { generatedImageUrl: convertFileSrc(shot.imagePath), localPath: shot.imagePath } : {}),
+        ...(shot.imagePath ? { generatedImageUrl: toCanvasDisplayUrl(shot.imagePath), localPath: shot.imagePath } : {}),
         workshopRef: { projectId: project.id, kind: 'shot', id: shot.shotNo, role: 'shot-image' } satisfies WorkshopRef,
       },
     });

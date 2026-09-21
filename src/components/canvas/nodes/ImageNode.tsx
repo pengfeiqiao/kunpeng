@@ -1,3 +1,5 @@
+import { retainImportedMedia } from '@/lib/canvas/importedMedia';
+import { useProjectStore } from '@/stores/projectStore';
 import { memo, useEffect, useState } from 'react';
 import { Handle, Position, NodeResizer } from 'reactflow';
 import type { NodeProps } from 'reactflow';
@@ -5,7 +7,7 @@ import { useCanvasStore } from "@/stores/canvasStore";
 import { Bot, ImageIcon, Loader2, Sparkles, Upload } from 'lucide-react';
 import { useCanvasTaskStore } from '@/stores/canvasTaskStore';
 import type { ImageNodeData } from '@/types/canvas';
-import { open as openDialog } from '@tauri-apps/api/dialog';
+import { open as openDialog, message as tauriMessage } from '@tauri-apps/api/dialog';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { toCanvasDisplayUrl } from '@/lib/canvas/imageSource';
 import ImageNodeToolbar from '../ImageNodeToolbar';
@@ -42,14 +44,14 @@ function ImageNodeComponent({ id, data, selected }: NodeProps<ImageNodeData>) {
   const rawDisplayUrl = data.generatedImageUrl || data.referenceImage || '';
   const normalizedUrl = rawDisplayUrl
     ? toCanvasDisplayUrl(rawDisplayUrl)
-    : (data.localPath ? convertFileSrc(data.localPath) : '');
+    : (data.localPath ? toCanvasDisplayUrl(data.localPath) : '');
   const [src, setSrc] = useState(normalizedUrl);
   const [loadFailed, setLoadFailed] = useState(false);
-  useEffect(() => { setSrc(normalizedUrl); setLoadFailed(false); }, [normalizedUrl]);
+  useEffect(() => { setSrc(normalizedUrl); setLoadFailed(false); }, [normalizedUrl, data.localPath]);
   const displayUrl = src;  // filter falsy
   const handleImgError = () => {
     // 当前 src 失败：先试 localPath 直转，仍失败才显示占位（不留裂图图标）。
-    const fallback = data.localPath ? convertFileSrc(data.localPath) : '';
+    const fallback = data.localPath ? toCanvasDisplayUrl(data.localPath) : '';
     if (fallback && fallback !== src) setSrc(fallback);
     else setLoadFailed(true);
   };
@@ -62,9 +64,14 @@ function ImageNodeComponent({ id, data, selected }: NodeProps<ImageNodeData>) {
   const justCompleted = useJustCompleted((data as Record<string, unknown>).justCompletedAt as number | undefined);
 
   const handleReplace = async () => {
-    const file = await openDialog({ filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }] });
-    if (!file || Array.isArray(file)) return;
-    updateNode(id, { generatedImageUrl: convertFileSrc(file), localPath: file, isUploadedImage: true });
+    const projectId = useProjectStore.getState().activeProjectId;
+    try {
+      const selected = await openDialog({ filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }] });
+      if (!selected || Array.isArray(selected)) return;
+      const file = await retainImportedMedia(selected);
+      if (projectId !== useProjectStore.getState().activeProjectId) return;
+      updateNode(id, { generatedImageUrl: convertFileSrc(file), localPath: file, isUploadedImage: true });
+    } catch (error) { await tauriMessage(`替换图片失败：${String(error)}`, { type: 'error' }); }
   };
 
   return (

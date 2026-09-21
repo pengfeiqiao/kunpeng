@@ -541,8 +541,49 @@ pub async fn dsh_tool_respond(
     Ok(())
 }
 
+// Keep bounded history across runs; successful starts must not erase failures.
+fn append_harness_diagnostic(path: &Path, run: &str, instance: &str, line: &str, secret: &str) {
+    use std::io::Write as _;
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let Ok(_guard) = LOCK.lock() else { return; };
+    if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
+    if std::fs::metadata(path).map(|m| m.len() > 2 * 1024 * 1024).unwrap_or(false) {
+        let previous = path.with_extension("previous.log");
+        let _ = std::fs::remove_file(&previous);
+        let _ = std::fs::rename(path, previous);
+    }
+    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .map(|v| v.as_millis()).unwrap_or_default();
+    let record = format!("{} run={} instance={} {}", timestamp, run, instance, line);
+    let redacted = if secret.is_empty() { record } else { record.replace(secret, "[REDACTED]") };
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{}", redacted.chars().take(2400).collect::<String>());
+    }
+}
+
 #[tauri::command]
 pub async fn dsh_start(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DshState>,
+    request: DshStartRequest,
+) -> Result<DshStartResponse, String> {
+    let log = dirs::home_dir().map(|home| home.join(".kunpeng/dsh/harness-stderr.log"));
+    let run = request.run_id.clone();
+    let instance = request.instance_id.clone();
+    let secret = request.api_key.trim().to_string();
+    if let Some(path) = &log { append_harness_diagnostic(path, &run, &instance, "startup_requested", &secret); }
+    let result = dsh_start_inner(app, state, request).await;
+    if let Some(path) = &log {
+        let message = match &result {
+            Ok(_) => "process_started".to_string(),
+            Err(error) => format!("startup_failed: {}", error),
+        };
+        append_harness_diagnostic(path, &run, &instance, &message, &secret);
+    }
+    result
+}
+
+async fn dsh_start_inner(
     app: tauri::AppHandle,
     state: tauri::State<'_, DshState>,
     request: DshStartRequest,
@@ -807,20 +848,12 @@ pub async fn dsh_start(
     let stderr_run = request.run_id.clone();
     let stderr_instance = request.instance_id.clone();
     let stderr_secret = secret.clone();
-    // 每次启动截断重写 stderr 日志：ACP 侧只回 "Internal error"，真实原因
-    // 都在子进程 stderr 里，落盘后故障可离线诊断（密钥已 REDACTED）。
+    // Retain stderr from earlier attempts, tagged by run and instance.
     let stderr_log = home.join(".kunpeng").join("dsh").join("harness-stderr.log");
-    let _ = std::fs::write(&stderr_log, "");
     tauri::async_runtime::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            {
-                use std::io::Write as _;
-                let redacted_for_log = line.replace(&stderr_secret, "[REDACTED]");
-                if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(&stderr_log) {
-                    let _ = writeln!(f, "{}", redacted_for_log.chars().take(2000).collect::<String>());
-                }
-            }
+            append_harness_diagnostic(&stderr_log, &stderr_run, &stderr_instance, &line, &stderr_secret);
             if let Some(raw_event) = line.strip_prefix(DSH_EVENT_PREFIX) {
                 if let Ok(event) = serde_json::from_str::<Value>(raw_event) {
                     let _ = stderr_app.emit_all(
@@ -998,6 +1031,19 @@ impl DshState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diagnostics_preserve_previous_failures_and_redact_secrets() {
+        let path = std::env::temp_dir().join(format!("kunpeng-dsh-log-{}.log", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        append_harness_diagnostic(&path, "first", "one", "failed secret-test-key", "secret-test-key");
+        append_harness_diagnostic(&path, "next", "two", "process_started", "secret-test-key");
+        let log = std::fs::read_to_string(&path).unwrap();
+        assert!(log.contains("failed [REDACTED]"));
+        assert!(log.contains("process_started"));
+        assert!(!log.contains("secret-test-key"));
+        let _ = std::fs::remove_file(path);
+    }
 
     #[test]
     fn pending_tool_key_isolates_same_run_id_across_instances() {

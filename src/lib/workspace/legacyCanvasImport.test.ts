@@ -115,3 +115,10 @@ test('production pull adapter uses one guarded command, never copies files or in
     assert.equal(writes, 1); assert.equal(collections, 1);
   } finally { delete (globalThis as any).__canvasImportPorts; }
 });
+
+test('input image localPath never becomes a candidate; explicit generated output still imports', () => {
+  const reference = node({ localPath: '/input.png', referenceImage: '/input.png' }, 'image');
+  assert.equal(importLegacyCanvasObjects(fixture(), [reference], {}).candidates, 0);
+  assert.equal(importLegacyCanvasObjects(fixture(), [{ ...reference, data: { ...reference.data, generatedImageUrl: '/output.png', localPath: '/output.png' } }], {}).candidates, 1);
+  assert.equal(importLegacyCanvasObjects(fixture(), [node({ mediaRole: 'reference' })], {}).candidates, 0);
+});

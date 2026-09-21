@@ -11,6 +11,7 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/tauri';
 import { exists, createDir } from '@tauri-apps/api/fs';
 import { homeDir } from '@tauri-apps/api/path';
 import { detectFfmpeg } from './videoCompose';
+import { localMediaPath } from './mediaPath';
 
 interface CommandResult { stdout: string; stderr: string; exit_code: number }
 export interface VideoThumbResult { path: string; url: string }
@@ -33,8 +34,10 @@ async function thumbsDir(): Promise<string> {
 
 /** Get (or lazily create) the thumbnail for a local video. Returns file path + asset URL. */
 export async function ensureVideoThumb(videoPath: string): Promise<VideoThumbResult | null> {
+  videoPath = localMediaPath(videoPath) ?? videoPath;
   const cached = memCache.get(videoPath);
-  if (cached) return cached;
+  if (cached && await exists(cached.path).catch(() => false)) return cached;
+  if (cached) memCache.delete(videoPath);
   const existing = inflight.get(videoPath);
   if (existing) return existing;
 
@@ -54,10 +57,10 @@ export async function ensureVideoThumb(videoPath: string): Promise<VideoThumbRes
       // Serialize extraction (one ffmpeg at a time keeps the UI snappy)
       await (queue = queue.catch(() => {}).then(async () => {
         const r = await invoke<CommandResult>('execute_command', {
-          command: `${ffmpeg} -ss 0.5 -i ${q(videoPath)} -frames:v 1 -vf "scale=320:-2" -q:v 4 ${q(thumbPath)} -y`,
+          command: `${ffmpeg} -ss 0 -i ${q(videoPath)} -frames:v 1 -vf "scale=320:-2" -q:v 4 ${q(thumbPath)} -y`,
           timeoutMs: 30000,
         });
-        if (r.exit_code !== 0) throw new Error('thumb extraction failed');
+        if (r.exit_code !== 0 || !(await exists(thumbPath))) throw new Error('thumb extraction failed');
       }));
       const url = convertFileSrc(thumbPath);
       const result = { path: thumbPath, url };
@@ -84,8 +87,7 @@ export function useVideoThumb(videoPath: string | undefined): string | null {
   const [url, setUrl] = useState<string | null>(videoPath ? memCache.get(videoPath)?.url ?? null : null);
   useEffect(() => {
     if (!videoPath) { setUrl(null); return; }
-    const hit = memCache.get(videoPath)?.url;
-    if (hit) { setUrl(hit); return; }
+    setUrl(null);
     let alive = true;
     void getVideoThumb(videoPath).then((u) => { if (alive) setUrl(u); });
     return () => { alive = false; };
@@ -99,6 +101,7 @@ const stripInflight = new Map<string, Promise<string[] | null>>();
 
 /** Extract N evenly spaced frames; returns asset URLs (cached on disk). */
 export async function getVideoFilmstrip(videoPath: string, count = 6): Promise<string[] | null> {
+  videoPath = localMediaPath(videoPath) ?? videoPath;
   const key = `${videoPath}#${count}`;
   const hit = stripCache.get(key);
   if (hit) return hit;
@@ -154,6 +157,7 @@ export function useVideoFilmstrip(videoPath: string | undefined, count = 6): str
     if (!videoPath) { setUrls(null); return; }
     const hit = stripCache.get(`${videoPath}#${count}`);
     if (hit) { setUrls(hit); return; }
+    setUrls(null);
     let alive = true;
     void getVideoFilmstrip(videoPath, count).then((u) => { if (alive) setUrls(u); });
     return () => { alive = false; };

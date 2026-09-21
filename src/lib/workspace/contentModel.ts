@@ -29,6 +29,8 @@ export function workspaceContentGroups(data: WorkshopData): WorkspaceContentGrou
   const images = new Map<string, string>();
   const mediaOwners = new Set<string>();
   for (const media of registry.media) {
+    // Input references are not the owner's generated/adopted output or thumbnail.
+    if (media.purpose === 'generation-reference' || media.purpose === 'ordinary-material') continue;
     if (media.ownerObjectId && !media.archived && media.purpose !== 'historical') mediaOwners.add(media.ownerObjectId);
     if (media.mediaType !== 'image' || !media.ownerObjectId || media.archived || media.purpose === 'historical') continue;
     if (!images.has(media.ownerObjectId) || media.purpose === 'current-version') images.set(media.ownerObjectId, media.path);

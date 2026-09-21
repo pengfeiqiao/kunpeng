@@ -1,3 +1,5 @@
+import { isLatestCanvasTask } from '@/lib/canvas/taskOwnership';
+import { useProjectStore } from '@/stores/projectStore';
 /**
  * useCanvasTaskRecovery — 失联任务的后台恢复与回填。
  *
@@ -108,11 +110,7 @@ function taskProjectMatches(task: CanvasTask): boolean {
 
 /** 该任务是不是这个 nodeId 的最新一次生成（防旧任务劫持重新生成中的节点） */
 function isLatestTaskForNode(task: CanvasTask): boolean {
-  const tasks = useCanvasTaskStore.getState().tasks;
-  for (let i = tasks.length - 1; i >= 0; i--) {
-    if (tasks[i].nodeId === task.nodeId) return tasks[i].id === task.id;
-  }
-  return false;
+  return isLatestCanvasTask(task, useCanvasTaskStore.getState().tasks, useProjectStore.getState().activeProjectId);
 }
 
 function nodeNeedsSucceededResult(task: CanvasTask): boolean {

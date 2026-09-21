@@ -108,3 +108,11 @@ test('media, editor and documents keep separate draft threads across surface swi
   assert.equal(q.draft('p', 's', 'editor')?.text, 'edit timeline');
   assert.equal(q.draft('p', 's', 'documents')?.text, 'edit specification');
 });
+
+test('following the same target after context changes retains unfinished text and attachments', () => {
+  const q = new ProjectAssistantQueue(); q.writeDraft(target(), 'unfinished', ['ref.png']);
+  q.select(target({ context: 'new version of target description' }));
+  assert.equal(q.draft('p', 's')?.text, 'unfinished');
+  assert.deepEqual(q.draft('p', 's')?.files, ['ref.png']);
+  assert.equal(q.draft('p', 's')?.target.context, 'new version of target description');
+});

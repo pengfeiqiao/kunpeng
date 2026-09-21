@@ -1,3 +1,4 @@
+import type { VideoRecreationDetails } from '../lib/videoAnalysis/recreation';
 /**
  * editorStore — state for the standalone editor view (剪辑) and the surface
  * the timeline_* agent tools operate on. Persists clip metadata only.
@@ -270,7 +271,7 @@ export interface ReferenceFrameNote {
   source: 'scene' | 'dense' | 'fallback';
 }
 
-export interface EditReferenceProfile {
+export interface EditReferenceProfile extends VideoRecreationDetails {
   id: string;
   sourcePath: string;
   title: string;

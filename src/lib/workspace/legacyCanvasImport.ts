@@ -39,7 +39,9 @@ export function importLegacyCanvasObjects(input: WorkshopData, nodes: Node[], re
     }
     const type = node.type as 'image' | 'video' | 'audio';
     const path = typeof node.data.localPath === 'string' ? node.data.localPath.trim() : '';
-    if (path && !data.projectObjects!.media.some((item) => item.ownerObjectId === owner.id && item.path === path && item.mediaType === type)) {
+    if (path && node.data.mediaRole !== 'reference'
+      && !(node.type === 'image' && node.data.referenceImage && !node.data.generatedImageUrl && !node.data.mediaObjectId)
+      && !data.projectObjects!.media.some((item) => item.ownerObjectId === owner.id && item.path === path && item.mediaType === type)) {
       // This is an import identity, not a new provider task or permission to submit.
       const taskId = `canvas-import:${stableProjectHash(`${node.id}\u0000${path}`)}`;
       const imported = registerCanvasGeneration(data, { nodeId: node.id, taskId, paths: [path], mediaType: type, ownerObjectId: owner.id }, now);

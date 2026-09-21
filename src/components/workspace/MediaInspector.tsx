@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { invoke } from '@tauri-apps/api/tauri';
+import { assetUrlToLocalPath } from '@/lib/canvas/imageSource';
 import { Check, ChevronUp, ChevronDown, Download, FileText, FolderInput, Image as ImageIcon, LayoutGrid, Maximize2, MessageSquarePlus, MoreHorizontal, Pencil, RefreshCw, X } from 'lucide-react';
 import type { WorkspaceMediaVersion } from '@/lib/workspace/mediaView';
 import { workspaceHistoricalParameters } from '@/lib/workspace/mediaView';
@@ -41,6 +43,20 @@ export default function MediaInspector(props: Props) {
   const specLabel = workspaceHistoricalParameters(selected?.version, selected?.snapshot);
   const [fullscreen, setFullscreen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const download = async () => {
+    if (!media || downloading) return;
+    const localPath = assetUrlToLocalPath(media.path);
+    const sourcePath = localPath ?? media.path;
+    const name = (localPath ?? sourcePath.split(/[?#]/)[0]).split(/[\\/]/).pop();
+    setDownloading(true); setDownloadError('');
+    try {
+      await invoke('save_file_dialog', { sourcePath,
+        defaultName: name && /\.\w{2,5}$/.test(name) ? name : `media.${media.mediaType === 'video' ? 'mp4' : media.mediaType === 'audio' ? 'wav' : 'png'}` });
+    } catch { setDownloadError('保存失败，请检查原文件是否可访问，以及目标目录是否可写。'); }
+    finally { setDownloading(false); }
+  };
   useEffect(() => {
     if (!fullscreen) return;
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setFullscreen(false); };
@@ -57,12 +73,13 @@ export default function MediaInspector(props: Props) {
       {specLabel && <span className="workspace-chip">{specLabel}</span>}
       {selected && <span className="workspace-chip workspace-chip-muted">v{selected.ordinal}</span>}
     </div>
+    {downloadError && <div role="alert">{downloadError}</div>}
     <div className="workspace-media-stage">
       {(media || props.onNavigate) && <div className="workspace-stage-tools">
         {media && media.mediaType !== 'audio' && <button title="放大预览" aria-label="放大预览" onClick={() => setFullscreen(true)}><Maximize2 size={14} /></button>}
         {media && <><button title="添加到对话" aria-label="添加到对话" onClick={props.onAddToChat}><MessageSquarePlus size={14} /></button>
           {props.onSendToCanvas && <button title="传入画布" aria-label="传入画布" onClick={props.onSendToCanvas}><LayoutGrid size={14} /></button>}
-          <a title="下载原文件" aria-label="下载原文件" href={props.mediaSrc(media.path)} download><Download size={14} /></a></>}
+          <button title="下载原文件" aria-label="下载原文件" disabled={downloading} onClick={() => void download()}><Download size={14} /></button></>}
         {media?.purpose === 'unclassified' && props.onClassify && <button title="归类素材" aria-label="归类素材" onClick={props.onClassify}><FolderInput size={14} /></button>}
         {media && props.tools && props.tools.length > 0 && <button title="更多工具" aria-label="更多工具" aria-expanded={toolsOpen} onClick={() => setToolsOpen(!toolsOpen)}><MoreHorizontal size={14} /></button>}
         {toolsOpen && props.tools && <div className="workspace-stage-tools-menu" role="menu" aria-label="媒体工具">

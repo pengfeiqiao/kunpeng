@@ -76,7 +76,7 @@ export default function NodePalette({ onOpenArtifacts, onOpenAssets, onOpenDirec
       if (!selected) return;
       const files = Array.isArray(selected) ? selected : [selected];
       const base = getViewportCenter(screenToFlowPosition);
-      createMediaNodesFromPaths(files, base);
+      await createMediaNodesFromPaths(files, base);
     } catch (err) {
       console.error('上传失败:', err);
     }

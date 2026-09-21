@@ -1,3 +1,4 @@
+import { shouldUseVideoRecreationSkill } from '../videoAnalysis/recreation.ts';
 import { isSkillEnabled } from '../skills/skillPreferences.ts';
 
 export interface PromptSkill {
@@ -24,6 +25,7 @@ export const SCOPED_INTERNAL_SKILLS: Record<string, { views: string[]; keywords:
 };
 
 export function shouldIncludeInternalSkill(skill: PromptSkill, activeView = 'chat', query = ''): boolean {
+  if (skill.name === 'hypit-video-analysis') return shouldUseVideoRecreationSkill(query);
   const scope = SCOPED_INTERNAL_SKILLS[skill.name];
   if (!scope) return true;
   if (scope.views.includes(activeView)) return true;

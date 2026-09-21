@@ -1,10 +1,11 @@
+import { toCanvasDisplayUrl } from '@/lib/canvas/imageSource';
 /**
  * StepGenerate — ⑤生成：分镜网格，单镜图/视频生成、重生成、取消，
  * 批量补缺失项。并发由 canvasGen MAX 3 槽位队列控制（与画布共享）。
  */
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { AlertTriangle, Check, Clapperboard, ChevronDown, ImageIcon, Loader2, MonitorPlay, MoreHorizontal, Pause, Play, Plus, RefreshCw, SlidersHorizontal, Sparkles, Upload, XCircle, X, FolderOutput } from 'lucide-react';
-import { convertFileSrc } from '@tauri-apps/api/tauri';
+
 import { invoke } from '@tauri-apps/api/tauri';
 import { copyFile, createDir, BaseDirectory } from '@tauri-apps/api/fs';
 import { homeDir } from '@tauri-apps/api/path';
@@ -101,7 +102,7 @@ function buildShotVideoRefs(
     includeStoryboardBoards: false,
   }).map((binding) => ({
     label: `@图片${numToCn(binding.index)} ${binding.label}`,
-    url: convertFileSrc(binding.path),
+    url: toCanvasDisplayUrl(binding.path),
     path: binding.path,
     removable: true,
     removeKind: binding.kind,
@@ -110,7 +111,7 @@ function buildShotVideoRefs(
   for (const [index, path] of (shot.directorPrevisVideoPaths ?? []).entries()) {
     refs.push({
       label: `@视频${numToCn(index + 1)} 导演预演`,
-      url: convertFileSrc(path),
+      url: toCanvasDisplayUrl(path),
       path,
       type: 'video',
     });
@@ -119,14 +120,14 @@ function buildShotVideoRefs(
   if (shot.audioInjected && shot.generatedAudios?.length) {
     for (const audio of shot.generatedAudios) {
       const path = audio.trimmedPath || audio.path;
-      refs.push({ label: `@配音${numToCn(audioIdx)} ${audio.characterName}`, url: convertFileSrc(path), path, type: 'audio', removable: true, removeKind: 'generatedAudio', id: audio.characterId });
+      refs.push({ label: `@配音${numToCn(audioIdx)} ${audio.characterName}`, url: toCanvasDisplayUrl(path), path, type: 'audio', removable: true, removeKind: 'generatedAudio', id: audio.characterId });
       audioIdx++;
     }
   } else {
     for (const cid of (shot.voiceCharacterIds ?? [])) {
       const ch = data.characters.find((c) => c.id === cid);
       if (ch?.voicePath) {
-        refs.push({ label: `@音频${numToCn(audioIdx)} ${ch.name}`, url: convertFileSrc(ch.voicePath), path: ch.voicePath, type: 'audio', removable: true, removeKind: 'voice', id: cid });
+        refs.push({ label: `@音频${numToCn(audioIdx)} ${ch.name}`, url: toCanvasDisplayUrl(ch.voicePath), path: ch.voicePath, type: 'audio', removable: true, removeKind: 'voice', id: cid });
         audioIdx++;
       }
     }
@@ -445,7 +446,7 @@ function ShotAudioRow({ audios, limitSec = 15 }: { audios: NonNullable<WsShot['g
   const play = (id: string, path: string) => {
     if (audioElRef.current) { audioElRef.current.pause(); audioElRef.current = null; }
     if (playingId === id) { setPlayingId(null); return; }
-    const el = new Audio(convertFileSrc(path));
+    const el = new Audio(toCanvasDisplayUrl(path));
     el.onended = () => setPlayingId(null);
     el.play();
     audioElRef.current = el;
@@ -627,17 +628,17 @@ function ShotCard({ shot, checked, onToggle }: { shot: WsShot; checked: boolean;
     return () => { alive = false; };
   }, [shot.shotNo, shot.videoPath, shot.videoThumbPath, updateShot]);
 
-  const persistedVideoThumb = shot.videoThumbPath ? convertFileSrc(shot.videoThumbPath) : null;
+  const persistedVideoThumb = shot.videoThumbPath ? toCanvasDisplayUrl(shot.videoThumbPath) : null;
   const cover = shot.videoPath
-    ? (persistedVideoThumb ?? videoThumb ?? (shot.imagePath ? convertFileSrc(shot.imagePath) : null))
-    : shot.imagePath ? convertFileSrc(shot.imagePath) : null;
+    ? (persistedVideoThumb ?? videoThumb ?? (shot.imagePath ? toCanvasDisplayUrl(shot.imagePath) : null))
+    : shot.imagePath ? toCanvasDisplayUrl(shot.imagePath) : null;
 
   return (
     <div className={`rounded-xl border overflow-hidden group ${shot.genStatus === 'failed' ? 'border-red-500/60' : 'border-[var(--canvas-node-border)]'}`} style={{ background: 'var(--canvas-node-bg)' }} data-shot-no={shot.shotNo}>
       <div className="relative aspect-video bg-black/30 flex items-center justify-center">
         {playingVideo && shot.videoPath ? (
           <video
-            src={convertFileSrc(shot.videoPath)}
+            src={toCanvasDisplayUrl(shot.videoPath)}
             autoPlay
             controls
             className="w-full h-full object-contain bg-black"
@@ -725,7 +726,7 @@ function ShotCard({ shot, checked, onToggle }: { shot: WsShot; checked: boolean;
                             type: 'image',
                             position: { x: 400 + Math.random() * 200, y: 300 + Math.random() * 200 },
                             style: defaultNodeStyle('image'),
-                            data: { generatedImageUrl: convertFileSrc(shot.imagePath!), localPath: shot.imagePath, description: shot.description },
+                            data: { generatedImageUrl: toCanvasDisplayUrl(shot.imagePath!), localPath: shot.imagePath, description: shot.description },
                           });
                         }}
                         className="w-full px-3 py-1.5 text-left text-[12px] text-[var(--canvas-text-2)] hover:text-[var(--canvas-text-1)] hover:bg-[var(--canvas-controls-hover)] flex items-center gap-1.5 transition-colors"
@@ -744,7 +745,7 @@ function ShotCard({ shot, checked, onToggle }: { shot: WsShot; checked: boolean;
                             position: { x: 400 + Math.random() * 200, y: 300 + Math.random() * 200 },
                             style: defaultNodeStyle('video'),
                             data: {
-                              generatedVideoUrl: convertFileSrc(shot.videoPath!),
+                              generatedVideoUrl: toCanvasDisplayUrl(shot.videoPath!),
                               localPath: shot.videoPath,
                               mediaRole: 'output',
                               description: shot.description,

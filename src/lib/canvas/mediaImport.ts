@@ -1,3 +1,6 @@
+import { retainImportedMedia } from './importedMedia';
+import { localMediaPath } from './mediaPath';
+import { useProjectStore } from '@/stores/projectStore';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
 import type { XYPosition } from 'reactflow';
 import { nanoid } from 'nanoid';
@@ -18,7 +21,7 @@ const VIDEO_EXTS = new Set(['mp4', 'mov', 'webm', 'm4v', 'avi', 'mkv']);
 const AUDIO_EXTS = new Set(['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'opus']);
 
 function extname(path: string): string {
-  const clean = path.split('?')[0].split('#')[0];
+  const clean = localMediaPath(path) ?? path.split('?')[0].split('#')[0];
   const idx = clean.lastIndexOf('.');
   return idx >= 0 ? clean.slice(idx + 1).toLowerCase() : '';
 }
@@ -31,10 +34,11 @@ export function detectCanvasMediaKind(path: string): MediaKind | null {
   return null;
 }
 
-export function createMediaNodesFromPaths(paths: string[], basePosition: XYPosition): {
+export async function createMediaNodesFromPaths(paths: string[], basePosition: XYPosition): Promise<{
   createdIds: string[];
   unsupportedPaths: string[];
-} {
+}> {
+  const projectId = useProjectStore.getState().activeProjectId;
   const seen = new Set<string>();
   const items = paths
     .map((path) => ({ path, kind: detectCanvasMediaKind(path) }))
@@ -48,14 +52,17 @@ export function createMediaNodesFromPaths(paths: string[], basePosition: XYPosit
   const unsupportedPaths = items.filter((item) => !item.kind).map((item) => item.path);
   if (supported.length === 0) return { createdIds: [], unsupportedPaths };
 
+  const retained: typeof supported = [];
+  for (const item of supported) retained.push({ ...item, path: await retainImportedMedia(item.path) });
+  if (useProjectStore.getState().activeProjectId !== projectId) throw new Error('项目已切换，未向新画布添加素材');
   captureSnapshot();
   const store = useCanvasStore.getState();
   const createdIds: string[] = [];
 
-  supported.forEach(({ path, kind }, i) => {
+  retained.forEach(({ path, kind }, i) => {
     const id = `node-${nanoid(8)}`;
     const assetUrl = convertFileSrc(path);
-    const fileName = path.split('/').pop() || path;
+    const fileName = supported[i].path.split(/[\\/]/).pop() || path;
     const size = defaultNodeStyle(kind)!;
     const position = {
       x: basePosition.x + (i % 3) * (size.width + 52),

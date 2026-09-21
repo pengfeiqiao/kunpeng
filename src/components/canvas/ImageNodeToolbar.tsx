@@ -1,3 +1,4 @@
+import { retainImportedMedia } from '@/lib/canvas/importedMedia';
 import { useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -86,11 +87,14 @@ export default function ImageNodeToolbar({ nodeId, imageUrl }: ImageNodeToolbarP
   }, [nodeId]);
 
   const handleUploadReplace = useCallback(async () => {
+    const projectId = useProjectStore.getState().activeProjectId;
     try {
       const selected = await open({ filters: [{ name: 'Image', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }], multiple: false });
       if (!selected || Array.isArray(selected)) return;
-      const assetUrl = convertFileSrc(selected);
-      useCanvasStore.getState().updateNode(nodeId, { referenceImage: assetUrl, generatedImageUrl: undefined, isUploadedImage: true });
+      const retained = await retainImportedMedia(selected);
+      if (projectId !== useProjectStore.getState().activeProjectId) return;
+      const assetUrl = convertFileSrc(retained);
+      useCanvasStore.getState().updateNode(nodeId, { referenceImage: assetUrl, generatedImageUrl: undefined, localPath: retained, isUploadedImage: true });
     } catch (err) {
       console.error('上传图片失败:', err);
     }

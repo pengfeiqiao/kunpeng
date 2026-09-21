@@ -1,3 +1,4 @@
+import { toCanvasDisplayUrl } from '@/lib/canvas/imageSource';
 /**
  * ArtifactPickerPanel — in-canvas drawer to pick artifacts from the library
  * and drop them onto the canvas as nodes, without leaving the canvas view.
@@ -6,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, Film, RefreshCw } from 'lucide-react';
 import { useVideoThumb } from '@/lib/canvas/videoThumbs';
-import { convertFileSrc } from '@tauri-apps/api/tauri';
+
 import { useReactFlow } from 'reactflow';
 import { listArtifacts, type ArtifactEntry } from '@/lib/artifacts';
 import { useCanvasStore } from '@/stores/canvasStore';
@@ -52,7 +53,7 @@ export default function ArtifactPickerPanel({ open, onClose, onPick, inline }: P
     if (!flow) return;
     const { addNode, setSelectedNodeId } = useCanvasStore.getState();
     const center = flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-    const url = convertFileSrc(entry.path);
+    const url = toCanvasDisplayUrl(entry.path);
     const id = `node-${nanoid(8)}`;
     addNode({
       id,
@@ -120,7 +121,7 @@ export default function ArtifactPickerPanel({ open, onClose, onPick, inline }: P
                     title={`点击添加到画布\n${e.prompt || e.path.split('/').pop()}`}
                   >
                     {e.type === 'image' ? (
-                      <img src={convertFileSrc(e.path)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                      <img src={toCanvasDisplayUrl(e.path)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     ) : (
                       <PickerVideoThumb path={e.path} />
                     )}

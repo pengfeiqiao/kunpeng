@@ -174,6 +174,27 @@ export function embeddedRunStatus(run: RunSession): EmbeddedStatus {
   return 'done';
 }
 
+/** Keep the current action visible even while the detailed timeline is folded. */
+export function embeddedRunPreview(run: RunSession): string {
+  const status = embeddedRunStatus(run);
+  const active = run.steps.filter((step) => embeddedStepStatus(step) === 'running');
+  if (run.status === 'running' && active.length) {
+    const step = active[active.length - 1];
+    const tool = [...step.toolCalls].reverse().find((item) => item.status === 'running');
+    const title = tool ? labelToolPresentation(tool.display ?? createLegacyToolPresentation(tool.name, tool.summary), 'running') : step.title;
+    return active.length > 1 ? `${title} · 另有 ${active.length - 1} 项进行中` : title;
+  }
+  const completed = run.steps.filter((step) => embeddedStepStatus(step) === 'done').length;
+  const failed = run.steps.filter((step) => embeddedStepStatus(step) === 'failed').length;
+  if (failed) return `${completed} 项完成 · ${failed} 项未完成`;
+  if (status === 'stopped') return completed ? `已停止 · ${completed} 项完成` : '本次执行已停止';
+  if (status === 'failed') return '存在未完成步骤，展开查看记录';
+  if (run.status === 'running') return '等待工具返回结果';
+  const skipped = run.steps.filter((step) => embeddedStepStatus(step) === 'skipped').length;
+  if (skipped) return `${completed} 项完成 · ${skipped} 项跳过`;
+  return run.steps.length ? `${completed} / ${run.steps.length} 项步骤完成` : '本轮没有工具操作';
+}
+
 function EmbeddedStatusIcon({ status }: { status: EmbeddedStatus }) {
   return statusIcon(status === 'running' ? 'running' : status === 'done' ? 'done' : status === 'failed' ? 'failed' : 'pending', 13);
 }
@@ -237,6 +258,7 @@ export default function RunStepTimeline({ compact = false, showHeader = true, cl
         <span className="workspace-assistant-stage-heading"><EmbeddedStatusIcon status={status} />
           <span>执行记录</span><strong role="status">{label}</strong><ChevronDown size={13} />
         </span>
+        <span className="conversation-run-preview">{embeddedRunPreview(run)}</span>
         {preview}
       </summary>
         <ol className="workspace-assistant-step-line">{events.map((event) => event.kind === 'step'

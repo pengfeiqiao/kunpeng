@@ -1,3 +1,5 @@
+import { nanoid } from 'nanoid';
+import { useProjectStore } from '@/stores/projectStore';
 import { GenerationSlots } from './slotQueue';
 /**
  * canvasGen — single orchestration layer for ALL generation.
@@ -410,7 +412,7 @@ export function spawnVariantNodes(sourceNodeId: string, paths: string[], prompt:
   const baseY = src.position?.y ?? 0;
   const nodeIds: string[] = [];
   paths.forEach((p, i) => {
-    const id = `node-var-${Date.now()}-${i}`;
+    const id = `node-var-${nanoid(12)}`;
     nodeIds.push(id);
     store.addNode({
       id,
@@ -3246,6 +3248,8 @@ async function runSeedance25Generation(req: CoreGenRequest): Promise<CoreGenResu
 
 // ── Canvas entry: node semantics on top of runGeneration ─────────────────────
 export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenResult> {
+  const canvasProjectId = useProjectStore.getState().activeProjectId;
+  const sameCanvas = () => useProjectStore.getState().activeProjectId === canvasProjectId;
   const isDreaminaSeedance25 = req.engineId === DREAMINA_SEEDANCE_25_ENGINE_ID;
   const isCustomMediaRoute = isCustomMediaEngine(req.engineId);
   const isGptImageRoute = req.engineId.startsWith('gpt-image');
@@ -3291,7 +3295,7 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
           : srcData?.generatedVideoUrl,
     );
     if (srcNode && hasResult) {
-      const newId = `node-ver-${Date.now()}`;
+      const newId = `node-ver-${nanoid(12)}`;
       store.addNode({
         id: newId,
         type: srcNode.type,
@@ -3331,6 +3335,7 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
     nodeId: targetNodeId,
     onTaskCreated: (taskId) => {
       useCanvasTaskStore.getState().updateTask(taskId, {
+        canvasProjectId: canvasProjectId ?? undefined,
         submissionReceipt: {
           requestedImages: req.referenceUrls?.length ?? 0,
           requestedAudio: req.audioUrls?.length ?? 0,
@@ -3344,7 +3349,7 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
   });
 
   if (!result.success) {
-    patchNode(targetNodeId, { isGenerating: false });
+    if (sameCanvas()) patchNode(targetNodeId, { isGenerating: false });
     return {
       success: false,
       taskId: result.taskId,
@@ -3369,6 +3374,11 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
       },
     });
   }
+
+  // A paid output stays in the task/artifact records for recovery on return.
+  // Never publish it into the project the user switched to during generation.
+  if (!sameCanvas()) return { success: true, taskId: result.taskId, resultPaths: result.resultPaths,
+    primaryUrl: result.resultUrls[0], fallbackUsed: result.fallbackUsed };
 
   // Write back to node（image/audio/video 三元——audio 曾落进 else 写成
   // generatedVideoUrl，AudioNode 只认 audioUrl，导致音频节点永远空白）
@@ -3411,6 +3421,7 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
     const target = useCanvasStore.getState().nodes.find((node) => node.id === targetNodeId);
     const targetData = target?.data as Record<string, unknown> | undefined;
     const { useUnifiedProjectStore } = await import('@/stores/unifiedProjectStore');
+    if (!sameCanvas()) return { success: true, taskId: result.taskId, resultPaths: paths, primaryUrl, fallbackUsed: result.fallbackUsed };
     const registered = useUnifiedProjectStore.getState().registerCanvasGenerationResult({
       nodeId: targetNodeId,
       nodeIds: [targetNodeId, ...variantNodeIds],

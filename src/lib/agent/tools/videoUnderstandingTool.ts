@@ -1,3 +1,4 @@
+import { buildVideoAnalysisQuestion } from '../../videoAnalysis/recreation';
 /**
  * video_understanding — 原生视频理解。
  *
@@ -65,7 +66,7 @@ export const videoUnderstandingTool: Tool = {
   async execute(params, signal, context) {
     const video = String(params.video ?? '').trim();
     if (!video) return { success: false, output: '', error: 'video required' };
-    const question = String(params.prompt ?? '').trim() || DEFAULT_PROMPT;
+    const question = buildVideoAnalysisQuestion(String(params.prompt ?? '').trim() || DEFAULT_PROMPT);
     const progress = (message: string) => {
       void import('@/stores/runStepStore')
         .then(({ useRunStepStore }) => useRunStepStore.getState().appendStepNote(message, 'video_understanding'))

@@ -1,6 +1,6 @@
+import { toCanvasDisplayUrl } from '@/lib/canvas/imageSource';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { History, MoreHorizontal, Sparkles, FileUp, X, LayoutGrid } from 'lucide-react';
-import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { message as tauriMessage } from '@tauri-apps/api/dialog';
 import { useChatStore } from '@/stores';
 import { useWorkshopStore } from '@/stores/workshopStore';
@@ -66,7 +66,7 @@ interface Props {
 }
 
 function mediaSrc(path: string) {
-  return /^(https?:|data:|blob:|asset:)/i.test(path) ? path : convertFileSrc(path);
+  return toCanvasDisplayUrl(path);
 }
 
 /** Real project container. All media writes go through the existing project commands/runtime. */
