@@ -51,7 +51,7 @@ export function refreshProductionAssistantTarget(target: AssistantTarget, data: 
   if (frozen.version !== 1 || current.kind !== frozen.kind || current.sourceId !== frozen.sourceId || current.shotNo !== frozen.shotNo) {
     throw new Error('声音助手原对象或镜号已变化，请重新选择对象。');
   }
-  return { ...target, productionTarget: current } as ProductionAssistantTarget;
+  return current.revision === frozen.revision ? target : { ...target, productionTarget: current } as ProductionAssistantTarget;
 }
 
 /** Serialized identity/revision survives queue persistence; never recover it from prompt prose. */

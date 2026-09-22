@@ -90,12 +90,21 @@ export class ProjectAssistantQueue {
   private sequence = 0;
   private persist?: (value: string) => void;
   private delayMs: number;
-  constructor(persist?: (value: string) => void, delayMs = 250) { this.persist = persist; this.delayMs = delayMs; }
+  private draftPersistDelayMs: number;
+  private persistTimer?: ReturnType<typeof setTimeout>;
+  constructor(persist?: (value: string) => void, delayMs = 250, draftPersistDelayMs = 0) { this.persist = persist; this.delayMs = delayMs; this.draftPersistDelayMs = draftPersistDelayMs; }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
-  private publish(next: QueueState) {
+  flushPersistence = () => {
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = undefined;
+    try { this.persist?.(JSON.stringify(this.state)); } catch { /* Memory remains authoritative. */ }
+  };
+  private publish(next: QueueState, draftOnly = false) {
     this.state = next;
-    try { this.persist?.(JSON.stringify(next)); } catch { /* Memory remains authoritative for this app lifetime. */ }
+    if (draftOnly && this.draftPersistDelayMs > 0) {
+      if (!this.persistTimer) this.persistTimer = setTimeout(this.flushPersistence, this.draftPersistDelayMs);
+    } else this.flushPersistence();
     this.listeners.forEach((listener) => listener());
     this.kick();
   }
@@ -128,8 +137,11 @@ export class ProjectAssistantQueue {
   }
   writeDraft(target: AssistantTarget, text: string, files: string[]) {
     const key = assistantThreadKey(target);
+    const prior = this.state.drafts[key]?.target;
+    const stableTarget = prior && Object.keys({ ...prior, ...target }).every(field =>
+      prior[field as keyof AssistantTarget] === target[field as keyof AssistantTarget]) ? prior : { ...target };
     this.publish({ ...this.state, active: { ...this.state.active, [assistantSessionKey(target.projectId, target.sessionId, target.surface)]: key },
-      drafts: { ...this.state.drafts, [key]: { target: { ...target }, text, files: [...files] } } });
+      drafts: { ...this.state.drafts, [key]: { target: stableTarget, text, files: [...files] } } }, true);
   }
   bindPreparedSession(projectId: string, sessionId: string) {
     const drafts = { ...this.state.drafts };

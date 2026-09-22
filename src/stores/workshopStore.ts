@@ -1,3 +1,5 @@
+import { createWorkshopSaveNormalizer } from '@/lib/workshop/saveNormalizer';
+import { WorkshopHistoryStorage } from '@/lib/workshop/historyStorage';
 /**
  * workshopStore — 创作工坊状态（6 步流水线）。
  *
@@ -368,6 +370,11 @@ function mergeBackIds(current: string[] | undefined, removed: RemovedId[]): stri
   return next;
 }
 
+const normalizeForSave = createWorkshopSaveNormalizer(migrateWorkshopProjectObjects);
+const historyStorage = new WorkshopHistoryStorage({
+  read: readProjectFile,
+  write: (id, path, contents) => writeProjectFile(id, path, contents, { requireSuccess: true }),
+});
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface WorkshopState {
@@ -486,7 +493,7 @@ export const useWorkshopStore = create<WorkshopState>((set, get, api) => ({
       const project = await readProject(id);
       if (!project) return;
       const raw = await readProjectFile(id, WORKSHOP_FILE);
-      let data = safeParse<WorkshopData>(raw) ?? emptyWorkshopData(id);
+      let data = await historyStorage.hydrate(id, safeParse<WorkshopData>(raw) ?? emptyWorkshopData(id));
       if (data.projectId !== id) data.projectId = id;
       // 旧文件缺字段兜底
       if (!data.changelog) data.changelog = [];
@@ -518,7 +525,7 @@ export const useWorkshopStore = create<WorkshopState>((set, get, api) => ({
       })), project.id);
       data = migrateWorkshopProjectObjects(data);
       if (migrateShotIds || migrateProjectObjects) {
-        await writeProjectFile(project.id, WORKSHOP_FILE, JSON.stringify(data, null, 2));
+        await historyStorage.save(project.id, data);
       }
       // genStatus 脏状态修复
       const home = await homeDir();
@@ -570,7 +577,7 @@ export const useWorkshopStore = create<WorkshopState>((set, get, api) => ({
       if (current) set({ project, data: cloneWorkshopData(data), lastDelete: null });
       expected = get();
       unsubscribe = watch();
-      await writeProjectFile(project.id, WORKSHOP_FILE, JSON.stringify(data, null, 2), { requireSuccess: true });
+      await historyStorage.save(project.id, data);
       if (!current) throw new ProjectCreationInterrupted(project.id);
       return project.id;
     } catch (error) {
@@ -596,9 +603,9 @@ export const useWorkshopStore = create<WorkshopState>((set, get, api) => ({
       console.error(`[workshop] save 中止：data.projectId(${data.projectId}) 与当前项目(${project.id})不符`);
       return;
     }
-    const persistedData = migrateWorkshopProjectObjects(data);
-    if (get().data === data) set({ data: persistedData });
-    await writeProjectFile(project.id, WORKSHOP_FILE, JSON.stringify(persistedData, null, 2), options);
+    const persistedData = normalizeForSave(data);
+    if (persistedData !== data && get().data === data) set({ data: persistedData });
+    await historyStorage.save(project.id, persistedData);
     // 回写 index 统计，记忆库项目列表共享
     const stats = {
       shots: persistedData.shots.length,
@@ -635,6 +642,7 @@ export const useWorkshopStore = create<WorkshopState>((set, get, api) => ({
     }
     const raw = await readProjectFile(project.id, WORKSHOP_FILE);
     let data = safeParse<WorkshopData>(raw);
+    if (data) data = await historyStorage.hydrate(project.id, data);
     if (!data) return;
     data.projectId = project.id;
     if (!data.changelog) data.changelog = [];
@@ -653,19 +661,19 @@ export const useWorkshopStore = create<WorkshopState>((set, get, api) => ({
       || !data.projectObjects;
     data = migrateWorkshopProjectObjects(data);
     if (migrateShotIds || migrateProjectObjects) {
-      await writeProjectFile(project.id, WORKSHOP_FILE, JSON.stringify(data, null, 2));
+      await historyStorage.save(project.id, data);
     }
     set({ data: cloneWorkshopData(data) });
   },
 
   scheduleSave: () => {
     if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { void get().save(); }, 800);
+    saveTimer = setTimeout(() => { void get().save().catch((error) => console.error('[workshop] 保存失败', error)); }, 800);
   },
 
   close: () => {
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-    void get().save();
+    void get().save().catch((error) => console.error('[workshop] 保存失败', error));
     set({ project: null, data: null, lastDelete: null });
   },
 

@@ -598,8 +598,21 @@ pub fn import_project_zip(zip_path: String) -> Result<ImportResult, String> {
                 "{}/.kunpeng/aigc-memory/projects/{}",
                 new_home_str, new_aigc_id
             );
-            for fname in &["workshop.json", "project.json", "editor.json"] {
-                let fp = dst_aigc_dir.join(fname);
+            let mut project_files: Vec<PathBuf> = ["workshop.json", "project.json", "editor.json"]
+                .iter().map(|name| dst_aigc_dir.join(name)).collect();
+            // Snapshot payloads share the same project/media identities as the live file.
+            // Include them in import remapping so restore works on another machine.
+            let history_dir = dst_aigc_dir.join("history");
+            if history_dir.exists() {
+                for entry in fs::read_dir(&history_dir)
+                    .map_err(|e| format!("读取项目历史失败: {}", e))? {
+                    let path = entry.map_err(|e| format!("读取项目历史失败: {}", e))?.path();
+                    if path.is_file() && path.extension().and_then(|v| v.to_str()) == Some("json") {
+                        project_files.push(path);
+                    }
+                }
+            }
+            for fp in project_files {
                 if fp.exists() {
                     if let Ok(s) = fs::read_to_string(&fp) {
                         let mut replaced = s;

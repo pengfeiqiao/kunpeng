@@ -1,3 +1,5 @@
+import * as saveNormalizer from '../lib/workshop/saveNormalizer.ts';
+import * as historyStorage from '../lib/workshop/historyStorage.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -18,6 +20,8 @@ function fixture() {
   const set = (patch) => { state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }; };
   const store = { getState: () => state, setState: set };
   const modules = {
+    '@/lib/workshop/saveNormalizer': saveNormalizer,
+    '@/lib/workshop/historyStorage': historyStorage,
     zustand: { create: (init) => { state = init(set, store.getState); return store; } },
     './unifiedProjectStore': { useUnifiedProjectStore: { getState: () => ({ activeId }) } },
     '@/lib/workspace/shotEdits': shotEdits,

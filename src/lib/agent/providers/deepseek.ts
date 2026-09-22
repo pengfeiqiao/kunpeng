@@ -1,3 +1,4 @@
+import { EventFifo, StreamWorkBudget } from '../../performance/eventQueue';
 /**
  * DeepSeek provider — supports BOTH the official Anthropic-compatible endpoint
  * (`https://api.deepseek.com/anthropic`, the default and recommended path) and
@@ -110,6 +111,7 @@ export class DeepSeekProvider implements Provider {
   }
 
   async *streamChat(req: ChatRequest, opts: ChatOptions): AsyncGenerator<StreamDelta> {
+    if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     if (this.anthropicClient) {
       yield* this.anthropicClient.streamChat(req.messages, req.tools, opts.signal, DEEPSEEK_VISION_MODEL);
       return;
@@ -127,22 +129,11 @@ export class DeepSeekProvider implements Provider {
 
     // Use the Rust SSE proxy so we inherit idle-timeout + abort plumbing.
     const requestId = `deepseek-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const queue: { type: 'chunk' | 'done' | 'error'; data?: string; status?: number; message?: string }[] = [];
+    const queue = new EventFifo<{ type: 'chunk' | 'done' | 'error'; data?: string; status?: number; message?: string }>();
     let resolveNext: ((v: void) => void) | null = null;
     const wake = () => { resolveNext?.(); resolveNext = null; };
 
-    const offChunk = await appWindow.listen<{ chunk: string }>(
-      `stream-chunk-${requestId}`,
-      (e) => { queue.push({ type: 'chunk', data: e.payload.chunk }); wake(); },
-    );
-    const offDone = await appWindow.listen<unknown>(
-      `stream-done-${requestId}`,
-      () => { queue.push({ type: 'done' }); wake(); },
-    );
-    const offError = await appWindow.listen<{ status: number; message: string }>(
-      `stream-error-${requestId}`,
-      (e) => { queue.push({ type: 'error', status: e.payload.status, message: e.payload.message }); wake(); },
-    );
+    const unlisten: (() => void)[] = [];
 
     const onAbort = () => {
       void invoke('abort_stream_request', { requestId }).catch(() => {});
@@ -156,6 +147,20 @@ export class DeepSeekProvider implements Provider {
     opts.signal?.addEventListener('abort', onAbort, { once: true });
 
     try {
+      unlisten.push(await appWindow.listen<{ chunk: string }>(
+        `stream-chunk-${requestId}`,
+        (e) => { queue.push({ type: 'chunk', data: e.payload.chunk }); wake(); },
+      ));
+      unlisten.push(await appWindow.listen<unknown>(
+        `stream-done-${requestId}`,
+        () => { queue.push({ type: 'done' }); wake(); },
+      ));
+      unlisten.push(await appWindow.listen<{ status: number; message: string }>(
+        `stream-error-${requestId}`,
+        (e) => { queue.push({ type: 'error', status: e.payload.status, message: e.payload.message }); wake(); },
+      ));
+
+      if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       await invoke('stream_http_request', {
         requestId,
         url: `${this.baseUrl}/chat/completions`,
@@ -164,11 +169,16 @@ export class DeepSeekProvider implements Provider {
       });
 
       // Parse SSE-formatted text into StreamDelta chunks.
+      const workBudget = new StreamWorkBudget();
       let buf = '';
       while (true) {
+        const pause = workBudget.checkpoint();
+        if (pause) await pause;
+        if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         if (queue.length === 0) {
           await new Promise<void>((r) => { resolveNext = r; });
         }
+        if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         const ev = queue.shift()!;
         if (ev.type === 'error') {
           throw makeStatusError(ev.status ?? 0, ev.message ?? 'unknown');
@@ -182,6 +192,9 @@ export class DeepSeekProvider implements Provider {
         buf += ev.data ?? '';
         let sep = buf.indexOf('\n\n');
         while (sep !== -1) {
+          const pause = workBudget.checkpoint();
+          if (pause) await pause;
+          if (opts.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
           const block = buf.slice(0, sep);
           buf = buf.slice(sep + 2);
           for (const delta of parseSSEBlock(block)) yield delta;
@@ -192,9 +205,8 @@ export class DeepSeekProvider implements Provider {
       // A consumer can stop after receiving partial output without aborting
       // the run-wide signal. Tear down the Rust request as well as listeners.
       void invoke('abort_stream_request', { requestId }).catch(() => {});
-      offChunk();
-      offDone();
-      offError();
+      for (const stop of unlisten) stop();
+      queue.clear();
       opts.signal?.removeEventListener('abort', onAbort);
     }
   }

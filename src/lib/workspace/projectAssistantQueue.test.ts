@@ -136,3 +136,21 @@ test('explicit resend refreshes a never-sent failure but never replays an uncert
   await wait(15); detach(); assert.equal(calls, 2);
   assert.equal(q.getSnapshot().items[0].status, 'uncertain');
 });
+
+test('typing coalesces persistence while enqueue and shutdown flush the latest text immediately', async () => {
+  const writes: string[] = [];
+  const q = new ProjectAssistantQueue(value => writes.push(value), 250, 20);
+  for (let i = 0; i < 100; i++) q.writeDraft(target(), `draft ${i}`, []);
+  assert.equal(q.draft('p', 's')?.text, 'draft 99');
+  assert.equal(writes.length, 0);
+  await wait(35);
+  assert.equal(writes.length, 1);
+  const restored = new ProjectAssistantQueue(); restored.restore(writes[0]);
+  assert.equal(restored.draft('p', 's')?.text, 'draft 99');
+  q.writeDraft(target(), 'send now', []); q.enqueue(target(), 'send now');
+  assert.equal(writes.length, 2);
+  assert.equal(JSON.parse(writes[1]).items[0].prompt, 'send now');
+  q.writeDraft(target(), 'closing draft', []); q.flushPersistence();
+  assert.equal(writes.length, 3);
+  await wait(35); assert.equal(writes.length, 3);
+});

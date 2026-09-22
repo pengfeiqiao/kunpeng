@@ -1,3 +1,4 @@
+import { EventFifo, StreamWorkBudget } from '../performance/eventQueue';
 import type { AgentMessage, StreamDelta, ToolDefinition } from './types';
 import { agentLog } from './logger';
 import { AnthropicSseDataParser } from './anthropicSse';
@@ -57,7 +58,7 @@ const DEFAULT_CONFIG: Partial<GLMClientConfig> = {
 // ── Event Queue for Tauri Events ─────────────────────────────────────────────
 
 class EventQueue<T> {
-  private queue: T[] = [];
+  private queue = new EventFifo<T>();
   private resolve: ((v: T) => void) | null = null;
 
   push(item: T) {
@@ -780,14 +781,15 @@ export class GLMClient {
     let unlisten: (() => void) | null = null;
     let unlistenDone: (() => void) | null = null;
     let unlistenError: (() => void) | null = null;
-    let isDone = false;
+    // Transport completion is only for cleanup; the consumer must drain to its terminal event.
+    let transportDone = false;
 
     // Abort handler is named so the finally block can detach it from the
     // run-wide signal. Without this, every turn stacked one more {once:true}
     // listener on the shared AbortController and an eventual abort fired
     // abort_stream_request for long-finished request ids.
     const onAbort = () => {
-      isDone = true;
+      transportDone = true;
       queue.push('[DONE]');
       invoke('abort_stream_request', { requestId }).catch(() => {});
     };
@@ -813,13 +815,13 @@ export class GLMClient {
 
       unlistenDone = await appWindow.listen(`stream-done-${requestId}`, () => {
         agentLog.info('GLM', 'Stream completed');
-        isDone = true;
+        transportDone = true;
         queue.push('[DONE]');
       });
 
       unlistenError = await appWindow.listen(`stream-error-${requestId}`, (event) => {
         const error = event.payload as any;
-        isDone = true;
+        transportDone = true;
         queue.push(`[ERROR]: ${error.status} - ${error.message}`);
       });
 
@@ -853,8 +855,13 @@ export class GLMClient {
         return adapter.convert(event);
       };
 
-      while (!isDone) {
+      const workBudget = new StreamWorkBudget();
+      while (true) {
+        const pause = workBudget.checkpoint();
+        if (pause) await pause;
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         chunk = await queue.next(gotAnyChunk ? STREAM_IDLE_EVENT_TIMEOUT_MS : STREAM_FIRST_EVENT_TIMEOUT_MS);
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         if (chunk === undefined) {
           const phase = gotAnyChunk ? '空闲' : '首包';
           invoke('abort_stream_request', { requestId }).catch(() => {});
@@ -877,11 +884,17 @@ export class GLMClient {
           throw err;
         }
         for (const payload of sseParser.push(chunk)) {
+          const pause = workBudget.checkpoint();
+          if (pause) await pause;
+          if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
           const delta = convertPayload(payload);
           if (delta) yield delta;
         }
       }
       for (const payload of sseParser.finish()) {
+        const pause = workBudget.checkpoint();
+        if (pause) await pause;
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         const delta = convertPayload(payload);
         if (delta) yield delta;
       }
@@ -902,7 +915,7 @@ export class GLMClient {
       // If we're exiting before the Rust task finished (error thrown above,
       // or the consumer stopped iterating), make sure the upstream HTTP
       // stream is torn down. No-op if the request already completed.
-      if (!isDone) {
+      if (!transportDone) {
         invoke('abort_stream_request', { requestId }).catch(() => {});
       }
     }

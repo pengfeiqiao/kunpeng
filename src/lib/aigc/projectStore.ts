@@ -275,7 +275,9 @@ export async function writeProjectFile(
       await ensureProjectSubdirs(id);
       const parent = path.substring(0, path.lastIndexOf('/'));
       if (parent) await createDir(parent, { dir: BaseDirectory.Home, recursive: true });
-      await writeTextFile({ path, contents }, { dir: BaseDirectory.Home });
+      const temporary = `${path}.tmp`;
+      await writeTextFile({ path: temporary, contents }, { dir: BaseDirectory.Home });
+      await renameFile(temporary, path, { dir: BaseDirectory.Home });
     });
   } catch (err) {
     if (options?.requireSuccess) throw new Error('项目文件保存失败，未确认落盘');

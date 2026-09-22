@@ -155,8 +155,9 @@ function ProductionTools({ projectId, objectId, onClose }: WorkspaceProductionTo
   const generate = async (voicePrompt?: string, repeatCharacterId?: string): Promise<boolean> => Boolean(await perform(async (lease) => {
     if (!journalHealthy) { message('本对象产物记录尚未确认，语音生成已暂停。'); return false; }
     if (!data) return false;
-    const frozenData = structuredClone(data);
-    const executionPreference = frozenData.projectSpec?.generationConfirmation ?? 'paid-only-confirm';
+    // Only speech inputs are needed; copying project history here freezes the UI.
+    const frozenData = { characters: structuredClone(data?.characters ?? []) };
+    const executionPreference = data.projectSpec?.generationConfirmation ?? 'paid-only-confirm';
     const frozenShot = shot && structuredClone(shot);
     const jobs: ProductionJob[] = character && voicePrompt
       ? [{ characterId: character.id, characterName: character.name, prompt: voicePrompt }]

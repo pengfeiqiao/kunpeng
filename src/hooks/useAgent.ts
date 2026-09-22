@@ -1,3 +1,4 @@
+import { memoizeLast } from '@/lib/performance/memoizeLast';
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { emit } from '@tauri-apps/api/event';
@@ -591,17 +592,20 @@ function buildAigcProjectContext(project: AigcProject | null): string | undefine
   return lines.join('\n');
 }
 
+const projectCombinedContext = memoizeLast((memoryProject: AigcProject | null,
+  projectName: string | undefined, spec: Parameters<typeof buildProjectSpecAgentContext>[1],
+  intake: Parameters<typeof buildProjectIntakeAgentContext>[0]) => {
+  const memoryContext = buildAigcProjectContext(memoryProject);
+  const specContext = projectName !== undefined ? buildProjectSpecAgentContext(projectName, spec) : undefined;
+  const intakeContext = buildProjectIntakeAgentContext(intake);
+  return [memoryContext, specContext, intakeContext].filter(Boolean).join('\n\n') || undefined;
+});
+
 function buildCombinedProjectContext(): string | undefined {
   const memoryProject = useAigcProjectStore.getState().getCurrent();
   const workshop = useWorkshopStore.getState();
-  const memoryContext = buildAigcProjectContext(memoryProject);
-  const specContext = workshop.project && workshop.data
-    ? buildProjectSpecAgentContext(workshop.project.name, workshop.data.projectSpec)
-    : undefined;
-  const intakeContext = workshop.data
-    ? buildProjectIntakeAgentContext(workshop.data.projectIntake)
-    : undefined;
-  return [memoryContext, specContext, intakeContext].filter(Boolean).join('\n\n') || undefined;
+  return projectCombinedContext(memoryProject, workshop.data ? workshop.project?.name : undefined,
+    workshop.data?.projectSpec, workshop.data?.projectIntake);
 }
 
 function currentSkillProjectId(): string | undefined {

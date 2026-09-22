@@ -38,7 +38,7 @@ test('safe callbacks precede legacy credential and direct generation paths', () 
   assert.match(panel, /requestConfirm\('workspace_speech_generate'/);
   assert.match(panel, /signal: lease.signal, risk \}/);
   assert.match(panel, /const risk = doubaoSpeechGenerateTool.risk/);
-  assert.match(panel, /executionPreference = frozenData.projectSpec\?\.generationConfirmation/);
+  assert.match(panel, /executionPreference = data.projectSpec\?\.generationConfirmation/);
   assert.doesNotMatch(panel, /resolveApiKey|useSettingsStore|dispatchWorkshopPrompt/);
 });
 test('palette controls preserve original sentinel/follow and shared store remapping', () => {
@@ -74,10 +74,12 @@ function assistantRuntime(prepare) {
   const hook = (key) => Object.assign((select) => select(states[key]), { getState: () => states[key], subscribe: () => () => {} });
   const jsx = (type, props) => ({ type, props });
   const modules = {
-    react: { useEffect: (effect) => effects.push(effect), useRef: (current) => ({ current }), useSyncExternalStore: (_subscribe, read) => read() },
+    react: { useMemo: (read) => read(), useEffect: (effect) => effects.push(effect), useRef: (current) => ({ current }), useSyncExternalStore: (_subscribe, read) => read() },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     '@/stores': { useChatStore: hook('chat') }, '@/stores/workshopStore': { useWorkshopStore: hook('workshop') },
     '@/stores/unifiedProjectStore': { useUnifiedProjectStore: hook('unified') },
+    '@/stores/canvasStore': { useCanvasStore: hook('canvas') },
+    '@/stores/projectStore': { useProjectStore: hook('canvasProject') },
     '@/stores/runStepStore': { useRunStepStore: hook('runs') }, '@/stores/toolConfirmStore': { useToolConfirmStore: hook('confirm') },
     '@/stores/askUserStore': { useAskUserStore: hook('ask') },
     '@/hooks/useCanvasMention': { useCanvasMention: () => ({}) },
@@ -213,6 +215,8 @@ async function productionRuntime({ preference, risk = 'ask', kind = 'character',
     '@tauri-apps/api/fs': nativeFs, '@tauri-apps/api/path': { homeDir: async () => '/fake-home' },
     '@tauri-apps/api/tauri': { convertFileSrc: (path) => path }, '@tauri-apps/api/dialog': {}, '@tauri-apps/api/shell': {},
     '@/stores/workshopStore': { useWorkshopStore: hook('workshop') }, '@/stores/unifiedProjectStore': { useUnifiedProjectStore: hook('unified') },
+    '@/stores/canvasStore': { useCanvasStore: hook('canvas') },
+    '@/stores/projectStore': { useProjectStore: hook('canvasProject') },
     '@/stores': { useChatStore: hook('chat') }, '@/stores/projectAssistantQueueStore': {},
     '@/stores/toolConfirmStore': { useToolConfirmStore: { getState: () => ({ requestConfirm: async (...args) => {
       events.push('confirm'); confirmations.push(args); return confirm(runtime);

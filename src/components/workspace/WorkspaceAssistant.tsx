@@ -1,5 +1,5 @@
-import { assistantConversationKey, assistantHistoryTarget } from '@/lib/workspace/assistantHistory';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { assistantConversationKey, projectAssistantHistory, visibleAssistantHistory } from '@/lib/workspace/assistantHistory';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { ArrowLeft, Crosshair, X } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { useChatStore } from '@/stores';
@@ -30,6 +30,8 @@ import { buildProjectConversationReferenceContext, mergeProjectConversationRefer
 import AgentDrawer from '../chat/AgentDrawer';
 import { isAssistantTargetAvailable, resolveAssistantTargetRequest, WORKSPACE_ASSISTANT_TARGET_EVENT } from './assistantTarget';
 import './workspace-assistant.css';
+
+const WORKSPACE_CONTEXT_PREFIX = /^\[媒体工作台上下文[\s\S]*?\n\n/;
 
 function isPendingQueueItem(item: AssistantQueueItem): item is AssistantQueueItem & {
   status: Exclude<AssistantQueueItem['status'], 'done'>;
@@ -84,13 +86,19 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
   const surface = data?.projectViewState?.workspaceSurface ?? 'media';
   const candidate = projectId ? queue.draft(projectId, sessionId, surface) : undefined;
   const saved = candidate && assistantTargetScope(candidate.target) === workspaceScopeForView(data?.projectViewState) ? candidate : undefined;
-  const proposed = data ? captureTarget(data, sessionId) : undefined;
+  const followsCanvas = workspaceScopeForView(data?.projectViewState) === 'canvas';
+  const canvasNodes = useCanvasStore(state => followsCanvas ? state.nodes : undefined);
+  const selectedCanvasNode = useCanvasStore(state => followsCanvas ? state.selectedNodeId : undefined);
+  const canvasProjectId = useProjectStore(state => followsCanvas ? state.activeProjectId : undefined);
+  const proposed = useMemo(() => data ? captureTarget(data, sessionId) : undefined,
+    [data, sessionId, canvasNodes, selectedCanvasNode, canvasProjectId]);
   const storedTarget = saved?.target ?? proposed;
   // Refresh only future messages, never mutate an already queued snapshot.
-  let target = storedTarget;
-  if (storedTarget) {
-    try { target = refreshProductionAssistantTarget(storedTarget, data); } catch { /* Send validation reports invalid identity. */ }
-  }
+  const target = useMemo(() => {
+    if (!storedTarget) return storedTarget;
+    try { return refreshProductionAssistantTarget(storedTarget, data); }
+    catch { return storedTarget; /* Send validation reports invalid identity. */ }
+  }, [storedTarget, data]);
   const targetRef = useRef(target); targetRef.current = target;
   const updateReferences = (references: ProjectConversationReference[]) => {
     const frozen = targetRef.current;
@@ -241,24 +249,15 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
       window.removeEventListener('kunpeng-editor-prompt', editorPrompt); window.removeEventListener('kunpeng-editor-drawer-open', openEditor); };
   }, []);
 
+  const items = useMemo(() => snapshot.items.filter(item => item.target.projectId === projectId), [snapshot.items, projectId]);
+  const session = sessions.find(entry => entry.id === sessionId);
+  const coreKey = target ? assistantConversationKey(target) : '';
+  const historyIndex = useMemo(() => projectAssistantHistory(messages, items, sessionId, serializeWorkspaceAssistantMessage),
+    [messages, items, sessionId]);
+  const visibleMessageIds = useMemo(() => target ? visibleAssistantHistory(historyIndex, target, session?.projectId) : new Set<string>(),
+    [historyIndex, coreKey, session?.projectId]);
   if (!data || !target) return null;
   const key = assistantThreadKey(target);
-  const coreKey = assistantConversationKey(target);
-  const items = snapshot.items.filter((item) => item.target.projectId === projectId);
-  const session = sessions.find((entry) => entry.id === sessionId);
-  const currentItems = items.filter((item) => item.target.sessionId === sessionId);
-  let messageTarget: AssistantTarget | undefined;
-  const visibleMessageIds = new Set<string>();
-  for (const message of messages) {
-    if (message.role === 'user') messageTarget = currentItems.find((item) => item.messageIds?.includes(message.id)
-      || message.content === serializeWorkspaceAssistantMessage(item.target, item.prompt)
-      || message.content === item.target.context + item.prompt || (message.content.endsWith(item.prompt) && message.content.includes(item.target.context.trim())))?.target ?? assistantHistoryTarget(message.content, sessionId);
-    const owner = currentItems.find((item) => item.messageIds?.includes(message.id));
-    // 线程归属比对用稳定核心（不含 context 文案），提示词措辞演进不会隐藏历史对话
-    const thread = owner?.target ?? messageTarget;
-    if (session?.projectId === projectId && ((thread !== undefined && assistantConversationKey(thread) === coreKey)
-      || (!target.objectId && !owner && !messageTarget))) visibleMessageIds.add(message.id);
-  }
   const running = items.find((item) => item.status === 'running');
   const scopeChanged = target.objectId && (proposed?.objectId !== target.objectId || proposed?.mediaId !== target.mediaId);
   const modelScope = assistantTargetScope(workspaceExecutionTarget(snapshot.items, target)!);
@@ -269,7 +268,7 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
     catch { queue.update(id, action, prompt); }
   };
   const targetScope = assistantTargetScope(target);
-  return <AgentDrawer embedded open onOpenChange={() => {}} stripPrefixRe={/^\[媒体工作台上下文[\s\S]*?\n\n/}
+  return <AgentDrawer embedded open onOpenChange={() => {}} stripPrefixRe={WORKSPACE_CONTEXT_PREFIX}
     greeting={{ hello: '项目助手', title: '继续这个项目' }} suggestions={[]} modelScope={modelScope}
     mention={targetScope === 'canvas' ? mention : undefined}
     placeholder="描述本次调整" onAbort={onAbort}

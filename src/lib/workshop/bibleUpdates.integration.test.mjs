@@ -1,3 +1,5 @@
+import * as saveNormalizer from './saveNormalizer.ts';
+import * as historyStorage from './historyStorage.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -13,6 +15,8 @@ test('actual tool/store persist merged bibles to every file and publish existing
   const writes = new Map();
   const store = {getState:()=>state};
   const modules = {
+    '@/lib/workshop/saveNormalizer': saveNormalizer,
+    '@/lib/workshop/historyStorage': historyStorage,
     zustand:{create:init=>{state=init(patch=>{state={...state,...patch};},()=>state);return store;}},
     '@/lib/workshop/bibleUpdates':updates,
     '@/lib/workshop/types':types,
