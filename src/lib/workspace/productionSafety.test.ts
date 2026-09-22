@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { captureProductionAssistantTarget, validateProductionAssistantTarget, captureProductionLease, claimProduction, pendingProductionJobs, mergeProductionReceipt, parseProductionReceipts, productionFileName, productionJobKey, runConfirmedProduction, shotSpeechJobs,
+import { refreshProductionAssistantTarget, captureProductionAssistantTarget, validateProductionAssistantTarget, captureProductionLease, claimProduction, pendingProductionJobs, mergeProductionReceipt, parseProductionReceipts, productionFileName, productionJobKey, runConfirmedProduction, shotSpeechJobs,
   type ProductionJob, type ProductionReceipt } from './productionSafety.ts';
 import type { GeneratedAudio, WorkshopData, WsCharacter, WsShot } from '../workshop/types.ts';
 import { serializeWorkspaceAssistantMessage } from './workspaceAssistantMessage.ts';
@@ -252,4 +252,21 @@ test('receipt persistence failure is not reported as a retained candidate and ne
   const result = await runConfirmedProduction({ ...f.ports, retain: async () => { throw new Error('fake journal failure'); } });
   assert.equal(result.audios.length, 0); assert.equal(result.failedIndex, 0);
   assert.equal(f.submitted.length, 1); assert.equal(f.applied.length, 0); f.lease.close();
+});
+
+
+test('a new sound conversation turn refreshes content without weakening queued revision checks', () => {
+  const data = structuredClone(assistantData());
+  const original = captureProductionAssistantTarget(data, 'O', 'S', 'context', '配音');
+  for (let turn = 0; turn < 3; turn++) {
+    data.shots[0].audioPrompts = [{ characterId: 'a', prompt: `语气修改 ${turn}` }];
+    data.projectObjects!.objects[0].version++;
+    assert.ok(validateProductionAssistantTarget(original, data));
+    const refreshed = refreshProductionAssistantTarget(original, data);
+    assert.equal(validateProductionAssistantTarget(refreshed, data), null);
+    assert.equal(refreshed.objectId, original.objectId);
+    assert.equal(refreshed.context, original.context);
+  }
+  data.shots[0].shotNo = 'changed';
+  assert.throws(() => refreshProductionAssistantTarget(original, data), /镜号/);
 });

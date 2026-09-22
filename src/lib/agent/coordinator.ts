@@ -1,3 +1,4 @@
+import { checkWorkspaceDispatch } from './workspaceToolScope';
 import type {
   AgentMessage,
   AgentUserContentBlock,
@@ -723,6 +724,9 @@ export class AgentCoordinator {
             prepared.push({ call, params, skip: `[denied] ${reason}` });
             continue;
           }
+
+          const scopeError = checkWorkspaceDispatch(call.function.name, params, { runId });
+          if (scopeError) { prepared.push({ call, params, skip: scopeError }); continue; }
 
           // Check tool risk level (dynamic check > static risk)
           const tool = this.config.toolRegistry.get(call.function.name);

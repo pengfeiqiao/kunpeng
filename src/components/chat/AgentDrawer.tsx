@@ -238,7 +238,7 @@ const DrawerEventList = memo(function DrawerEventList({
               {event.message.filePaths?.length ? <div className="conversation-reference-history" aria-label="本条消息的参考附件">
                 {event.message.filePaths.map((path, i) => <ConversationAttachment key={`${path}:${i}`} path={path} />)}
               </div> : null}
-              {stripHarnessPrefix(event.message.content).replace(stripPrefixRe, '')}
+              {stripHarnessPrefix(event.message.content).replace(stripPrefixRe, '').trim()}
             </div>
           </div>
         ) : embedded ? (

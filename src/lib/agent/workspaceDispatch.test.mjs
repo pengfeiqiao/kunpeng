@@ -463,7 +463,7 @@ test('queued project authority binds only after dequeue; admitted runs share pro
 
 const { AgentCoordinator } = load('./coordinator.ts', {
   './contextManager': { ContextManager: class { updateMaxTokens() {} microcompact(value) { return value; } estimateMessages() { return 0; } } },
-  './logger': { agentLog: log }, './abortController': { createAbortController: () => new AbortController() },
+  './workspaceToolScope': scope, './logger': { agentLog: log }, './abortController': { createAbortController: () => new AbortController() },
   './findRelevantMemories': { findRelevantMemories: async () => [] },
   './autoCompact': { shouldAutoCompact: () => ({ compact: false }) },
   './temporalContext': { isTimeSensitiveQuery: () => false },
@@ -527,4 +527,45 @@ test('real project coordinator preserves native shell approvals and deny verdict
     assert.equal(results.length, 4);
     assert.match(results[1].content, /rejected/); assert.match(results[3].content, /denied/);
   } finally { f.close(); }
+});
+
+
+test('prompt-only work blocks generation before DSH confirmation and before registry execution', async () => {
+  const f = fixture('project');
+  const prompt = '只改视频提示词，不要生成';
+  f.state.items[0].prompt = prompt;
+  const release = bindWorkspaceDispatchSession(f.runId, serializeWorkspaceAssistantMessage(f.target, prompt), f.port);
+  const { r, writes } = registry();
+  let confirmations = 0;
+  try {
+    const result = await executeDshToolCall({ name: 'workshop_generate', arguments: {}, runId: f.runId }, r,
+      callbacks(async () => { confirmations++; return true; }), new AbortController().signal);
+    assert.equal(result.success, false);
+    assert.match(result.error, /仅修改提示词/);
+    assert.equal(confirmations, 0);
+    assert.equal((await r.execute('canvas_generate', {}, undefined, { runId: f.runId })).success, false);
+    assert.equal((await r.execute('project_update_generation_prompt', {}, undefined, { runId: f.runId })).success, true);
+    assert.deepEqual(writes.map(item => item.name), ['project_update_generation_prompt']);
+  } finally { release(); f.close(); }
+});
+
+
+test('ordinary coordinator blocks unauthorized generation before confirmation but allows prompt updates', async () => {
+  const f = fixture('project'); const { r, writes } = registry();
+  const prompt = '只改提示词，不要生成'; f.state.items[0].prompt = prompt;
+  const content = serializeWorkspaceAssistantMessage(f.target, prompt);
+  const release = bindWorkspaceDispatchSession(f.runId, content, f.port);
+  const coordinator = new AgentCoordinator({ glmClient: {}, toolRegistry: r, cwd: '/fixture', maxTurns: 3 });
+  let turns = 0; let confirms = 0;
+  coordinator.streamToCompletion = async () => (++turns === 1 ? {
+    text: '', finishReason: 'tool_calls', thinkingBlocks: [], toolCalls: [
+      { id: 'blocked', function: { name: 'workshop_generate', arguments: '{}' } },
+      { id: 'edit', function: { name: 'project_update_generation_prompt', arguments: '{}' } },
+    ],
+  } : { text: 'done', finishReason: 'stop', thinkingBlocks: [], toolCalls: [] });
+  try {
+    await coordinator.run(content, callbacks(async () => { confirms++; return true; }), [], f.runId);
+    assert.equal(confirms, 0);
+    assert.deepEqual(writes.map(item => item.name), ['project_update_generation_prompt']);
+  } finally { release(); f.close(); }
 });

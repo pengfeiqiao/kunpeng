@@ -42,6 +42,18 @@ export function captureProductionAssistantTarget(data: WorkshopData, objectId: s
     context: `${contextBase}\n\n`, references: [], productionTarget: productionAssistantBinding(data, objectId) };
 }
 
+/** A new user turn binds fresh content, while preserving the original object identity. */
+export function refreshProductionAssistantTarget(target: AssistantTarget, data: WorkshopData | null | undefined): AssistantTarget {
+  const frozen = (target as Partial<ProductionAssistantTarget>).productionTarget;
+  if (!frozen) return target;
+  if (!data || data.projectId !== target.projectId || !target.objectId) throw new Error('声音助手原项目或对象已变化，请重新选择对象。');
+  const current = productionAssistantBinding(data, target.objectId);
+  if (frozen.version !== 1 || current.kind !== frozen.kind || current.sourceId !== frozen.sourceId || current.shotNo !== frozen.shotNo) {
+    throw new Error('声音助手原对象或镜号已变化，请重新选择对象。');
+  }
+  return { ...target, productionTarget: current } as ProductionAssistantTarget;
+}
+
 /** Serialized identity/revision survives queue persistence; never recover it from prompt prose. */
 export function validateProductionAssistantTarget(target: AssistantTarget, data: WorkshopData | null | undefined): string | null {
   const frozen = (target as Partial<ProductionAssistantTarget>).productionTarget;

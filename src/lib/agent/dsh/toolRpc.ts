@@ -1,3 +1,4 @@
+import { checkWorkspaceDispatch } from '../workspaceToolScope.ts';
 import type { CoordinatorCallbacks, ToolResult } from '../types';
 import type { ToolRegistry } from '../toolRegistry';
 import type { DshToolCallEvent } from './types';
@@ -34,6 +35,9 @@ export async function executeDshToolCall(
   const params = call.arguments ?? {};
   const tool = registry.get(call.name);
   if (!tool) return { success: false, output: '', error: `Unknown tool: ${call.name}` };
+
+  const scopeError = checkWorkspaceDispatch(call.name, params, { runId: call.runId });
+  if (scopeError) return { success: false, output: '', error: scopeError };
 
   const riskCheck = tool.checkRisk?.(params);
   const risk = riskCheck?.risk ?? tool.risk ?? 'safe';

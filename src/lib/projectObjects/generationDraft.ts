@@ -50,7 +50,7 @@ const GENERATION_TOOL_NAMES = new Set([
 export function isGenerationToolName(toolName: string): boolean {
   return GENERATION_TOOL_NAMES.has(toolName)
     || toolName.startsWith('custom-media:')
-    || /(?:^|_)(?:generate|generation)(?:_|$)/i.test(toolName);
+    || /(?:^|_)generate(?:_|$)/i.test(toolName);
 }
 
 /** Trusted tool risk, never a model-supplied params.paid flag. Unknown tools stay conservative. */

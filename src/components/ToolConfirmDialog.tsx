@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal, FileEdit, FilePlus2, Check, X, Sparkles, Image, Video, Music, FileText, Link2 } from 'lucide-react';
 
 const TOOL_META: Record<string, { icon: typeof Terminal; label: string; accent: string; bg: string }> = {
+  project_update_generation_prompt: { icon: FileEdit, label: '修改提示词', accent: 'text-teal-400', bg: 'bg-teal-500/10' },
   bash:       { icon: Terminal,  label: '执行命令',  accent: 'text-orange-400', bg: 'bg-orange-500/10' },
   write_file: { icon: FilePlus2, label: '创建文件',  accent: 'text-sky-400',    bg: 'bg-sky-500/10' },
   edit_file:  { icon: FileEdit,  label: '编辑文件',  accent: 'text-teal-400',   bg: 'bg-teal-500/10' },
@@ -26,6 +27,7 @@ function shortName(value: string): string {
 }
 
 function formatParams(toolName: string, params: Record<string, unknown>): string {
+  if (toolName === 'project_update_generation_prompt') return `仅更新提示词，不会生成媒体。\n\n${String(params.prompt ?? '')}`;
   if (toolName === 'bash') return String(params.command || '');
   if (toolName === 'write_file' || toolName === 'edit_file') return String(params.path || '');
   return JSON.stringify(params, null, 2);

@@ -14,7 +14,7 @@ import { canvasTargetOf, captureCanvasAssistantTarget, validateCanvasAssistantTa
 import { assistantTargetScope, serializeWorkspaceAssistantMessage, workspaceExecutionTarget } from '@/lib/workspace/workspaceAssistantMessage';
 import { readWorkspaceMessage, workspaceScopeForView } from '@/lib/agent/workspaceMessage';
 import { registerWorkspaceToolScope } from '@/lib/agent/workspaceToolScope';
-import { validateProductionAssistantTarget } from '@/lib/workspace/productionSafety';
+import { validateProductionAssistantTarget, refreshProductionAssistantTarget } from '@/lib/workspace/productionSafety';
 import { useRunStepStore } from '@/stores/runStepStore';
 import { useAskUserStore } from '@/stores/askUserStore';
 import { useToolConfirmStore } from '@/stores/toolConfirmStore';
@@ -85,7 +85,12 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
   const candidate = projectId ? queue.draft(projectId, sessionId, surface) : undefined;
   const saved = candidate && assistantTargetScope(candidate.target) === workspaceScopeForView(data?.projectViewState) ? candidate : undefined;
   const proposed = data ? captureTarget(data, sessionId) : undefined;
-  const target = saved?.target ?? proposed;
+  const storedTarget = saved?.target ?? proposed;
+  // Refresh only future messages, never mutate an already queued snapshot.
+  let target = storedTarget;
+  if (storedTarget) {
+    try { target = refreshProductionAssistantTarget(storedTarget, data); } catch { /* Send validation reports invalid identity. */ }
+  }
   const targetRef = useRef(target); targetRef.current = target;
   const updateReferences = (references: ProjectConversationReference[]) => {
     const frozen = targetRef.current;
@@ -257,6 +262,12 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
   const running = items.find((item) => item.status === 'running');
   const scopeChanged = target.objectId && (proposed?.objectId !== target.objectId || proposed?.mediaId !== target.mediaId);
   const modelScope = assistantTargetScope(workspaceExecutionTarget(snapshot.items, target)!);
+  const updateQueuedMessage = (id: string, action: 'retry' | 'edit', prompt?: string) => {
+    const item = queue.getSnapshot().items.find((entry) => entry.id === id);
+    if (!item || !['failed', 'queued'].includes(item.status)) return;
+    try { queue.update(id, action, prompt, refreshProductionAssistantTarget(item.target, useWorkshopStore.getState().data)); }
+    catch { queue.update(id, action, prompt); }
+  };
   const targetScope = assistantTargetScope(target);
   return <AgentDrawer embedded open onOpenChange={() => {}} stripPrefixRe={/^\[媒体工作台上下文[\s\S]*?\n\n/}
     greeting={{ hello: '项目助手', title: '继续这个项目' }} suggestions={[]} modelScope={modelScope}
@@ -273,8 +284,8 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
     onWorkspaceReference={(reference) => updateReferences(mergeProjectConversationReferences(target.references, [reference]))}
     queueItems={items.filter(isPendingQueueItem).map((item) => ({ id: item.id, prompt: item.prompt,
       label: item.prompt.split('\n')[0], targetLabel: item.target.label, status: item.status, error: item.error }))}
-    onDeleteQueueItem={(id) => queue.update(id, 'delete')} onEditQueueItem={(id, prompt) => queue.update(id, 'edit', prompt)}
-    onRetryQueueItem={(id) => queue.update(id, 'retry')} onSendQueueItemNow={(id) => queue.update(id, 'prioritize')}
+    onDeleteQueueItem={(id) => queue.update(id, 'delete')} onEditQueueItem={(id, prompt) => updateQueuedMessage(id, 'edit', prompt)}
+    onRetryQueueItem={(id) => updateQueuedMessage(id, 'retry')} onSendQueueItemNow={(id) => queue.update(id, 'prioritize')}
     contextBannerKey={key} contextBanner={<><div className="workspace-assistant-scope">
       <div><strong title={target.label}>{target.objectId ? `当前对象 · ${target.label}` : target.label}</strong>
         {scopeChanged && <span role="status">浏览已切换，输入仍属于原对象</span>}</div>

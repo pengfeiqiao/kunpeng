@@ -116,3 +116,23 @@ test('following the same target after context changes retains unfinished text an
   assert.deepEqual(q.draft('p', 's')?.files, ['ref.png']);
   assert.equal(q.draft('p', 's')?.target.context, 'new version of target description');
 });
+
+
+test('explicit resend refreshes a never-sent failure but never replays an uncertain submission', async () => {
+  const q = new ProjectAssistantQueue(undefined, 1);
+  const original = target(); let calls = 0;
+  const id = q.enqueue(original, '同一句话')!;
+  const detach = q.attach({ projectId: 'p', safe: () => true, send: async () => {
+    if (++calls === 1) throw new AssistantQueueFailure('stale revision; never sent', true);
+    throw new Error('unknown submission');
+  } });
+  await wait(20);
+  assert.equal(q.getSnapshot().items[0].status, 'failed');
+  assert.equal(q.enqueue({ ...original, label: 'fresh snapshot' }, '同一句话'), id);
+  await wait(20);
+  assert.equal(calls, 2);
+  assert.equal(q.getSnapshot().items[0].target.label, 'fresh snapshot');
+  q.enqueue(original, '同一句话'); q.update(id, 'retry', undefined, original);
+  await wait(15); detach(); assert.equal(calls, 2);
+  assert.equal(q.getSnapshot().items[0].status, 'uncertain');
+});

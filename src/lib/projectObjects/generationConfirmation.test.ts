@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildGenerationDraft, isPaidGeneration, shouldConfirmGeneration, shouldOfferToolConfirmation } from './generationDraft.ts';
+import { buildGenerationDraft, isGenerationToolName, isPaidGeneration, shouldConfirmGeneration, shouldOfferToolConfirmation } from './generationDraft.ts';
 import type { GenerationConfirmationPreference } from './types.ts';
 import type { CoordinatorCallbacks, Tool, ToolRisk } from '../agent/types.ts';
 import type { ToolRegistry } from '../agent/toolRegistry.ts';
@@ -46,4 +46,16 @@ test('unknown generation cost stays conservative; untrusted paid flags cannot by
   assert.equal(shouldOfferToolConfirmation('custom-media:test', 'ask'), true);
   assert.equal(shouldOfferToolConfirmation('read_file', 'safe'), false);
   assert.equal(shouldOfferToolConfirmation('image_generate', 'deny'), false);
+});
+
+
+test('reading or editing generation drafts is not media generation and never asks generation confirmation', () => {
+  for (const name of ['project_get_generation_draft', 'project_update_generation_prompt', 'aigc_optimize_prompt']) {
+    assert.equal(isGenerationToolName(name), false);
+    assert.equal(shouldOfferToolConfirmation(name, 'safe'), false);
+  }
+  for (const name of ['workshop_generate', 'workshop_generate_audio', 'image_generate_batch', 'doubao_speech_generate', 'canvas_generate_batch']) {
+    assert.equal(isGenerationToolName(name), true);
+    assert.equal(shouldOfferToolConfirmation(name, 'safe'), true);
+  }
 });

@@ -341,8 +341,15 @@ function ProductionTools({ projectId, objectId, onClose }: WorkspaceProductionTo
           <button disabled={busy || !signature} title="采用此产物" onClick={() => void adopt(receipt)}><Check size={14} />采用</button>
           {(receipt.kind === 'voice' || receipt.kind === 'dubbing') && <button disabled={busy || !signature} title="单独重新生成，需要确认"
             onClick={() => void generate(character ? receipt.job.prompt : undefined, receipt.job.characterId)}>重新生成此项</button>}</>
-          : <span className="production-notice">{receipt.status === 'cancelled' ? '已取消，未提交' : '提交状态未确认，不自动重试'}</span>}
-        <button title="打开产物目录" onClick={() => void homeDir().then((home) => openPath(`${home.replace(/\/$/, '')}/.kunpeng/aigc-memory/projects/${projectId}/${receipt.kind === 'image-upload' ? 'assets' : receipt.kind === 'voice' || receipt.kind === 'upload' ? 'assets/voices' : 'dubbing'}`)).catch(() => message('产物目录无法打开。'))}><FolderOpen size={14} /></button>
+          : <span className="production-notice">{receipt.status === 'cancelled' ? '已取消，未提交' : receipt.status === 'started' && busy ? '等待生成结果，尚未返回产物' : '提交状态未确认，不自动重试'}</span>}
+        <button title="打开产物目录" onClick={() => void (async () => {
+          const home = await homeDir();
+          const path = receipt.audio?.path ?? receipt.outputPath;
+          const folder = path ? path.replace(/[\\/][^\\/]+$/, '')
+            : `${home.replace(/\/$/, '')}/.kunpeng/aigc-memory/projects/${projectId}/${receipt.kind === 'image-upload' ? 'assets' : receipt.kind === 'voice' || receipt.kind === 'upload' ? 'assets/voices' : 'dubbing'}`;
+          if (!await exists(folder)) { message('本次提交尚未返回本地产物，目录还未创建。不会自动重新生成。'); return; }
+          await openPath(folder);
+        })().catch(() => message('无法打开产物目录，请检查文件是否已移动或当前系统的访问权限。'))}><FolderOpen size={14} /></button>
       </div>)}
     </section>}
     {!owner && <p role="status">素材对象不存在。</p>}

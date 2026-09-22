@@ -1,3 +1,5 @@
+import { isGenerationToolName } from '../projectObjects/generationDraft.ts';
+import { isPromptOnlyRequest } from './generationIntent.ts';
 import type { AssistantTarget } from '../workspace/projectAssistantQueue.ts';
 import type { WorkshopData } from '../workshop/types.ts';
 import { classifyWorkshopEditScope } from '../workshop/narrativeGuard.ts';
@@ -16,6 +18,7 @@ export interface WorkspaceDispatchAuthority {
   shotNo?: string;
   facts?: string;
   request: string;
+  promptOnly?: boolean;
 }
 
 const denied = '工作台范围保护：本次工具调用超出当前项目；请从对应项目入口明确发起新任务。';
@@ -38,7 +41,8 @@ export function captureWorkspaceAuthority(target: AssistantTarget, data: Worksho
   if (target.projectId !== data.projectId) throw new Error(denied);
   const professional = (target as AssistantTarget & { canvasTarget?: unknown }).canvasTarget
     || target.surface === 'editor';
-  const authority: WorkspaceDispatchAuthority = { level: professional ? 'professional' : 'project', projectId: data.projectId, request };
+  const authority: WorkspaceDispatchAuthority = { level: professional ? 'professional' : 'project', projectId: data.projectId, request,
+    promptOnly: isPromptOnlyRequest(request, Boolean((target as AssistantTarget & { productionTarget?: unknown }).productionTarget)) };
   if (professional) return authority;
   const registry = data.projectObjects;
   if (registry && registry.projectId !== data.projectId) throw new Error(denied);
@@ -75,6 +79,7 @@ export function workspaceAuthorityCurrent(authority: WorkspaceDispatchAuthority,
 /** Runs before the actual Tool.execute, not just when exposing definitions to a model. */
 export function authorizeWorkspaceDispatch(authority: WorkspaceDispatchAuthority, name: string, params: Record<string, unknown>, data: WorkshopData): string | null {
   if (!workspaceAuthorityCurrent(authority, data)) return '工作台项目已变化，工具未执行；请重新发起任务。';
+  if (authority.promptOnly && isGenerationToolName(name)) return '本轮仅修改提示词或描述，未授权媒体生成。不要请求生成确认；请读取并更新对应提示词后结束。';
   if (authority.level === 'professional') return null;
   if (!record(params)) return denied;
   if (params.project_id !== undefined && params.project_id !== authority.projectId) return denied;

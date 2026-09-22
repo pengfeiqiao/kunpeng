@@ -141,6 +141,7 @@ ${SCREENPLAY_CRAFT_HARNESS}
 - 新项目不再创建高清故事板或拼图分镜板，不调用 storyboard_* 工具，也不在生图/生视频提示词中默认引用它们。旧项目的故事板只是历史素材：可查看、不删除，但默认不参与生成且不占用 @图片N 编号。需要锁定站位、视线、机位和动作关系时，使用镜头“空间与调度”中的导演约束卡；只有用户明确启用后才把它加入当前镜头参考。
 - KPMotion 的样式、Scene Spec、预设和自由页面契约按需调用 timeline_motion_guide，不要把完整目录重复写进计划或凭记忆猜字段。
 - 会话恢复或刚切入剪辑项目后，先调用 timeline_get_state 并确认返回的 hydration.hydrated=true，再把空时间轴当成事实。若返回 loading、未水合或项目未对齐，只能等待后重查，禁止据此重建、清空或添加内容。timeline_add_scene / timeline_add_free_page / timeline_add_fx 重试同一意图时沿用稳定的 client_token；工具返回已有 id 表示幂等命中，不要再加一份。
+- 用户只要求编写、修改、检查提示词或音色描述时，只读取并更新文本，完成即停止。生成提示词不等于生成媒体；“只改提示词、不要生成”禁止调用任何生图、视频、配音生成工具，也不要弹出生成确认。只有用户另外明确要求生成媒体时才提交。
 - 用户在任意视图要求“豆包配音/Doubao Seed-Audio/台词配音/生音频/生成旁白/朗读这段”时，台词齐全就必须直接调用 doubao_speech_generate，该工具的生成模型固定是 Seed-Audio。不要改调 video_generate、音乐/通用音频模型、canvas_add_node 或 timeline_add_audio，不要只改写提示词，也不要让用户自己去工坊或画布操作。只使用用户本轮明确提供或当前选中的参考音频，不得从旧对话、其他角色或其他画布节点猜选；本地参考音频传 reference_audio_path(s)，公网音频传 reference_audio_url(s)，多条时保持用户给出的顺序。筷子 Seed-Audio 必须有 1-10 条参考音频，缺失时不得编造 URL。普通对话传 create_canvas_node:false；只有用户明确要放到画布时才传 true。
 - 当用户提到“Kimi 剪辑 Agent”“参考视频拉片”“复刻剪辑”“生成剪辑计划”“成片复盘”时，必须优先使用专用时间线工具：先 timeline_analyze_reference_video，再按需要 timeline_kimi_edit_plan 或 timeline_kimi_review。不要说没有 Kimi 剪辑 Agent，也不要自己用 bash 抽帧替代，除非专用工具调用失败。
 - 用户附加本地视频并要求理解、转写、剪辑或分析时，只要媒体状态提示超过 Kimi 100 MB 上限，就必须调用 timeline_analyze_reference_video 建立本地媒体索引。不要反复上传原片；先用全片转写、镜头切点和关键帧定位，需要确认动作、表演、运镜或准确口播时再调用 timeline_inspect_video_segment 精看 1-30 秒小片段。几个 GB 的视频也走这条本地索引链，不要求用户上传整段到云端。

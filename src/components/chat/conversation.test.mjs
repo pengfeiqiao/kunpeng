@@ -83,3 +83,12 @@ test('reference attachments remain in sent drawer messages and history has no re
   assert.doesNotMatch(attachment, /<button/);
   assert.match(render('./ConversationAttachment.tsx', { path: '/素材/参考图.jpg', onRemove: empty }), /移除附件 参考图.jpg/);
 });
+
+
+test('removing a legacy display prefix cannot leave blank lines above the user message', () => {
+  const html = render('./AgentDrawer.tsx', { ...drawerProps, stripPrefixRe: /^\[display-header\]/ }, {
+    messages: [{ id: 'u', role: 'user', content: '[display-header]\n\n\n用户正文\n', timestamp: 1 }],
+  });
+  assert.match(html, />用户正文<\/div>/);
+  assert.doesNotMatch(html, /display-header/);
+});

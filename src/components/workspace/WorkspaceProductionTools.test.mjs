@@ -102,7 +102,7 @@ function assistantRuntime(prepare) {
   exports.default({ onSendMessage: async () => { sends++; }, onAbort() {} });
   // Mount the real queue-dispatch effect; UI listeners and native ports are deliberately not mounted.
   const close = effects[1]();
-  return { queue, target, close, get sends() { return sends; } };
+  return { queue, target, close, states, render: () => exports.default({ onSendMessage: async () => { sends++; }, onAbort() {} }), get sends() { return sends; } };
 }
 
 test('real assistant sender rejects deleted, renumbered and revised sound targets after session preparation', async () => {
@@ -397,5 +397,26 @@ test('trimmed audio is a separately previewable candidate and does not replace a
     assert.ok(receipt.audio.trimmedPath); assert.equal(runtime.preview(receipt.id).src, receipt.audio.trimmedPath);
     await runtime.adopt(receipt.id);
     assert.equal(runtime.data.shots[0].generatedAudios.find((item) => item.characterId === 'actor').trimmedPath, receipt.audio.trimmedPath);
+  } finally { runtime.close(); }
+});
+
+
+test('real sound assistant accepts successive new turns after its own prompt edits without restarting', async () => {
+  const runtime = assistantRuntime(() => {});
+  try {
+    for (let turn = 0; turn < 3; turn++) {
+      const view = runtime.render();
+      const settled = new Promise((resolve) => {
+        const off = runtime.queue.subscribe(() => {
+          const item = runtime.queue.getSnapshot().items.at(-1);
+          if (item && ['done', 'failed', 'uncertain'].includes(item.status) && item.prompt === `修改语气 ${turn}`) { off(); resolve(item); }
+        });
+      });
+      view.props.onSend(`修改语气 ${turn}`);
+      assert.equal((await settled).status, 'done');
+      runtime.states.workshop.data.shots[0].audioPrompts = [{ characterId: 'child', prompt: `语气 ${turn}` }];
+      runtime.states.workshop.data.projectObjects.objects[0].version++;
+    }
+    assert.equal(runtime.sends, 3);
   } finally { runtime.close(); }
 });

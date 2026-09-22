@@ -156,19 +156,28 @@ export class ProjectAssistantQueue {
     const threadKey = assistantThreadKey(target);
     const duplicate = this.state.items.find((item) => item.threadKey === threadKey && item.prompt === prompt.trim()
       && item.status !== 'done' && JSON.stringify(item.files) === JSON.stringify(files));
-    if (duplicate) return duplicate.id;
+    if (duplicate) {
+      // An explicit resend can recover a never-sent failure with a fresh snapshot.
+      // Running/uncertain submissions remain deduplicated to avoid paid replays.
+      if (duplicate.status === 'failed') {
+        this.publish({ ...this.state, items: this.state.items.map((item) => item.id === duplicate.id
+          ? { ...item, target: structuredClone(target), status: 'queued', error: undefined } : item) });
+      }
+      return duplicate.id;
+    }
     const item: AssistantQueueItem = { id: `assistant-${Date.now()}-${++this.sequence}-${Math.random().toString(36).slice(2, 8)}`,
       target: structuredClone(target), threadKey, prompt: prompt.trim(), files: [...files], status: 'queued', enqueuedAt: Date.now() };
     this.publish({ ...this.state, items: [...this.state.items, item] });
     return item.id;
   }
-  update(id: string, action: 'delete' | 'retry' | 'prioritize' | 'edit', prompt?: string) {
+  update(id: string, action: 'delete' | 'retry' | 'prioritize' | 'edit', prompt?: string, refreshedTarget?: AssistantTarget) {
     const item = this.state.items.find((entry) => entry.id === id);
     if (!item || item.status === 'running' || item.status === 'done') return;
     if (action === 'delete') { this.publish({ ...this.state, items: this.state.items.filter((entry) => entry.id !== id) }); return; }
     // Editing or promoting an unknown submission must not bypass replay protection.
     if (item.status === 'uncertain' || (action === 'edit' && !prompt?.trim())) return;
-    const next = { ...item, status: 'queued' as const, error: undefined, prompt: action === 'edit' ? prompt!.trim() : item.prompt };
+    if (refreshedTarget && assistantThreadKey(refreshedTarget) !== item.threadKey) return;
+    const next = { ...item, target: refreshedTarget ? structuredClone(refreshedTarget) : item.target, status: 'queued' as const, error: undefined, prompt: action === 'edit' ? prompt!.trim() : item.prompt };
     const rest = this.state.items.filter((entry) => entry.id !== id);
     this.publish({ ...this.state, items: action === 'prioritize' ? [next, ...rest]
       : this.state.items.map((entry) => entry.id === id ? next : entry) });
