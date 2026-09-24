@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/tauri';
 import type { Tool } from '../types';
+import { loadImageInput } from './dmxClient';
 
 export interface BrowserSnapshot {
   url: string;
@@ -78,7 +79,7 @@ export const browserControlTool: Tool = {
     },
   },
   risk: 'safe',
-  async execute(params) {
+  async execute(params, signal, context) {
     const args = params as {
       action?: string;
       url?: string;
@@ -117,7 +118,16 @@ export const browserControlTool: Tool = {
       }
       if (action === 'screenshot') {
         const path = await invoke<string>('browser_screenshot');
-        return { success: true, output: `当前网页截图已保存：${path}\n需要理解视觉布局时，请继续调用 vision 工具分析该图片。` };
+        if (context?.nativeVision) {
+          if (signal?.aborted) throw new Error('截图读取已取消');
+          const input = await loadImageInput(path);
+          if (signal?.aborted) throw new Error('截图读取已取消');
+          if (!input.startsWith('data:image/')) throw new Error('截图未返回有效图片');
+          return { success: true, output: `当前网页截图：${path}。请直接检查图片；交互使用最新 snapshot 元素引用，操作后重新观察。`,
+            media: [{ type: 'image' as const, source: { type: 'base64' as const,
+              media_type: input.slice(5, input.indexOf(';')), data: input.slice(input.indexOf(',') + 1) } }] };
+        }
+        return { success: true, output: `当前网页截图已保存：${path}\n需要理解视觉布局时，请调用 image_recognition 分析该图片。` };
       }
       if (action === 'close') {
         await invoke('browser_close');

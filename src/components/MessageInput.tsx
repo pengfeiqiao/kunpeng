@@ -90,6 +90,7 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
 
     appWindow.listen<string[]>('tauri://file-drop', (event) => {
       setIsDragging(false);
+      if (disposed) return;
       const dropped = event.payload;
       if (!dropped.length) return;
 
@@ -113,7 +114,7 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
       }
 
       // Default: add to file paths
-      setFilePaths((prev) => [...prev, ...dropped.filter((p) => !prev.includes(p))]);
+      useChatStore.getState().appendCurrentDraftFiles(dropped);
     }).then(keep((fn) => { unDrop = fn; }));
 
     appWindow.listen('tauri://file-drop-cancelled', () => {

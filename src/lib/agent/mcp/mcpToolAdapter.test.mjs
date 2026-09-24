@@ -94,3 +94,23 @@ test('non-native image formats retain the legacy text result without breaking vi
   assert.equal(result.success, true); assert.equal(result.media, undefined);
   assert.equal(result.output, '[image: image/svg+xml]');
 });
+
+
+test('Blender structured scene results remain available without text content', async () => {
+  const tool = exports.createMcpTool({ name: 'scene', inputSchema: { type: 'object' } }, 'blender', {
+    request: async () => ({ result: { structuredContent: { objects: ['Cube'], saved: true } } }),
+  });
+  const result = await tool.execute({});
+  assert.equal(result.success, true);
+  assert.deepEqual(JSON.parse(result.output), { objects: ['Cube'], saved: true });
+});
+
+test('cancelled MCP adapter never dispatches a mutation', async () => {
+  let dispatched = false;
+  const tool = exports.createMcpTool({ name: 'mutate', inputSchema: { type: 'object' } }, 'blender', {
+    request: async () => { dispatched = true; },
+  });
+  const signal = new AbortController(); signal.abort();
+  const result = await tool.execute({}, signal.signal);
+  assert.equal(result.success, false); assert.equal(dispatched, false);
+});

@@ -62,6 +62,7 @@ export interface McpToolSchema {
 /** MCP tools/list 响应 */
 export interface McpToolsListResult {
   tools: McpToolSchema[];
+  nextCursor?: string;
 }
 
 /** MCP tools/call 请求参数 */
@@ -81,7 +82,8 @@ export interface McpContentBlock {
 
 /** MCP tools/call 响应 */
 export interface McpToolCallResult {
-  content: McpContentBlock[];
+  content?: McpContentBlock[];
+  structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
 
@@ -104,4 +106,6 @@ export interface McpServerConfig {
   args?: string[];
   /** stdio 传输中 API Key 的环境变量名 */
   envKey?: string;
+  /** Credential registry ID; never embed a secret in server config. */
+  credentialId?: string;
 }

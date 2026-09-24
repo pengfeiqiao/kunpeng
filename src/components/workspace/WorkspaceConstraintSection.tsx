@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageSquare, Plus } from 'lucide-react';
+import { Maximize2, MessageSquare, Plus } from 'lucide-react';
+import ImageFullscreenViewer from '@/components/canvas/ImageFullscreenViewer';
 import type { WorkshopData } from '@/lib/workshop/types';
 import type { WorkspaceDraft } from '@/lib/workspace/types';
 import type { WorkspaceGenerationOutcome } from '@/lib/workspace/generationCommand';
@@ -24,6 +25,7 @@ export default function WorkspaceConstraintSection(props: Props) {
   const context = workspaceConstraints(data, draft.objectId);
   const [scope, setScope] = useState<ConstraintScope>(context.shotCard ? 'shot' : context.sceneCard ? 'scene' : 'shot');
   const [error, setError] = useState('');
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [running, setRunning] = useState<Set<string>>(() => new Set());
   const [generationErrors, setGenerationErrors] = useState<Record<string, string>>({});
   const mounted = useRef(true);
@@ -66,7 +68,11 @@ export default function WorkspaceConstraintSection(props: Props) {
         const success = props.onCommand((current) => createWorkspaceConstraint(current, draft.objectId, scope, crypto.randomUUID()));
         setError(success ? '' : '无法创建约束卡，请检查对象状态。');
       }}><Plus size={14} />建立{scope === 'scene' ? '场景' : '本镜'}约束卡</button> : <>
-        {card.imagePath && <img className="workspace-constraint-preview" src={props.mediaSrc(card.imagePath)} alt="导演约束卡当前版本" loading="lazy" />}
+        {card.imagePath && <button type="button" className="workspace-constraint-image-button workspace-constraint-preview"
+          title="放大查看导演约束卡" aria-label="放大查看导演约束卡" onClick={() => setPreviewPath(card.imagePath!)}>
+          <img src={props.mediaSrc(card.imagePath)} alt="导演约束卡当前版本" loading="lazy" />
+          <span><Maximize2 size={14} />放大查看</span>
+        </button>}
         <label className="workspace-constraint-toggle"><input type="checkbox" checked={enabled} disabled={Boolean(locked || !card.imagePath)}
           onChange={(event) => save(setDraftConstraint(data, draft, event.target.checked ? card : undefined))} />本次视频使用导演约束卡</label>
         {outdated && <button onClick={() => save(setDraftConstraint(data, draft, card))}>更新本镜草稿引用</button>}
@@ -96,7 +102,11 @@ export default function WorkspaceConstraintSection(props: Props) {
               }}>{busy || pending ? pending?.status === 'uncertain' ? '提交待核实' : '处理中' : '生成约束卡'}</button>
           </div>
           {versions.length > 0 && <div className="workspace-constraint-versions" aria-label="约束卡候选版本">{versions.map((item) => <div key={item.media.id}>
-            <img src={props.mediaSrc(item.media.path)} alt={`约束卡 v${item.ordinal}`} loading="lazy" />
+            <button type="button" className="workspace-constraint-image-button" title={`放大查看约束卡 v${item.ordinal}`}
+              aria-label={`放大查看约束卡 v${item.ordinal}`} onClick={() => setPreviewPath(item.media.path)}>
+              <img src={props.mediaSrc(item.media.path)} alt={`约束卡 v${item.ordinal}`} loading="lazy" />
+              <span><Maximize2 size={14} />放大</span>
+            </button>
             <span>v{item.ordinal}</span><button disabled={Boolean(locked || item.adopted || !item.version)} onClick={() => {
               if (item.version) setError(props.onAdopt(cardDraft.objectId, item.version.id) ? '' : '版本未切换，请检查锁定状态。');
             }}>{item.adopted ? '已采用' : '采用'}</button>
@@ -106,5 +116,6 @@ export default function WorkspaceConstraintSection(props: Props) {
       {error && <p className="workspace-error" role="alert">{error}</p>}
       {cardDraft && generationErrors[cardDraft.id] && <p className="workspace-error" role="alert">{generationErrors[cardDraft.id]}</p>}
     </div>
+    {previewPath && <ImageFullscreenViewer imageUrl={props.mediaSrc(previewPath)} onClose={() => setPreviewPath(null)} />}
   </details>;
 }

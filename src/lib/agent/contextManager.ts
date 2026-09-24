@@ -199,7 +199,7 @@ export class ContextManager {
       const structured =
         (toolCalls ? JSON.stringify(toolCalls) : '') +
         (thinkingBlocks ? JSON.stringify(thinkingBlocks) : '') +
-        (responses ? JSON.stringify(responses) : '');
+        (responses ? JSON.stringify(responses.items.filter(item => item.type !== 'message' && item.type !== 'function_call')) : '');
       // Do not stringify base64 media into the estimator. A fixed visual-token
       // allowance tracks pressure without treating transport bytes as text.
       const totalMediaCount = mediaCount + blockMediaCount;
@@ -530,6 +530,7 @@ export class ContextManager {
           agentLog.info('Context', `LLM delta summary generated (${deltaSummary.length} chars)`);
         }
       } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
         agentLog.warn('Context', 'LLM summary failed, using fallback', err);
         deltaSummary = this.fallbackSummarize(deltaMessages);
       }

@@ -462,6 +462,9 @@ test('queued project authority binds only after dequeue; admitted runs share pro
 });
 
 const { AgentCoordinator } = load('./coordinator.ts', {
+  './toolExposure': load('./toolExposure.ts'),
+  './summaryCircuit': load('./summaryCircuit.ts'),
+  './requestBudget': load('./requestBudget.ts'),
   './contextManager': { ContextManager: class { updateMaxTokens() {} microcompact(value) { return value; } estimateMessages() { return 0; } } },
   './workspaceToolScope': scope, './logger': { agentLog: log }, './abortController': { createAbortController: () => new AbortController() },
   './findRelevantMemories': { findRelevantMemories: async () => [] },

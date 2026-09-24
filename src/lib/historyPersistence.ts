@@ -239,15 +239,57 @@ function setSessionWriteQueue(sessionId: string, task: Promise<void>): void {
   });
 }
 
-export async function writeSessionToFile(
-  sessionId: string,
-  payload: { messages: Message[]; agentMessages: AgentMessage[] },
-): Promise<void> {
+type SessionPayload = { messages: Message[]; agentMessages: AgentMessage[] };
+const pendingSessionSnapshots = new Map<string, SessionPayload>();
+const failedSessionWrites = new Set<string>();
+export const SESSION_SAVE_STATUS_EVENT = 'kunpeng:session-save-status';
+export function sessionSaveFailed(sessionId: string): boolean { return failedSessionWrites.has(sessionId); }
+function reportSaveStatus(sessionId: string, failed: boolean): void {
+  if (failed) failedSessionWrites.add(sessionId); else failedSessionWrites.delete(sessionId);
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SESSION_SAVE_STATUS_EVENT));
+}
+
+export function writeSessionToFile(sessionId: string, payload: SessionPayload): Promise<void> {
+  const pending = pendingSessionSnapshots.get(sessionId);
+  const snapshot = {
+    messages: [...(payload.messages.length ? payload.messages : pending?.messages ?? [])],
+    agentMessages: [...(payload.agentMessages.length ? payload.agentMessages : pending?.agentMessages ?? [])],
+  };
+  pendingSessionSnapshots.set(sessionId, snapshot);
   const prev = sessionWriteQueues.get(sessionId) ?? Promise.resolve();
-  const next = prev.then(() => writeSessionToFileInner(sessionId, payload));
-  // Swallow errors in the chain link so one failed write doesn't poison the queue.
+  const next = prev.then(async () => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await writeSessionToFileInner(sessionId, snapshot);
+        if (pendingSessionSnapshots.get(sessionId) === snapshot) {
+          pendingSessionSnapshots.delete(sessionId);
+          reportSaveStatus(sessionId, false);
+        }
+        return;
+      } catch (error) {
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
+          continue;
+        }
+        // Keep the newest snapshot, including partial UI/agent history, for recovery.
+        if (pendingSessionSnapshots.has(sessionId)) reportSaveStatus(sessionId, true);
+        throw error;
+      }
+    }
+  });
+  // This rejection handler also makes fire-and-forget callers safe. Awaiters
+  // still receive failure; a failed write cannot poison the next queue entry.
   setSessionWriteQueue(sessionId, next);
   return next;
+}
+
+export function retryFailedSessionWrites(): void {
+  for (const sessionId of failedSessionWrites) {
+    const payload = pendingSessionSnapshots.get(sessionId);
+    if (!payload) continue;
+    failedSessionWrites.delete(sessionId);
+    void writeSessionToFile(sessionId, payload);
+  }
 }
 
 async function writeSessionToFileInner(
@@ -279,6 +321,7 @@ async function writeSessionToFileInner(
     await renameFile(tmp, path, { dir: BaseDirectory.Home });
   } catch (err) {
     console.warn('[historyPersistence] writeSessionToFile failed:', err);
+    throw err;
   }
 }
 
@@ -308,6 +351,8 @@ export async function readSessionFromFile(
 
 // ─── Per-session file: delete ───────────────────────────────────────────
 export async function deleteSessionFile(sessionId: string): Promise<void> {
+  pendingSessionSnapshots.delete(sessionId);
+  reportSaveStatus(sessionId, false);
   const prev = sessionWriteQueues.get(sessionId) ?? Promise.resolve();
   const next = prev.then(async () => {
     try {

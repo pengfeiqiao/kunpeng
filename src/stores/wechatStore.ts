@@ -347,7 +347,7 @@ async function initCoordinatorConfig() {
   // Load MCP tools (including vision) — await to ensure tools are ready before use
   const mcpManager = new McpManager(MCP_SERVERS);
   try {
-    const { tools: mcpTools, errors } = await mcpManager.initialize(glmApiKey);
+    const { tools: mcpTools, errors } = await mcpManager.initialize(Object.fromEntries((useSettingsStore.getState().credentials ?? []).map(c => [c.id, c.apiKey])));
     for (const tool of mcpTools) {
       sharedRegistry.register(tool);
     }

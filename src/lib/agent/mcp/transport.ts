@@ -9,7 +9,7 @@ export interface McpTransport {
   connect(): Promise<void>;
 
   /** 发送 JSON-RPC 请求并获取响应 */
-  request(method: string, params?: Record<string, unknown>): Promise<JsonRpcResponse>;
+  request(method: string, params?: Record<string, unknown>, signal?: AbortSignal): Promise<JsonRpcResponse>;
 
   /** 关闭连接 / 清理资源 */
   close(): Promise<void>;

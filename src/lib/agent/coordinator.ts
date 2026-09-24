@@ -1,3 +1,7 @@
+import type { ToolResult } from './types';
+import { ToolExposure } from './toolExposure';
+import { messageBudget, toolSchemaTokens } from './requestBudget';
+import { SummaryCircuit } from './summaryCircuit';
 import { checkWorkspaceDispatch } from './workspaceToolScope';
 import type {
   AgentMessage,
@@ -15,7 +19,7 @@ import { chatWithFallback, streamWithFallback, type RouteStrategy } from './prov
 import type { QuerySource } from './providers/types';
 import { firePreToolUse, firePostToolUse } from './hooks';
 import { findRelevantMemories, loadMemoryBodies } from './findRelevantMemories';
-import { shouldAutoCompact, recordAutoCompactAttempt, getEffectiveContextWindowSize } from './autoCompact';
+import { shouldAutoCompact, getEffectiveContextWindowSize } from './autoCompact';
 import { getProvider } from './providers/registry';
 import { sanitizeProgressText } from './toolSummary';
 import { buildTemporalTurnContext, isTimeSensitiveQuery } from './temporalContext';
@@ -152,6 +156,8 @@ export class AgentCoordinator {
   private nativeVideoForTurn = false;
   private abortController: AbortController | null = null;
   private config: Required<Pick<CoordinatorConfig, 'maxTurns'>> & CoordinatorConfig;
+  private readonly toolExposure = new ToolExposure();
+  private readonly summaryCircuit = new SummaryCircuit();
   private contextManager: ContextManager;
   private isRunning = false;
   /** Invalidates async history restoration when a newer restore/run/clear wins. */
@@ -306,7 +312,10 @@ export class AgentCoordinator {
     // Reserve room for completion tokens, tool schema overhead, provider-side
     // message framing, and tokenizer differences. DeepSeek's API rejects the
     // whole request when messages + max_tokens exceed the model limit.
-    return Math.floor(effectiveWindow * (effectiveWindow >= 900_000 ? 0.94 : 0.72));
+    const schemaTokens = toolSchemaTokens(this.toolExposure.definitions(this.config.toolRegistry.getDefinitions()), text => this.contextManager.estimateTokens(text));
+    const budget = messageBudget(effectiveWindow, schemaTokens);
+    if (budget < 1024) throw new Error('当前工具定义占用过多上下文，请减少启用的工具后重试。');
+    return budget;
   }
 
   private enforceHardContextBudget(reason: string): void {
@@ -404,23 +413,16 @@ export class AgentCoordinator {
   }
 
   private getCompactChatClient() {
-    if (!this.config.routeStrategy) {
-      return this.config.glmClient;
-    }
+    const { modelId } = this.resolveModelAndWindow();
+    const key = `${this.resolvePrimaryProviderId()}:${modelId}`;
+    // During cooldown keep local compaction available; only skip the failing LLM.
+    if (!this.summaryCircuit.available(key)) return undefined;
+    const signal = this.abortController?.signal;
     return {
-      chat: (
-        messages: { role: string; content: string }[],
-        options?: { maxTokens?: number },
-      ) =>
-        chatWithFallback(
-          this.config.routeStrategy!,
-          { messages, maxTokens: options?.maxTokens },
-          {
-            source: 'background',
-            signal: this.abortController?.signal,
-          },
-          this.abortController?.signal,
-        ),
+      chat: (messages: { role: string; content: string }[], options?: { maxTokens?: number }) =>
+        this.summaryCircuit.run(key, () => this.config.routeStrategy
+          ? chatWithFallback(this.config.routeStrategy, { messages, maxTokens: options?.maxTokens }, { source: 'background', signal }, signal)
+          : this.config.glmClient.chat(messages, options), signal),
     };
   }
 
@@ -560,9 +562,7 @@ export class AgentCoordinator {
       if (autoCompact.compact) {
         agentLog.info('Coordinator', `auto-compact: ${autoCompact.reason}`);
         callbacks.onCompacting?.();
-        this.messages = await recordAutoCompactAttempt(() =>
-          this.contextManager.compact(this.messages, this.getCompactChatClient(), true),
-        );
+        this.messages = await this.contextManager.compact(this.messages, this.getCompactChatClient(), true);
       }
       this.enforceHardContextBudget('run-start');
 
@@ -811,7 +811,9 @@ export class AgentCoordinator {
           }
           callbacks.onToolStart(p.call.function.name, p.params);
           const startedAt = Date.now();
-          const result = await this.config.toolRegistry.execute(
+          const result: ToolResult = p.call.function.name === 'tool_search'
+            ? this.toolExposure.load(p.params.names, this.config.toolRegistry.getDefinitions())
+            : await this.config.toolRegistry.execute(
             p.call.function.name,
             p.params,
             this.abortController?.signal,
@@ -940,9 +942,7 @@ export class AgentCoordinator {
         if (compactDecision.compact) {
           agentLog.info('Coordinator', `auto-compact after tools: ${compactDecision.reason}`);
           callbacks.onCompacting?.();
-          this.messages = await recordAutoCompactAttempt(() =>
-            this.contextManager.compact(this.messages, this.getCompactChatClient(), true),
-          );
+          this.messages = await this.contextManager.compact(this.messages, this.getCompactChatClient(), true);
         }
         this.enforceHardContextBudget('after-tools');
       }
@@ -1121,7 +1121,7 @@ export class AgentCoordinator {
           this.config.routeStrategy,
           {
             messages: outbound,
-            tools: this.config.toolRegistry.getDefinitions(),
+            tools: this.toolExposure.definitions(this.config.toolRegistry.getDefinitions()),
           },
           {
             source: this.config.requestSource ?? 'foreground',
@@ -1141,7 +1141,7 @@ export class AgentCoordinator {
         )
       : this.config.glmClient.streamChat(
           outbound,
-          this.config.toolRegistry.getDefinitions(),
+          this.toolExposure.definitions(this.config.toolRegistry.getDefinitions()),
           this.abortController?.signal,
         );
 
@@ -1237,6 +1237,8 @@ export class AgentCoordinator {
 
   /** 清空对话历史 (保留系统提示词) */
   clear(): void {
+    this.summaryCircuit.reset();
+    this.toolExposure.clear();
     this.historyRevision += 1;
     const system = this.messages.filter((m) => m.role === 'system');
     this.messages = system;

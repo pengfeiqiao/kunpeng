@@ -1,3 +1,4 @@
+import { SESSION_SAVE_STATUS_EVENT, sessionSaveFailed, retryFailedSessionWrites } from '@/lib/historyPersistence';
 import './chat/conversation.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -27,6 +28,17 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
   // is read directly by StreamingCard to avoid re-rendering the entire message list
   const messages = useChatStore((s) => s.messages);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
+  const [saveFailed, setSaveFailed] = useState(false);
+  useEffect(() => {
+    const refresh = () => setSaveFailed(Boolean(currentSessionId && sessionSaveFailed(currentSessionId)));
+    refresh();
+    window.addEventListener(SESSION_SAVE_STATUS_EVENT, refresh);
+    window.addEventListener('focus', retryFailedSessionWrites);
+    return () => {
+      window.removeEventListener(SESSION_SAVE_STATUS_EVENT, refresh);
+      window.removeEventListener('focus', retryFailedSessionWrites);
+    };
+  }, [currentSessionId]);
   const currentAgent = useChatStore((s) => s.currentAgent);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
@@ -198,6 +210,11 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
         </div>
 
         <div className="flex items-center gap-1.5">
+          {saveFailed && (
+            <div role="status" className="max-w-[220px] truncate text-[11px] text-amber-600 dark:text-amber-400" title="对话暂未保存到磁盘，请勿退出应用；恢复写入条件后会在下次保存或返回窗口时重试。">
+              对话尚未保存，已保留待重试
+            </div>
+          )}
           {error && (
             <div className="mr-1 flex max-w-[320px] items-center gap-1.5 truncate text-[11px] text-red-500" title={error}>
               <AlertCircle size={13} className="shrink-0" />

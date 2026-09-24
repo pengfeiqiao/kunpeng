@@ -245,12 +245,17 @@
 .workspace-constraint-controls label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .workspace-constraint-body button, .workspace-constraint-body select { background: #292d30; color: #e3e5e7; border: 1px solid #44494e; border-radius: 5px; padding: 6px 10px; display: inline-flex; align-items: center; gap: 6px; }
 .workspace-constraint-body button:disabled { opacity: .5; cursor: not-allowed; }
-.workspace-constraint-preview { width: min(100%, 400px); max-height: 240px; object-fit: contain; background: #141719; }
+.workspace-constraint-body .workspace-constraint-image-button { position: relative; display: block; padding: 0; overflow: hidden; cursor: zoom-in; background: #141719; }
+.workspace-constraint-image-button img { display: block; }
+.workspace-constraint-image-button > span { position: absolute; right: 6px; bottom: 6px; display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 4px; background: #000b; color: #fff; font-size: 11px; }
+.workspace-constraint-preview { width: min(100%, 400px); }
+.workspace-constraint-preview img { width: 100%; max-height: 240px; object-fit: contain; }
 .workspace-constraint-toggle { display: flex; gap: 8px; align-items: center; font-size: 13px; }
 .workspace-constraint-prompt { display: grid; gap: 8px; font-size: 13px; }
 .workspace-constraint-prompt textarea { width: 100%; min-height: 130px; max-height: 280px; resize: vertical; border: 1px solid #44494e; border-radius: 5px; padding: 10px; background: #171b1e; color: #e3e5e7; line-height: 1.7; }
 .workspace-constraint-versions { display: flex; overflow-x: auto; gap: 10px; }
 .workspace-constraint-versions > div { display: grid; grid-template-columns: 1fr auto; gap: 4px; flex: 0 0 140px; }
+.workspace-constraint-versions .workspace-constraint-image-button { grid-column: 1 / -1; }
 .workspace-constraint-versions img { grid-column: 1 / -1; width: 140px; height: 79px; object-fit: contain; background: #141719; }
 .workspace-inspector-column { display: flex; flex-direction: column; position: relative; overflow: hidden; }
 .workspace-shared-inspector { min-width: 0; min-height: 0; flex: 1; overflow: hidden; }

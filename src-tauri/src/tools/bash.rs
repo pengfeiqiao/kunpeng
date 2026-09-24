@@ -1,3 +1,4 @@
+use super::command_output::{capture, CapturedOutput};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -31,8 +32,8 @@ pub struct CommandOutputPage {
 
 #[derive(Clone)]
 struct StoredCommandOutput {
-    stdout: String,
-    stderr: String,
+    stdout: CapturedOutput,
+    stderr: CapturedOutput,
     created_at: SystemTime,
 }
 
@@ -253,7 +254,12 @@ fn kill_process_tree(pid: i32) {
         .status();
 }
 
-fn remember_output(state: &BashProcessState, output_id: &str, stdout: &str, stderr: &str) {
+fn remember_output(
+    state: &BashProcessState,
+    output_id: &str,
+    stdout: &CapturedOutput,
+    stderr: &CapturedOutput,
+) {
     let Ok(mut outputs) = state.outputs.lock() else {
         return;
     };
@@ -264,7 +270,15 @@ fn remember_output(state: &BashProcessState, output_id: &str, stdout: &str, stde
             .map(|age| age < Duration::from_secs(3600))
             .unwrap_or(false)
     });
-    if outputs.len() >= 24 {
+    while outputs.len() >= 24
+        || outputs
+            .values()
+            .map(|v| v.stdout.bytes + v.stderr.bytes)
+            .sum::<usize>()
+            + stdout.bytes
+            + stderr.bytes
+            > 128 * 1024 * 1024
+    {
         if let Some(oldest) = outputs
             .iter()
             .min_by_key(|(_, value)| value.created_at)
@@ -276,8 +290,8 @@ fn remember_output(state: &BashProcessState, output_id: &str, stdout: &str, stde
     outputs.insert(
         output_id.to_string(),
         StoredCommandOutput {
-            stdout: stdout.to_string(),
-            stderr: stderr.to_string(),
+            stdout: stdout.clone(),
+            stderr: stderr.clone(),
             created_at: SystemTime::now(),
         },
     );
@@ -342,7 +356,7 @@ pub async fn execute_command(
     #[cfg(unix)]
     cmd.process_group(0);
 
-    let child = cmd
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
@@ -361,36 +375,38 @@ pub async fn execute_command(
         _ => None,
     };
 
-    let result = match timeout(timeout_duration, child.wait_with_output()).await {
-        Ok(Ok(output)) => output,
-        Ok(Err(e)) => return Err(format!("Failed to execute command: {}", e)),
-        Err(_) => {
-            // Timed out — kill the whole process tree, then report timeout.
-            if let Some(rid) = request_id.as_ref() {
-                if let Ok(map) = state.active.lock() {
-                    if let Some(pgid) = map.get(rid) {
-                        kill_process_tree(*pgid);
-                    }
-                }
+    let pid = child.id();
+    let stdout_pipe = child.stdout.take().ok_or("Missing command stdout")?;
+    let stderr_pipe = child.stderr.take().ok_or("Missing command stderr")?;
+    let work = async {
+        tokio::try_join!(
+            async { child.wait().await.map_err(|e| e.to_string()) },
+            capture(stdout_pipe),
+            capture(stderr_pipe)
+        )
+    };
+    let (status, stdout, stderr) = match timeout(timeout_duration, work).await {
+        Ok(Ok(result)) => result,
+        other => {
+            if let Some(pid) = pid {
+                kill_process_tree(pid as i32);
             }
-            return Err(format!(
-                "Command timed out after {}ms",
-                timeout_duration.as_millis()
-            ));
+            let _ = child.wait().await;
+            return Err(match other {
+                Ok(Err(error)) => format!("Command output capture failed: {}", error),
+                _ => format!("Command timed out after {}ms", timeout_duration.as_millis()),
+            });
         }
     };
-
-    let stdout = String::from_utf8_lossy(&result.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&result.stderr).to_string();
-    let exit_code = result.status.code().unwrap_or(-1);
-    let stdout_total_chars = char_len(&stdout);
-    let stderr_total_chars = char_len(&stderr);
+    let exit_code = status.code().unwrap_or(-1);
+    let stdout_total_chars = stdout.chars;
+    let stderr_total_chars = stderr.chars;
 
     if let Some(ref output_id) = request_id {
         remember_output(&state, output_id, &stdout, &stderr);
     }
 
-    let preview_limit = max_output_chars.unwrap_or(usize::MAX);
+    let preview_limit = max_output_chars.unwrap_or(20_000).min(100_000);
     let combined_total = stdout_total_chars.saturating_add(stderr_total_chars);
     let (stdout_limit, stderr_limit) = if combined_total <= preview_limit {
         (stdout_total_chars, stderr_total_chars)
@@ -401,8 +417,8 @@ pub async fn execute_command(
         let stdout_budget = (preview_limit * 3 / 4).min(stdout_total_chars);
         (stdout_budget, preview_limit.saturating_sub(stdout_budget))
     };
-    let (stdout_preview, _, stdout_next) = char_page(&stdout, 0, stdout_limit);
-    let (stderr_preview, _, stderr_next) = char_page(&stderr, 0, stderr_limit);
+    let (stdout_preview, _, stdout_next) = stdout.page(0, stdout_limit)?;
+    let (stderr_preview, _, stderr_next) = stderr.page(0, stderr_limit)?;
 
     Ok(CommandResult {
         stdout: stdout_preview,
@@ -411,8 +427,8 @@ pub async fn execute_command(
         output_id: request_id,
         stdout_total_chars,
         stderr_total_chars,
-        stdout_truncated: stdout_next.is_some(),
-        stderr_truncated: stderr_next.is_some(),
+        stdout_truncated: stdout_next.is_some() || stdout.capped,
+        stderr_truncated: stderr_next.is_some() || stderr.capped,
     })
 }
 
@@ -432,6 +448,13 @@ pub async fn read_command_output(
         .lock()
         .map_err(|_| "Command output store is unavailable".to_string())?
         .get(&output_id)
+        .filter(|output| {
+            output
+                .created_at
+                .elapsed()
+                .map(|age| age < Duration::from_secs(3600))
+                .unwrap_or(false)
+        })
         .cloned()
         .ok_or_else(|| format!("Command output not found or expired: {}", output_id))?;
     let value = match stream.as_str() {
@@ -439,10 +462,10 @@ pub async fn read_command_output(
         "stderr" => &stored.stderr,
         _ => return Err("stream must be stdout or stderr".to_string()),
     };
-    let total_chars = char_len(value);
+    let total_chars = value.chars;
     let start = offset.unwrap_or(0).min(total_chars);
     let safe_limit = limit.unwrap_or(8000).min(20_000);
-    let (content, returned_chars, next_offset) = char_page(value, start, safe_limit);
+    let (content, returned_chars, next_offset) = value.page(start, safe_limit)?;
     Ok(CommandOutputPage {
         output_id,
         stream,

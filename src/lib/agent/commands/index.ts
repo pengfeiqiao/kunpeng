@@ -243,9 +243,6 @@ registerCommand({
 
     // /mcp reload
     if (args.trim() === 'reload') {
-      if (!context.apiKey) {
-        return 'API Key 未配置，无法重载 MCP';
-      }
       if (!context.toolRegistry) {
         return 'ToolRegistry 未配置';
       }
@@ -258,7 +255,7 @@ registerCommand({
       }
 
       // Reload
-      const { tools, errors } = await mcpManager.reload(context.apiKey);
+      const { tools, errors } = await mcpManager.reload(Object.fromEntries((useSettingsStore.getState().credentials ?? []).map(c => [c.id, c.apiKey])));
 
       // Register new tools
       for (const tool of tools) {

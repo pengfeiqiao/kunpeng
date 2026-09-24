@@ -279,7 +279,7 @@ async function initCoordinatorConfig() {
   const sharedRegistry = createDefaultRegistry();
   const mcpManager = new McpManager(MCP_SERVERS);
   try {
-    const { tools } = await mcpManager.initialize(glmApiKey);
+    const { tools } = await mcpManager.initialize(Object.fromEntries((useSettingsStore.getState().credentials ?? []).map(c => [c.id, c.apiKey])));
     for (const tool of tools) sharedRegistry.register(tool);
   } catch (err) {
     console.warn('[lark] MCP init error:', err);

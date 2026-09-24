@@ -376,6 +376,12 @@ def main():
 
     engine = spec.get("engine", "eevee")
     scene = setup_render(spec, engine)
+    blend_output = spec.get("blend_output") or os.path.splitext(spec["output"])[0] + ".blend"
+    if not os.path.isabs(blend_output) or not blend_output.lower().endswith(".blend"):
+        raise ValueError("blend_output must be an absolute .blend path")
+    os.makedirs(os.path.dirname(blend_output), exist_ok=True)
+    bpy.ops.wm.save_as_mainfile(filepath=blend_output)
+    log({"status": "saved", "blend_output": blend_output})
     try:
         log({"status": "rendering", "engine": scene.render.engine,
              "frames": scene.frame_end - scene.frame_start + 1})
@@ -388,7 +394,8 @@ def main():
         else:
             raise
 
-    log({"status": "done", "output": spec["output"],
+    bpy.ops.wm.save_as_mainfile(filepath=blend_output)
+    log({"status": "done", "output": spec["output"], "blend_output": blend_output,
          "frames": scene.frame_end - scene.frame_start + 1})
 
 

@@ -1,3 +1,4 @@
+import { withCancellation } from './cancellation';
 import type { McpTransport } from './transport';
 import type {
   JsonRpcRequest,
@@ -51,22 +52,17 @@ export class HttpTransport implements McpTransport {
     this._connected = true;
   }
 
-  async request(method: string, params?: Record<string, unknown>): Promise<JsonRpcResponse> {
+  async request(method: string, params?: Record<string, unknown>, signal?: AbortSignal): Promise<JsonRpcResponse> {
+    if (signal?.aborted) throw new Error('MCP request cancelled before dispatch');
     if (!this._connected) {
       // Auto-reconnect on session expiration
       await this.connect();
     }
 
-    const response = await this.rawRequest(method, params);
+    const response = await this.rawRequest(method, params, signal);
 
-    if (response.error && response.error.code === -32600) {
-      agentLog.warn('MCP-HTTP', `Session expired for ${this.url}, reconnecting...`);
-      this._connected = false;
-      this.sessionId = null;
-      await this.connect();
-      return this.rawRequest(method, params);
-    }
-
+    // Never replay tools/call: the server may already have performed the action.
+    // -32600 is Invalid Request, not evidence that a session has expired.
     return response;
   }
 
@@ -77,7 +73,7 @@ export class HttpTransport implements McpTransport {
 
   // ─── Private ───────────────────────────────────────
 
-  private async rawRequest(method: string, params?: Record<string, unknown>): Promise<JsonRpcResponse> {
+  private async rawRequest(method: string, params?: Record<string, unknown>, signal?: AbortSignal): Promise<JsonRpcResponse> {
     const id = this.nextId++;
 
     const body: JsonRpcRequest = {
@@ -93,7 +89,7 @@ export class HttpTransport implements McpTransport {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json, text/event-stream',
-      'Authorization': `Bearer ${this.apiKey}`,
+      ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
     };
 
     if (this.sessionId) {
@@ -104,12 +100,13 @@ export class HttpTransport implements McpTransport {
 
     // Use Tauri HTTP client to bypass WebView CORS restrictions
     // (browser fetch can't read mcp-session-id header without Access-Control-Expose-Headers)
-    const res = await tauriFetch(this.url, {
+    const res = await withCancellation(signal, () => tauriFetch(this.url, {
       method: 'POST',
       headers,
       body: Body.json(body),
       responseType: ResponseType.Text,
-    });
+      timeout: 300,
+    }), () => this.sendNotification('notifications/cancelled', { requestId: id, reason: 'Client cancelled' }));
 
     // Extract session ID from response headers (Tauri headers are Record<string, string>)
     const newSessionId = res.headers['mcp-session-id'];
@@ -165,10 +162,10 @@ export class HttpTransport implements McpTransport {
     // MCP may return an array of JSON-RPC responses; take the one matching our id
     if (Array.isArray(json)) {
       const match = (json as JsonRpcResponse[]).find((r) => r.id === id);
-      return match || json[0] || { jsonrpc: '2.0', id, error: { code: -1, message: 'Empty response array' } };
+      return match || { jsonrpc: '2.0', id, error: { code: -1, message: 'Empty response array' } };
     }
 
-    return json as JsonRpcResponse;
+    return obj?.id === id && ('result' in obj || 'error' in obj) ? json as JsonRpcResponse : { jsonrpc: '2.0', id, error: { code: -1, message: 'MCP response ID mismatch' } };
   }
 
   private async sendNotification(method: string, params?: Record<string, unknown>): Promise<void> {
@@ -184,7 +181,7 @@ export class HttpTransport implements McpTransport {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json, text/event-stream',
-      'Authorization': `Bearer ${this.apiKey}`,
+      ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
     };
 
     if (this.sessionId) {
@@ -204,12 +201,12 @@ export class HttpTransport implements McpTransport {
     // Some servers return JSON-RPC directly with SSE content-type — try parsing as plain JSON first
     try {
       const json = JSON.parse(text);
-      if (json.jsonrpc === '2.0') {
+      if (json.jsonrpc === '2.0' && json.id === requestId && ('result' in json || 'error' in json)) {
         return json as JsonRpcResponse;
       }
       if (Array.isArray(json)) {
         const match = (json as JsonRpcResponse[]).find((r) => r.id === requestId);
-        return match || json[0] || { jsonrpc: '2.0', id: requestId, error: { code: -1, message: 'Empty response array' } };
+        return match || { jsonrpc: '2.0', id: requestId, error: { code: -1, message: 'Empty response array' } };
       }
     } catch {
       // Not plain JSON, continue with SSE parsing
@@ -229,7 +226,7 @@ export class HttpTransport implements McpTransport {
       } else if (line.trim() === '' && dataBuffer) {
         try {
           const json = JSON.parse(dataBuffer);
-          if (json.jsonrpc === '2.0') {
+          if (json.jsonrpc === '2.0' && json.id === requestId && ('result' in json || 'error' in json)) {
             return json as JsonRpcResponse;
           }
         } catch {
@@ -243,7 +240,7 @@ export class HttpTransport implements McpTransport {
     if (dataBuffer) {
       try {
         const json = JSON.parse(dataBuffer);
-        if (json.jsonrpc === '2.0') {
+        if (json.jsonrpc === '2.0' && json.id === requestId && ('result' in json || 'error' in json)) {
           return json as JsonRpcResponse;
         }
       } catch {

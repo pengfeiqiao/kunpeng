@@ -118,3 +118,16 @@ test('UI projection keeps SKILL.md-only reference skills visible in Settings', (
   assert.match(uiLoader, /resolveSkillCatalogId/);
   assert.doesNotMatch(uiLoader, /!skill\.invokable\s*\|\|/);
 });
+
+test('bundled Blender modeling loads as a reference skill without a new toolbar action', async () => {
+  const root = new URL('../../../skills', import.meta.url).pathname;
+  const loader = new SkillLoader([root], {
+    scan: async () => ['blender-modeling'],
+    read: async path => readFileSync(path, 'utf8'),
+  });
+  const [skill] = await loader.loadAll();
+  assert.ok(skill);
+  assert.equal(skill.name, 'blender-modeling');
+  assert.equal(skill.visibility, 'library');
+  assert.equal(skill.invokable, false);
+});

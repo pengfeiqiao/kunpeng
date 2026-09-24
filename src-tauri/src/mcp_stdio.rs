@@ -1,147 +1,260 @@
-use std::collections::HashMap;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
-use tokio::sync::Mutex;
-use tokio::time::{timeout, Duration};
+use serde_json::{json, Value};
+use std::{collections::HashMap, sync::Arc};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    process::{Child, ChildStdin, Command},
+    sync::{oneshot, Mutex},
+    time::{timeout, Duration},
+};
 
+type Pending = Arc<Mutex<HashMap<String, oneshot::Sender<Result<String, String>>>>>;
 struct McpProcess {
-    child: Child,
-    stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    child: Mutex<Child>,
+    stdin: Mutex<ChildStdin>,
+    pending: Pending,
 }
-
+#[derive(Default)]
 pub struct McpStdioState {
-    inner: Mutex<Option<McpProcess>>,
+    inner: Mutex<HashMap<String, Arc<McpProcess>>>,
 }
 
-impl Default for McpStdioState {
-    fn default() -> Self {
-        Self {
-            inner: Mutex::new(None),
+async fn stop(process: Arc<McpProcess>) {
+    let mut child = process.child.lock().await;
+    if let Some(pid) = child.id() {
+        #[cfg(unix)]
+        unsafe {
+            libc::killpg(pid as i32, libc::SIGKILL);
         }
+        #[cfg(target_os = "windows")]
+        {
+            let mut command = Command::new("taskkill");
+            command
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .creation_flags(0x08000000);
+            let _ = command.output().await;
+        }
+    }
+    let _ = child.kill().await;
+    for (_, sender) in process.pending.lock().await.drain() {
+        let _ = sender.send(Err("MCP server stopped".into()));
     }
 }
 
-/// Spawn an MCP stdio server process
 #[tauri::command]
 pub async fn mcp_stdio_spawn(
     state: tauri::State<'_, McpStdioState>,
+    server_id: String,
     command: String,
     args: Vec<String>,
     env: HashMap<String, String>,
 ) -> Result<(), String> {
-    let mut cmd = Command::new(&command);
-    cmd.args(&args);
-    for (k, v) in &env {
-        cmd.env(k, v);
-    }
-    cmd.stdin(std::process::Stdio::piped());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::null());
-    // GUI apps must pass CREATE_NO_WINDOW on Windows or every console-based
-    // MCP server (node/python) flashes a terminal window on spawn (tokio
-    // Command has an inherent creation_flags method on Windows).
+    spawn(&state, server_id, command, args, env).await
+}
+
+async fn spawn(
+    state: &McpStdioState,
+    server_id: String,
+    command: String,
+    args: Vec<String>,
+    env: HashMap<String, String>,
+) -> Result<(), String> {
+    let mut cmd = Command::new(command);
+    cmd.args(args)
+        .envs(env)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    cmd.process_group(0);
     #[cfg(target_os = "windows")]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn MCP stdio process '{}': {}", command, e))?;
-
-    let stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| "Failed to capture stdin".to_string())?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Failed to capture stdout".to_string())?;
-
-    let mut guard = state.inner.lock().await;
-
-    // Kill existing process if any
-    if let Some(mut old) = guard.take() {
-        let _ = old.child.kill().await;
-    }
-
-    *guard = Some(McpProcess {
-        child,
-        stdin,
-        stdout: BufReader::new(stdout),
+    cmd.creation_flags(0x08000000);
+    let mut child = cmd.spawn().map_err(|_| "Failed to spawn MCP server")?;
+    let stdin = child.stdin.take().ok_or("Missing MCP stdin")?;
+    let stdout = child.stdout.take().ok_or("Missing MCP stdout")?;
+    let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
+    let process = Arc::new(McpProcess {
+        child: Mutex::new(child),
+        stdin: Mutex::new(stdin),
+        pending: pending.clone(),
     });
-
+    let reader_process = Arc::downgrade(&process);
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let Ok(value) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            if value.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+                continue;
+            }
+            if value.get("method").is_some() {
+                // No sampling/elicitation capability is advertised. Reject server requests;
+                // notifications (including progress) must never consume a pending response.
+                if let (Some(id), Some(process)) = (value.get("id"), reader_process.upgrade()) {
+                    let response = json!({"jsonrpc":"2.0", "id":id, "error":{"code":-32601,"message":"Unsupported client method"}}).to_string() + "\n";
+                    let mut stdin = process.stdin.lock().await;
+                    let _ = stdin.write_all(response.as_bytes()).await;
+                    let _ = stdin.flush().await;
+                }
+                continue;
+            }
+            if value.get("result").is_none() && value.get("error").is_none() {
+                continue;
+            }
+            if let Some(id) = value.get("id") {
+                if let Some(sender) = pending.lock().await.remove(&id.to_string()) {
+                    let _ = sender.send(Ok(line));
+                }
+            }
+        }
+        for (_, sender) in pending.lock().await.drain() {
+            let _ = sender.send(Err("MCP server closed stdout".into()));
+        }
+    });
+    let previous = state.inner.lock().await.insert(server_id, process);
+    if let Some(old) = previous {
+        stop(old).await;
+    }
     Ok(())
 }
 
-/// Send a JSON-RPC message to the MCP stdio server and read the response
 #[tauri::command]
 pub async fn mcp_stdio_send(
     state: tauri::State<'_, McpStdioState>,
+    server_id: String,
     message: String,
 ) -> Result<String, String> {
-    let mut guard = state.inner.lock().await;
-    let process = guard
-        .as_mut()
-        .ok_or_else(|| "MCP stdio process not running".to_string())?;
+    send(&state, server_id, message).await
+}
 
-    // Write message to stdin (must end with newline)
-    let msg = if message.ends_with('\n') {
-        message
-    } else {
-        format!("{}\n", message)
-    };
-
-    process
-        .stdin
-        .write_all(msg.as_bytes())
+async fn send(state: &McpStdioState, server_id: String, message: String) -> Result<String, String> {
+    let body: Value = serde_json::from_str(&message).map_err(|_| "Invalid MCP request")?;
+    let process = state
+        .inner
+        .lock()
         .await
-        .map_err(|e| format!("Failed to write to MCP stdin: {}", e))?;
-
-    process
-        .stdin
-        .flush()
-        .await
-        .map_err(|e| format!("Failed to flush MCP stdin: {}", e))?;
-
-    // Read lines from stdout until we get a valid JSON line
-    // Some MCP servers may output non-JSON lines (logs, warnings)
-    loop {
-        let mut line = String::new();
-        let read_result = timeout(Duration::from_secs(30), process.stdout.read_line(&mut line))
-            .await
-            .map_err(|_| "MCP stdio response timed out (30s)".to_string())?
-            .map_err(|e| format!("Failed to read from MCP stdout: {}", e))?;
-
-        if read_result == 0 {
-            return Err("MCP stdio process closed stdout unexpectedly".to_string());
-        }
-
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        // Check if this looks like a JSON-RPC response
-        if trimmed.starts_with('{') {
-            // Validate it's parseable JSON
-            if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
-                return Ok(trimmed.to_string());
+        .get(&server_id)
+        .cloned()
+        .ok_or("MCP server is not running")?;
+    if body.get("method").and_then(Value::as_str) == Some("notifications/cancelled") {
+        if let Some(id) = body.pointer("/params/requestId") {
+            if let Some(sender) = process.pending.lock().await.remove(&id.to_string()) {
+                let _ = sender.send(Err("MCP cancelled; execution status unknown".into()));
             }
         }
-
-        // Non-JSON line — skip and keep reading
+    }
+    let id = body.get("id").map(Value::to_string);
+    let receiver = if let Some(ref id) = id {
+        let (sender, receiver) = oneshot::channel();
+        let mut pending = process.pending.lock().await;
+        if pending.contains_key(id) {
+            return Err("Duplicate MCP request ID".into());
+        }
+        pending.insert(id.clone(), sender);
+        Some(receiver)
+    } else {
+        None
+    };
+    let write = async {
+        let mut stdin = process.stdin.lock().await;
+        stdin.write_all((message + "\n").as_bytes()).await?;
+        stdin.flush().await
+    }
+    .await;
+    if write.is_err() {
+        if let Some(ref id) = id {
+            process.pending.lock().await.remove(id);
+        }
+        return Err("Failed to write MCP request; execution status unknown, do not replay".into());
+    }
+    // Notifications have no JSON-RPC response.
+    let Some(receiver) = receiver else {
+        return Ok(String::new());
+    };
+    let result = timeout(Duration::from_secs(300), receiver).await;
+    if let Some(ref id) = id {
+        process.pending.lock().await.remove(id);
+    }
+    match result {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err("MCP response channel closed".into()),
+        Err(_) => Err("MCP request timed out; execution status unknown, do not replay".into()),
     }
 }
 
-/// Kill the MCP stdio server process
 #[tauri::command]
-pub async fn mcp_stdio_kill(state: tauri::State<'_, McpStdioState>) -> Result<(), String> {
-    let mut guard = state.inner.lock().await;
-    if let Some(mut process) = guard.take() {
-        let _ = process.child.kill().await;
+pub async fn mcp_stdio_kill(
+    state: tauri::State<'_, McpStdioState>,
+    server_id: String,
+) -> Result<(), String> {
+    kill(&state, server_id).await
+}
+
+async fn kill(state: &McpStdioState, server_id: String) -> Result<(), String> {
+    let process = state.inner.lock().await.remove(&server_id);
+    if let Some(process) = process {
+        stop(process).await;
     }
     Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    const SERVER: &str = r#"import sys,json,threading,time
+lock=threading.Lock()
+def reply(req):
+ time.sleep(0.03 if req['id']==1 else 0.001)
+ with lock:
+  print(json.dumps({'jsonrpc':'2.0','method':'notifications/progress','params':{}}),flush=True)
+  print(json.dumps({'jsonrpc':'2.0','id':req['id'],'result':req.get('params',{})}),flush=True)
+for line in sys.stdin:
+ req=json.loads(line)
+ if 'id' in req: threading.Thread(target=reply,args=(req,)).start()
+"#;
+    #[tokio::test]
+    async fn independent_servers_match_out_of_order_responses_and_notifications() {
+        let state = McpStdioState::default();
+        for id in ["desktop", "blender"] {
+            spawn(
+                &state,
+                id.into(),
+                "python3".into(),
+                vec!["-u".into(), "-c".into(), SERVER.into()],
+                HashMap::new(),
+            )
+            .await
+            .unwrap();
+        }
+        timeout(
+            Duration::from_secs(2),
+            send(
+                &state,
+                "desktop".into(),
+                json!({"jsonrpc":"2.0","method":"notifications/initialized"}).to_string(),
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let request = |id, label| {
+            json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"label":label}})
+                .to_string()
+        };
+        let (a, b, c) = tokio::join!(
+            send(&state, "desktop".into(), request(1, "a")),
+            send(&state, "desktop".into(), request(2, "b")),
+            send(&state, "blender".into(), request(1, "c"))
+        );
+        for (result, label) in [(a, "a"), (b, "b"), (c, "c")] {
+            let value: Value = serde_json::from_str(&result.unwrap()).unwrap();
+            assert_eq!(value["result"]["label"], label);
+        }
+        kill(&state, "desktop".into()).await.unwrap();
+        assert!(send(&state, "blender".into(), request(3, "alive"))
+            .await
+            .is_ok());
+        kill(&state, "blender".into()).await.unwrap();
+    }
 }

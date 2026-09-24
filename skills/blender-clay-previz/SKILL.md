@@ -1,13 +1,15 @@
 ---
 name: blender-clay-previz
 displayName: Blender 白模运镜
-description: 用户提到白模/白膜/Blender/运镜预演/previs 时使用。调用本机 Blender 无界面渲染极简白模场景与运镜视频，用于验证构图遮挡、空间调度与动作时机，也可作为 AI 视频生成的全能参考。
+description: 用户提到白模/白膜/运镜预演/previs 时使用。调用本机 Blender 无界面渲染极简白模场景与运镜视频，用于验证构图遮挡、空间调度与动作时机，也可作为 AI 视频生成的全能参考。
 category: visual
 visibility: toolbar
-triggers: 白模,白膜,blender,Blender,运镜,预演,previs,previz,clay,3D 运镜,空间调度
+triggers: 白模,白膜,运镜,预演,previs,previz,clay,3D 运镜,空间调度
 ---
 
 # Blender 白模运镜（Clay Previz）
+
+用户要求通用建模、材质或修改已有工程时使用 blender-modeling，不要仅因出现 Blender 一词进入白模流程。
 
 用本机 Blender 把场景搭成极简白模（全部方块/圆柱概括、统一白色材质、不要纹理细节），
 渲染带运镜的预演视频。核心价值：**静态图说明外观，白模说明随时间变化的空间关系**——
@@ -141,3 +143,9 @@ workshop_update_shot_refs {"shot_no":"<编号>","add_previs_video_paths":["/abs/
 - `"status": "error"` → 读 trace 字段：多为 spec 字段类型错误（数组长度、字符串写成数字）。
 - 渲染全黑/全白 → 检查相机是否对着场景（look_at 方向）、物体是否在原点附近。
 - 超时 → 先降 `duration_sec` 或分辨率验证管线，再渲全片；Workbench 引擎最快。
+
+
+## 可编辑工程
+
+脚本在渲染前及完成后保存同名 `.blend`，可用 spec 的 `blend_output` 指定绝对路径。
+交付时附工程及预演视频；另启 Blender 无界面进程重新打开工程，检查相机、对象与动画帧范围后才称保存验证通过。已有工程编辑走 blender-modeling，本脚本清场行为只适用于新建白模。

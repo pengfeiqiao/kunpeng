@@ -47,3 +47,14 @@ test('GPT opaque response state contributes to context budget and invalidates ca
   const smaller = { ...message, responses_output: undefined };
   assert.ok(cm.estimateMessages([smaller] as never) < before);
 });
+
+
+test('GPT duplicated response text and function calls do not consume context twice', () => {
+  const cm = new ContextManager(128_000);
+  const base = { role: 'assistant', content: 'inspect '.repeat(1000), tool_calls: [{ id: 'a', type: 'function', function: { name: 'inspect', arguments: '{}' } }] };
+  const replay = { ...base, responses_output: { model: 'gpt-6-luna', endpoint: 'test', items: [
+    { type: 'message', content: [{ type: 'output_text', text: base.content }] },
+    { type: 'function_call', call_id: 'a', name: 'inspect', arguments: '{}' },
+  ] } };
+  assert.ok(Math.abs(cm.estimateMessages([base] as never) - cm.estimateMessages([replay] as never)) < 10);
+});

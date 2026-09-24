@@ -26,12 +26,12 @@ export class McpManager {
    * 并行连接，失败的服务器跳过并记录错误
    * @returns 发现的所有工具 + 错误列表
    */
-  async initialize(apiKey: string): Promise<{ tools: Tool[]; errors: string[] }> {
+  async initialize(credentials: Record<string, string> = {}): Promise<{ tools: Tool[]; errors: string[] }> {
     const allTools: Tool[] = [];
     const errors: string[] = [];
 
     const results = await Promise.allSettled(
-      this.configs.map((config) => this.initServer(config, apiKey)),
+      this.configs.map((config) => this.initServer(config, config.credentialId ? credentials[config.credentialId] || '' : '')),
     );
 
     for (let i = 0; i < results.length; i++) {
@@ -67,10 +67,10 @@ export class McpManager {
    * 热重载：关闭所有连接，重新初始化
    * @returns 新的工具列表 + 错误列表
    */
-  async reload(apiKey: string): Promise<{ tools: Tool[]; errors: string[] }> {
+  async reload(credentials: Record<string, string> = {}): Promise<{ tools: Tool[]; errors: string[] }> {
     agentLog.info('MCP', 'Reloading all servers...');
     await this.shutdown();
-    return this.initialize(apiKey);
+    return this.initialize(credentials);
   }
 
   /** 获取已连接的服务器列表 */
@@ -86,6 +86,7 @@ export class McpManager {
   // ─── Private ───────────────────────────────────────
 
   private async initServer(config: McpServerConfig, apiKey: string): Promise<Tool[]> {
+    if (config.credentialId && !apiKey) throw new Error('Configured MCP credential is missing');
     agentLog.info('MCP', `Connecting: ${config.name} (${config.transport})`);
     // 1. Create transport
     let transport: McpTransport;
@@ -102,34 +103,27 @@ export class McpManager {
       transport = new StdioTransport(config.command, config.args || [], env);
     }
 
-    // 2. Connect (initialize handshake)
-    await transport.connect();
-    this.transports.set(config.id, transport);
-
-    // 3. Discover tools via tools/list
-    const response = await transport.request('tools/list');
-
-    if (response.error) {
-      throw new Error(`tools/list failed: ${response.error.message}`);
+    try {
+      await transport.connect();
+      const tools: Tool[] = [];
+      const cursors = new Set<string>();
+      let cursor: string | undefined;
+      do {
+        const response = await transport.request('tools/list', cursor ? { cursor } : undefined);
+        if (response.error) throw new Error('tools/list failed');
+        const page = response.result as McpToolsListResult;
+        if (!Array.isArray(page?.tools)) throw new Error('Invalid tools/list response');
+        tools.push(...page.tools.map(schema => createMcpTool(schema, config.prefix, transport)));
+        cursor = page.nextCursor;
+        if (cursor && cursors.has(cursor)) throw new Error('Repeated tools/list cursor');
+        if (cursor) cursors.add(cursor);
+        if (cursors.size > 100) throw new Error('Too many tools/list pages');
+      } while (cursor);
+      this.transports.set(config.id, transport);
+      return tools;
+    } catch (error) {
+      await transport.close().catch(() => {});
+      throw error;
     }
-
-    const toolsList = response.result as McpToolsListResult;
-
-    if (!toolsList?.tools || !Array.isArray(toolsList.tools)) {
-      agentLog.warn('MCP', `${config.name}: tools/list returned no tools`);
-      return [];
-    }
-
-    // 4. Convert MCP tools to Tool objects
-    // Debug: log tool schemas so we can see required params
-    for (const schema of toolsList.tools) {
-      agentLog.debug('MCP', `${config.name} tool: ${schema.name}`, {
-        required: schema.inputSchema.required,
-        properties: Object.keys(schema.inputSchema.properties || {}),
-      });
-    }
-    return toolsList.tools.map((schema) =>
-      createMcpTool(schema, config.prefix, transport),
-    );
   }
 }

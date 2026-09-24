@@ -5,6 +5,7 @@ import { Message, Session, Agent } from '@/types';
 
 interface ChatState {
   draftFiles: Record<string, string[]>;
+  appendCurrentDraftFiles: (paths: string[]) => void;
   setDraftFiles: (key: string, value: string[] | ((previous: string[]) => string[])) => void;
   // Sessions
   sessions: Session[];
@@ -85,8 +86,13 @@ interface ChatState {
   setDraftMessage: (text: string) => void;
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+export const useChatStore = create<ChatState>((set, get) => ({
   draftFiles: {},
+  appendCurrentDraftFiles: paths => {
+    const state = get();
+    const key = state.currentSessionId ?? `new:${state.currentAgent?.id ?? 'main'}`;
+    state.setDraftFiles(key, previous => [...new Set([...previous, ...paths])]);
+  },
   setDraftFiles: (key, value) => set(state => {
     const next = typeof value === 'function' ? value(state.draftFiles[key] ?? []) : value;
     const draftFiles = { ...state.draftFiles };

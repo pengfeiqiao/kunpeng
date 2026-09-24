@@ -22,13 +22,14 @@ export function createMcpTool(
 
   return {
     definition,
-    async execute(params: Record<string, unknown>): Promise<ToolResult> {
+    async execute(params: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
       try {
+        if (signal?.aborted) return { success: false, output: '', error: 'MCP request cancelled before dispatch' };
         agentLog.info('MCP-Tool', `→ ${prefixedName}`);
         const response = await transport.request('tools/call', {
           name: schema.name, // 用原始名，不带前缀
           arguments: params,
-        });
+        }, signal);
 
         if (response.error) {
           agentLog.error('MCP-Tool', `← ${prefixedName} error [${response.error.code}]`, response.error.message);
@@ -40,9 +41,12 @@ export function createMcpTool(
         }
 
         const result = response.result as McpToolCallResult;
+        if (!result || typeof result !== 'object') throw new Error('Invalid MCP tool result');
+        const content = Array.isArray(result.content) ? result.content : [];
+        const structured = result.structuredContent ? JSON.stringify(result.structuredContent) : '';
 
         if (result.isError) {
-          const errorText = result.content
+          const errorText = content
             .map((c) => c.text || '')
             .filter(Boolean)
             .join('\n');
@@ -50,12 +54,12 @@ export function createMcpTool(
           return {
             success: false,
             output: '',
-            error: errorText || 'MCP tool returned an error',
+            error: errorText || structured || 'MCP tool returned an error',
           };
         }
 
         // Concatenate all content blocks
-        const output = result.content
+        const output = content
           .map((c) => {
             if (c.type === 'text' && c.text) return c.text;
             if (c.type === 'image') return `[image: ${c.mimeType || 'unknown'}]`;
@@ -64,10 +68,10 @@ export function createMcpTool(
           .filter(Boolean)
           .join('\n');
 
-        const media: NonNullable<ToolResult['media']> = result.content.flatMap(block =>
+        const media: NonNullable<ToolResult['media']> = content.flatMap(block =>
           block.type === 'image' && block.data && block.mimeType && ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(block.mimeType)
             ? [{ type: 'image' as const, source: { type: 'base64' as const, media_type: block.mimeType, data: block.data } }] : []);
-        return { success: true, output: output || '(no output)', ...(media.length ? { media } : {}) };
+        return { success: true, output: output || structured || '(no output)', ...(media.length ? { media } : {}) };
       } catch (err) {
         agentLog.error('MCP-Tool', `← ${prefixedName} transport error`, err);
         return {

@@ -1047,7 +1047,7 @@ export function useAgent(options?: { primary?: boolean }) {
           const activeAgentId = (sid.split(':').length >= 3 ? sid.split(':')[1] : 'main');
           const activeCoord = coordinatorsRef.current.get(activeAgentId);
           const agentMessages = activeCoord ? activeCoord.getMessages() : [];
-          void flushAgentMessages(sid, agentMessages);
+          void flushAgentMessages(sid, agentMessages).catch(() => {});
         } catch { /* ignore */ }
       });
 
@@ -1113,10 +1113,10 @@ export function useAgent(options?: { primary?: boolean }) {
       agentLog.info('Agent', 'Engine initialized (built-in tools)');
 
       // Non-blocking: load MCP tools in background
-      if (MCP_SERVERS.length > 0 && (glmApiKey || providerGlmApiKey)) {
+      if (MCP_SERVERS.length > 0) {
         const mcpManager = new McpManager(MCP_SERVERS);
         mcpManagerRef.current = mcpManager;
-        mcpManager.initialize(glmApiKey || providerGlmApiKey).then(({ tools: mcpTools, errors: mcpErrors }) => {
+        mcpManager.initialize(Object.fromEntries((useSettingsStore.getState().credentials ?? []).map(c => [c.id, c.apiKey]))).then(({ tools: mcpTools, errors: mcpErrors }) => {
           if (cancelled) { mcpManager.shutdown(); return; }
           for (const tool of mcpTools) {
             registry.register(tool);
@@ -2113,7 +2113,7 @@ export function useAgent(options?: { primary?: boolean }) {
           try { safeLocalStorage.setItem('kunpeng-messages-' + abortSid, JSON.stringify(abortState.messages)); } catch { /* quota */ }
         }
         // Mirror to disk so a force-quit right after abort doesn't lose state.
-        void flushAgentMessages(abortSid, rawMessages);
+        void flushAgentMessages(abortSid, rawMessages).catch(() => {});
       }
     }
     c?.abort();
