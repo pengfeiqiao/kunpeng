@@ -288,12 +288,10 @@ export default function MessageList({
   const visibleMessages = messages.slice(firstVisibleIndex);
   const visibleStart = visibleMessages[0]?.timestamp ?? 0;
   const relevantHistory = decisionHistory.filter((record) =>
-    record.sourceView === 'chat'
-    && record.sourceSessionId === currentSessionId
+    record.sourceSessionId === currentSessionId
     && record.createdAt >= visibleStart
   );
-  const relevantPending = pendingDecision?.sourceView === 'chat'
-    && pendingDecision.sourceSessionId === currentSessionId
+  const relevantPending = pendingDecision != null && pendingDecision.sourceSessionId === currentSessionId
     ? pendingDecision
     : null;
   const timelineEvents = [

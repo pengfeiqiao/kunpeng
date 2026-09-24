@@ -8,8 +8,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 const require = createRequire(import.meta.url);
 const empty = () => null;
-function render(file, props, { messages = [], phase = 'idle', thinking = '', data = null } = {}) {
-  const chat = { messages, currentSessionId: 's', activeView: 'copywriting', streamingPhase: phase,
+function render(file, props, { messages = [], phase = 'idle', thinking = '', data = null, activeView = 'copywriting', pending = null, draftFiles = {} } = {}) {
+  const chat = { messages, currentSessionId: 's', activeView, draftFiles, streamingPhase: phase,
     streamingContent: '', streamingThinkingContent: thinking, streamingSessions: {}, error: null };
   const store = Object.assign(selector => selector(chat), { getState: () => chat, subscribe: () => () => {} });
   const modules = {
@@ -18,7 +18,7 @@ function render(file, props, { messages = [], phase = 'idle', thinking = '', dat
     '@/stores': { useChatStore: store }, '@/stores/chatStore': { useChatStore: store },
     '@/stores/workshopStore': { useWorkshopStore: Object.assign(selector => selector({ data, updateProjectViewState: empty }), { getState: () => ({ data }) }) },
     '@/stores/unifiedProjectStore': { useUnifiedProjectStore: Object.assign(selector => selector({ recentChangeSets: [] }), { getState: () => ({ activeId: 'p' }) }) },
-    '@/stores/askUserStore': { useAskUserStore: selector => selector({ pending: null, history: [], queue: [] }) },
+    '@/stores/askUserStore': { useAskUserStore: selector => selector({ pending, history: [], queue: [] }) },
     '@/hooks/useSound': { useSound: () => ({ playNotification: empty }) },
     '@/lib/markdown': { MarkdownRenderer: ({ content }) => React.createElement('p', null, content) },
     '@/lib/agent/harnessDisplay': { stripHarnessPrefix: value => value },
@@ -30,7 +30,7 @@ function render(file, props, { messages = [], phase = 'idle', thinking = '', dat
     '@/lib/chat/formatElapsedDuration': { formatElapsedDuration: n => `${n}s` },
     '@/lib/projectObjects/referenceTransfer': {}, '@/lib/projectObjects/conversationRefs': {},
     '@tauri-apps/api/dialog': {}, '@tauri-apps/api/tauri': { convertFileSrc: path => path },
-    '../AskUserDialog': { AskUserDecisionCard: empty }, './AskUserDialog': { AskUserDecisionCard: empty },
+    '../AskUserDialog': { AskUserDecisionCard: ({ request }) => React.createElement('div', { 'data-question': request.id }, '选择方案') }, './AskUserDialog': { AskUserDecisionCard: ({ request }) => React.createElement('div', { 'data-question': request.id }, '选择方案') },
     './chat/ArtifactPreview': { ArtifactGrid: empty },
   };
   const exports = {};
@@ -91,4 +91,23 @@ test('removing a legacy display prefix cannot leave blank lines above the user m
   });
   assert.match(html, />用户正文<\/div>/);
   assert.doesNotMatch(html, /display-header/);
+});
+
+
+test('pending questions follow the same session through chat, writing, canvas, editor and workshop', () => {
+  const pending = { id: 'pending-choice', sourceView: 'chat', sourceSessionId: 's', createdAt: 1 };
+  for (const activeView of ['copywriting', 'canvas', 'editor', 'workshop']) {
+    const html = render('./AgentDrawer.tsx', drawerProps, { activeView, pending });
+    assert.match(html, /data-question="pending-choice"/);
+    assert.doesNotMatch(render('./AgentDrawer.tsx', drawerProps, { activeView, pending: { ...pending, sourceSessionId: 'other' } }), /data-question=/);
+  }
+  assert.match(render('../MessageList.tsx', { messages: [], isStreaming: false, streamingPhase: 'idle' }, {
+    activeView: 'chat', pending: { ...pending, sourceView: 'copywriting' },
+  }), /data-question="pending-choice"/);
+});
+
+test('writing drawer displays unsent attachments from the current conversation only', () => {
+  const html = render('./AgentDrawer.tsx', drawerProps, { draftFiles: { s: ['/draft-reference.png'], other: ['/other.png'] } });
+  assert.match(html, /conversation-attachments/);
+  assert.doesNotMatch(render('./AgentDrawer.tsx', drawerProps, { draftFiles: { other: ['/other.png'] } }), /conversation-attachments/);
 });

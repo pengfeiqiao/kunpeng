@@ -1,6 +1,8 @@
 export const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000;
 
 const MODEL_WINDOWS: Record<string, number> = {
+  'gpt-6-luna': 1_050_000,
+  'gpt-6-sol-cdx': 1_050_000,
   'glm-5.1': 128_000,
   'glm-4.6': 128_000,
   'deepseek-flash': 1_000_000,

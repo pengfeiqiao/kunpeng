@@ -13,6 +13,8 @@ import ConfirmModeSelect from './chat/ConfirmModeSelect';
 import ConversationAttachment from './chat/ConversationAttachment';
 import type { SkillManifest } from '@/types/skill';
 
+const EMPTY_FILES: string[] = [];
+
 interface MessageInputProps {
   onSend: (content: string, filePaths?: string[]) => void;
   onAbort?: () => void;
@@ -23,7 +25,9 @@ export default function MessageInput({ onSend, onAbort }: MessageInputProps) {
   const setDraftMessage = useChatStore((s) => s.setDraftMessage);
   const setMessage = (v: string) => setDraftMessage(v);
   const message = draftMessage;
-  const [filePaths, setFilePaths] = useState<string[]>([]);
+  const fileDraftKey = useChatStore(state => state.currentSessionId ?? `new:${state.currentAgent?.id ?? 'main'}`);
+  const filePaths = useChatStore(state => state.draftFiles?.[fileDraftKey]) ?? EMPTY_FILES;
+  const setFilePaths = (value: string[] | ((previous: string[]) => string[])) => useChatStore.getState().setDraftFiles(fileDraftKey, value);
   const [isDragging, setIsDragging] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

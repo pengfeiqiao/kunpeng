@@ -53,7 +53,7 @@ function App() {
   useCanvasTaskRecovery();
   useEffect(watchWorkspaceRuntime, []);
   useCronScheduler(isReady, sendMessage);
-  const { sidebarCollapsed, theme, setupComplete, setupSkipped, wizardOpen, glmApiKey, credentials, credentialRefs } = useSettingsStore();
+  const { sidebarCollapsed, theme, setupComplete, setupSkipped, wizardOpen, glmApiKey } = useSettingsStore();
   // 引导浮层：首次启动（未完成且未跳过）自动出现；也可由设置页横幅重新打开。
   const showWizard = wizardOpen || (!setupComplete && !setupSkipped);
   const providerApiKeys = useSettingsStore((s) => s.providerApiKeys);
@@ -63,7 +63,7 @@ function App() {
   // keystroke in Settings, which made bootstrap/preconnect re-run per key.
   // credentials/credentialRefs 也在签名里：凭证注册表改动要让 provider 立即重挂。
   const providerSettingsSig = useSettingsStore(
-    (s) => JSON.stringify([s.providerApiKeys, s.providerBaseUrls, s.providerModels, s.credentials, s.credentialRefs]),
+    (s) => JSON.stringify([s.providerApiKeys, s.providerBaseUrls, s.providerModels, s.credentials, s.credentialRefs, s.dmxApiKey, s.imageApiSlots]),
   );
   const loadAllSkills = useSkillStore((s) => s.loadAllSkills);
   const initLarkListener = useLarkStore((s) => s.initListener);
@@ -145,6 +145,9 @@ function App() {
       };
     }
     bootstrapProviders({
+      gptApiKey: resolveApiKey(settingsNow, 'provider:gpt', providerApiKeys.gpt ?? ''),
+      gptBaseUrl: providerBaseUrls.gpt,
+      gptModel: providerModels.gpt,
       glmApiKey: glmKey,
       glmBaseUrl: providerBaseUrls.glm,
       glmModel: providerModels.glm,
@@ -358,7 +361,7 @@ function App() {
               onLegacy={() => setLegacyWorkspaceId(unifiedActiveId)} />
           ) : activeView === 'chat' ? (
             <ChatArea
-              isConnected={isReady && hasAnyChatProviderKey({ glmApiKey, providerApiKeys, credentials, credentialRefs })}
+              isConnected={isReady && hasAnyChatProviderKey(useSettingsStore.getState())}
               onSendMessage={sendMessage}
               onAbort={abort}
             />

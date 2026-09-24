@@ -1,3 +1,4 @@
+import * as canvasAgent from '../../lib/workspace/workspaceCanvasAgent.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -87,6 +88,7 @@ function assistantRuntime(prepare) {
     '@/lib/workspace/projectAssistantQueue': queueModule,
     '@/lib/workspace/assistantHistory': assistantHistory,
     '@/lib/workspace/productionSafety': productionSafety,
+    '@/lib/workspace/workspaceCanvasAgent': canvasAgent,
     '@/lib/workspace/workspaceAssistantMessage': assistantMessage,
     '@/lib/agent/workspaceMessage': workspaceMessage,
     '@/lib/workspace/agentContext': { buildWorkspaceAgentContext: () => 'fixture context' },
@@ -224,6 +226,7 @@ async function productionRuntime({ preference, risk = 'ask', kind = 'character',
     '@/components/workshop/steps/StepAssets': { AssetCard: 'AssetCard' },
     '@/components/workshop/steps/StepPrompts': { AudioPromptsSection: 'AudioPromptsSection', PaletteMenu: 'PaletteMenu' },
     '@/lib/workshop/workshopPrompts': {}, '@/lib/workspace/productionSafety': productionSafety,
+    '@/lib/workspace/workspaceCanvasAgent': canvasAgent,
     '@/lib/workspace/assetDraftModel': { workspaceAsset: () => kind === 'character' ? { kind, asset: character } : undefined },
     '@/lib/workspace/assetCandidates': { workspaceAssetCandidates: () => [] }, './workspaceProductionTools.css': {},
     '@/lib/agent/tools/doubaoSpeechTool': { doubaoSpeechGenerateTool: { risk } },

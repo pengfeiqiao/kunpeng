@@ -30,6 +30,7 @@ export default function ComposerModelPicker({ disabled }: { disabled?: boolean }
   const rootRef = useRef<HTMLDivElement>(null);
   const providerDefault = useSettingsStore((s) => s.providerDefault);
   const providerModels = useSettingsStore((s) => s.providerModels);
+  const gptKey = useSettingsStore(s => resolveApiKey(s, 'provider:gpt', s.providerApiKeys.gpt ?? ''));
   const providerApiKeys = useSettingsStore((s) => s.providerApiKeys);
   const credentials = useSettingsStore((s) => s.credentials);
   const credentialRefs = useSettingsStore((s) => s.credentialRefs);
@@ -124,7 +125,7 @@ export default function ComposerModelPicker({ disabled }: { disabled?: boolean }
                 const entries = Object.entries(CHAT_MODELS).map(([provider, models]) => ({
                   provider,
                   models,
-                  configured: Boolean(resolveApiKey({ credentials, credentialRefs }, `provider:${provider}`, providerApiKeys[provider] ?? '').trim()),
+                  configured: Boolean((provider === 'gpt' ? gptKey : resolveApiKey({ credentials, credentialRefs }, `provider:${provider}`, providerApiKeys[provider] ?? '')).trim()),
                 }));
                 const visible = entries.filter((entry) => entry.configured || entry.provider === providerDefault);
                 if (visible.every((entry) => !entry.configured)) {

@@ -9,6 +9,10 @@ export type ChatModelOption = {
 export type AgentWorkspaceScope = 'canvas' | 'workshop' | 'editor';
 
 export const CHAT_MODELS: Record<string, ChatModelOption[]> = {
+  gpt: [
+    { value: 'gpt-6-luna', label: 'GPT6 Luna · 便宜', detail: 'DMXAPI · 原生视觉与工具调用' },
+    { value: 'gpt-6-sol-cdx', label: 'GPT6 Sol · 贵', detail: 'DMXAPI · 编程与复杂 Agent 任务' },
+  ],
   glm: [
     { value: 'glm-5.3', label: 'GLM 5.3', detail: '最新旗舰 · 1M 上下文' },
     { value: 'glm-5.2', label: 'GLM 5.2', detail: '综合创作与工具调用' },
@@ -38,6 +42,7 @@ export const CHAT_MODELS: Record<string, ChatModelOption[]> = {
 };
 
 export const CHAT_PROVIDER_LABELS: Record<string, string> = {
+  gpt: 'GPT',
   glm: '智谱 GLM',
   deepseek: 'DeepSeek',
   kimi: 'Kimi',

@@ -10,7 +10,7 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useDirectorStore } from '@/stores/directorStore';
 import { useCanvasMention } from '@/hooks/useCanvasMention';
 import { appendCanvasMentionUrls } from '@/lib/canvas/canvasAgentPrompt';
-import { canvasTargetOf, captureCanvasAssistantTarget, validateCanvasAssistantTarget, type CanvasAssistantTarget } from '@/lib/workspace/workspaceCanvasAgent';
+import { canvasTargetOf, captureCanvasAssistantTarget, refreshCanvasAssistantTarget, validateCanvasAssistantTarget, type CanvasAssistantTarget } from '@/lib/workspace/workspaceCanvasAgent';
 import { assistantTargetScope, serializeWorkspaceAssistantMessage, workspaceExecutionTarget } from '@/lib/workspace/workspaceAssistantMessage';
 import { readWorkspaceMessage, workspaceScopeForView } from '@/lib/agent/workspaceMessage';
 import { registerWorkspaceToolScope } from '@/lib/agent/workspaceToolScope';
@@ -96,9 +96,9 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
   // Refresh only future messages, never mutate an already queued snapshot.
   const target = useMemo(() => {
     if (!storedTarget) return storedTarget;
-    try { return refreshProductionAssistantTarget(storedTarget, data); }
+    try { return refreshCanvasAssistantTarget(refreshProductionAssistantTarget(storedTarget, data), data, useCanvasStore.getState(), canvasProjectId ?? null); }
     catch { return storedTarget; /* Send validation reports invalid identity. */ }
-  }, [storedTarget, data]);
+  }, [storedTarget, data, canvasNodes, canvasProjectId]);
   const targetRef = useRef(target); targetRef.current = target;
   const updateReferences = (references: ProjectConversationReference[]) => {
     const frozen = targetRef.current;
@@ -261,10 +261,10 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
   const running = items.find((item) => item.status === 'running');
   const scopeChanged = target.objectId && (proposed?.objectId !== target.objectId || proposed?.mediaId !== target.mediaId);
   const modelScope = assistantTargetScope(workspaceExecutionTarget(snapshot.items, target)!);
-  const updateQueuedMessage = (id: string, action: 'retry' | 'edit', prompt?: string) => {
+  const updateQueuedMessage = (id: string, action: 'retry' | 'edit' | 'prioritize', prompt?: string) => {
     const item = queue.getSnapshot().items.find((entry) => entry.id === id);
     if (!item || !['failed', 'queued'].includes(item.status)) return;
-    try { queue.update(id, action, prompt, refreshProductionAssistantTarget(item.target, useWorkshopStore.getState().data)); }
+    try { queue.update(id, action, prompt, refreshCanvasAssistantTarget(refreshProductionAssistantTarget(item.target, useWorkshopStore.getState().data), useWorkshopStore.getState().data, useCanvasStore.getState(), useProjectStore.getState().activeProjectId)); }
     catch { queue.update(id, action, prompt); }
   };
   const targetScope = assistantTargetScope(target);
@@ -284,7 +284,7 @@ export default function WorkspaceAssistant({ onSendMessage, onAbort }: {
     queueItems={items.filter(isPendingQueueItem).map((item) => ({ id: item.id, prompt: item.prompt,
       label: item.prompt.split('\n')[0], targetLabel: item.target.label, status: item.status, error: item.error }))}
     onDeleteQueueItem={(id) => queue.update(id, 'delete')} onEditQueueItem={(id, prompt) => updateQueuedMessage(id, 'edit', prompt)}
-    onRetryQueueItem={(id) => updateQueuedMessage(id, 'retry')} onSendQueueItemNow={(id) => queue.update(id, 'prioritize')}
+    onRetryQueueItem={(id) => updateQueuedMessage(id, 'retry')} onSendQueueItemNow={(id) => updateQueuedMessage(id, 'prioritize')}
     contextBannerKey={key} contextBanner={<><div className="workspace-assistant-scope">
       <div><strong title={target.label}>{target.objectId ? `当前对象 · ${target.label}` : target.label}</strong>
         {scopeChanged && <span role="status">浏览已切换，输入仍属于原对象</span>}</div>

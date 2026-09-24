@@ -188,3 +188,17 @@ test('listCredentialUsages 汇总平铺能力 + provider + 槽位引用', () => 
   const slotCredId = migrated.imageApiSlots![0].credentialId!;
   assert.deepEqual(usages[slotCredId], ['生图槽位 · AiHubMix']);
 });
+
+test('GPT reuses DMX keys without copying and never sends shared keys to another host', () => {
+  const state = st({ dmxApiKey: K('legacy-dmx'), providerApiKeys: {} });
+  assert.equal(resolveApiKey(state, 'provider:gpt'), K('legacy-dmx'));
+  assert.equal(resolveApiKey(state, 'provider:gpt', K('explicit')), K('explicit'));
+  assert.equal(resolveApiKey({ ...state, providerBaseUrls: { gpt: 'https://another.invalid/v1' } }, 'provider:gpt'), '');
+  assert.equal(resolveApiKey({ ...state, providerBaseUrls: { gpt: 'https://www.dmxapi.cn.evil.invalid' } }, 'provider:gpt'), '');
+  const slotState = st({ imageApiSlots: [{ id: 'dmx', baseUrl: 'https://www.dmxapi.cn', apiKey: K('slot') }] });
+  assert.equal(resolveApiKey(slotState, 'provider:gpt'), K('slot'));
+  const registered = st({ credentials: [{ id: 'shared', baseUrl: 'https://www.dmxapi.cn/v1', apiKey: K('shared') }], credentialRefs: { dmx: 'shared' } });
+  assert.equal(resolveApiKey(registered, 'provider:gpt'), K('shared'));
+  assert.equal(registered.credentialRefs?.['provider:gpt'], undefined);
+  assert.deepEqual(state.providerApiKeys, {});
+});

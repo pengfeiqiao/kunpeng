@@ -27,6 +27,7 @@ export default function WorkspaceAgentModelPicker({ scope, variant = 'dark', dis
   const setSelection = useSettingsStore((state) => state.setWorkspaceAgentModel);
   const providerDefault = useSettingsStore((state) => state.providerDefault);
   const providerModels = useSettingsStore((state) => state.providerModels);
+  const gptKey = useSettingsStore(s => resolveApiKey(s, 'provider:gpt', s.providerApiKeys.gpt ?? ''));
   const providerApiKeys = useSettingsStore((state) => state.providerApiKeys);
   const credentials = useSettingsStore((state) => state.credentials);
   const credentialRefs = useSettingsStore((state) => state.credentialRefs);
@@ -115,7 +116,7 @@ export default function WorkspaceAgentModelPicker({ scope, variant = 'dark', dis
               .map(([providerId, models]) => ({
                 providerId,
                 models,
-                configured: Boolean(resolveApiKey({ credentials, credentialRefs }, `provider:${providerId}`, providerApiKeys[providerId] ?? '').trim()),
+                configured: Boolean((providerId === 'gpt' ? gptKey : resolveApiKey({ credentials, credentialRefs }, `provider:${providerId}`, providerApiKeys[providerId] ?? '')).trim()),
               }))
               .map(({ providerId, models, configured }) => (
                 <div key={providerId} className="py-0.5">

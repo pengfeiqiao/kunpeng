@@ -606,6 +606,7 @@ export class AgentCoordinator {
             role: 'assistant',
             content: response.text || '',
             ...(response.thinkingBlocks.length ? { thinking_blocks: response.thinkingBlocks } : {}),
+            ...(response.responsesOutput ? { responses_output: response.responsesOutput } : {}),
           });
           this.messages.push({
             role: 'user',
@@ -622,6 +623,7 @@ export class AgentCoordinator {
               role: 'assistant',
               content: response.text || '',
               ...(response.thinkingBlocks.length ? { thinking_blocks: response.thinkingBlocks } : {}),
+              ...(response.responsesOutput ? { responses_output: response.responsesOutput } : {}),
             });
             const interimProgress = sanitizeProgressText(response.text || '');
             if (interimProgress) callbacks.onProgressText?.(response.text, interimProgress);
@@ -649,6 +651,7 @@ export class AgentCoordinator {
               role: 'assistant',
               content: response.text || '',
               ...(response.thinkingBlocks.length ? { thinking_blocks: response.thinkingBlocks } : {}),
+              ...(response.responsesOutput ? { responses_output: response.responsesOutput } : {}),
             });
             this.messages.push({
               role: 'user',
@@ -669,6 +672,7 @@ export class AgentCoordinator {
                 role: 'assistant',
                 content: response.text || '',
                 ...(response.thinkingBlocks.length ? { thinking_blocks: response.thinkingBlocks } : {}),
+                ...(response.responsesOutput ? { responses_output: response.responsesOutput } : {}),
               });
               this.messages.push({ role: 'user', content: nudge });
               continuationText = '';
@@ -680,6 +684,7 @@ export class AgentCoordinator {
             role: 'assistant',
             content: response.text || '',
             ...(response.thinkingBlocks.length ? { thinking_blocks: response.thinkingBlocks } : {}),
+            ...(response.responsesOutput ? { responses_output: response.responsesOutput } : {}),
           });
           callbacks.onComplete(fullText);
           return;
@@ -697,6 +702,7 @@ export class AgentCoordinator {
           content: response.text || '',
           tool_calls: response.toolCalls,
           ...(response.thinkingBlocks.length ? { thinking_blocks: response.thinkingBlocks } : {}),
+          ...(response.responsesOutput ? { responses_output: response.responsesOutput } : {}),
         });
 
         // Execute tool_calls — read-only tools in parallel. Mutations remain
@@ -1059,6 +1065,7 @@ export class AgentCoordinator {
     toolCalls: ToolCall[];
     finishReason: string | null;
     thinkingBlocks: import('./types').ThinkingBlock[];
+    responsesOutput?: import('./types').ResponsesOutput;
   }> {
     let text = '';
     let reasoningText = '';
@@ -1068,6 +1075,7 @@ export class AgentCoordinator {
       { id: string; name: string; arguments: string }
     > = new Map();
     const thinkingBlocks: import('./types').ThinkingBlock[] = [];
+    let responsesOutput: import('./types').ResponsesOutput | undefined;
 
     // Outbound view of the conversation: persisted history plus the
     // transient turn addenda (placed before the latest user message so the
@@ -1119,7 +1127,7 @@ export class AgentCoordinator {
             source: this.config.requestSource ?? 'foreground',
             signal: this.abortController?.signal,
             onProviderSelected: (providerId) => {
-              this.nativeVisionForTurn = ['deepseek', 'kimi'].includes(providerId);
+              this.nativeVisionForTurn = ['deepseek', 'kimi', 'gpt'].includes(providerId);
               this.nativeVideoForTurn = providerId === 'kimi';
             },
             onProviderFallback: ({ from, to, reason }) => {
@@ -1161,6 +1169,7 @@ export class AgentCoordinator {
       }
 
       // Collect completed thinking blocks (emitted on content_block_stop)
+      if (delta.responses_output) responsesOutput = delta.responses_output;
       if (delta.thinking_block) {
         thinkingBlocks.push(delta.thinking_block);
       }
@@ -1213,7 +1222,7 @@ export class AgentCoordinator {
       }),
     );
 
-    return { text, reasoningText, toolCalls, finishReason, thinkingBlocks };
+    return { text, reasoningText, toolCalls, finishReason, thinkingBlocks, responsesOutput };
   }
 
   /** 中止当前操作 */

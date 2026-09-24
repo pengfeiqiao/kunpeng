@@ -43,7 +43,7 @@ function latestUserTurnHasNativeImage(req: ChatRequest): boolean {
 }
 
 function requestForProvider(req: ChatRequest, providerId: string): ChatRequest {
-  if (!['kimi', 'deepseek'].includes(providerId) || !latestUserTurnHasNativeImage(req) || !req.tools?.length) return req;
+  if (!['kimi', 'deepseek', 'gpt'].includes(providerId) || !latestUserTurnHasNativeImage(req) || !req.tools?.length) return req;
   return {
     ...req,
     // The image is already an Anthropic multimodal content block. Keeping a

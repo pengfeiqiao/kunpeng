@@ -35,6 +35,7 @@ export interface CredentialSlotLike {
  * 带的话所有传 SettingsState 的调用点都会编译报错。迁移内部动态读旧字段时自行窄化。
  */
 export interface CredentialHostState {
+  dmxApiKey?: string;
   credentials?: Credential[];
   credentialRefs?: Record<string, string>;
   imageApiSlots?: CredentialSlotLike[];
@@ -70,6 +71,7 @@ export const LEGACY_CAPABILITIES: LegacyCapabilitySpec[] = [
 
 /** 聊天 provider 的内置默认请求地址（与 ProviderSettings 的 KNOWN_PROVIDERS 对齐）。 */
 const PROVIDER_DEFAULT_BASE_URLS: Record<string, string> = {
+  gpt: 'https://www.dmxapi.cn/v1',
   glm: 'https://open.bigmodel.cn/api/anthropic',
   deepseek: 'https://api.deepseek.com/anthropic',
   kimi: 'https://api.kimi.com/coding/',
@@ -221,6 +223,11 @@ export function migrateLegacyCredentials(state: CredentialHostState): Credential
   return { credentials, credentialRefs, imageApiSlots };
 }
 
+function isDmxEndpoint(value: string): boolean {
+  try { const url = new URL(value); return url.protocol === 'https:' && ['www.dmxapi.cn', 'dmxapi.cn'].includes(url.hostname); }
+  catch { return false; }
+}
+
 // ── 读侧 resolver ────────────────────────────────────────────────────────────
 
 export function resolveCredential(
@@ -242,6 +249,22 @@ export function resolveApiKey(
 ): string {
   const cred = resolveCredential(state, state.credentialRefs?.[capability]);
   if (cred?.apiKey?.trim()) return cred.apiKey;
+  if (legacyValue?.trim()) return legacyValue;
+  if (capability === 'provider:gpt') {
+    // Never forward a shared DMX credential to a user-configured different host.
+    const base = state.providerBaseUrls?.gpt;
+    if (base?.trim() && !isDmxEndpoint(base.trim())) return '';
+    const dmx = resolveApiKey(state, 'dmx', state.dmxApiKey ?? '');
+    if (dmx.trim()) return dmx;
+    for (const slot of state.imageApiSlots ?? []) {
+      if (isDmxEndpoint(slot.baseUrl ?? '')) {
+        const key = resolveSlotApiKey(state, slot);
+        if (key.trim()) return key;
+      }
+    }
+    const shared = state.credentials?.find(item => isDmxEndpoint(item.baseUrl) && item.apiKey?.trim());
+    return shared?.apiKey ?? '';
+  }
   return legacyValue ?? '';
 }
 
@@ -264,6 +287,7 @@ export function hasAnyChatProviderKey(
 ): boolean {
   if (resolveApiKey(state, 'glm', state.glmApiKey ?? '').trim()) return true;
   const ids = new Set<string>([
+    'gpt',
     ...Object.keys(state.providerApiKeys ?? {}),
     ...Object.keys(state.credentialRefs ?? {})
       .filter((cap) => cap.startsWith('provider:'))

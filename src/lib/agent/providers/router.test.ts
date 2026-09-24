@@ -114,3 +114,12 @@ test('prompt rewrite route appends other configured LLM providers', () => {
     ],
   });
 });
+
+test('DMX-only configuration routes both GPT aliases without overriding existing DeepSeek/Kimi selections', () => {
+  const settings = { dmxApiKey: 'fake-dmx-key', providerApiKeys: { deepseek: 'fake-deepseek', kimi: 'fake-kimi' }, providerDefault: 'deepseek' };
+  for (const modelId of ['gpt-6-luna', 'gpt-6-sol-cdx']) {
+    assert.deepEqual(buildChatRouteStrategy(settings, { primary: { providerId: 'gpt', modelId } }), { kind: 'primary', providerId: 'gpt', modelId });
+  }
+  assert.deepEqual(buildChatRouteStrategy(settings), { kind: 'primary', providerId: 'deepseek', modelId: 'deepseek-flash' });
+  assert.deepEqual(buildChatRouteStrategy(settings, { primary: { providerId: 'kimi', modelId: 'k3' } }), { kind: 'primary', providerId: 'kimi', modelId: 'k3' });
+});

@@ -10,6 +10,7 @@ import {
   GLMProvider,
   DeepSeekProvider,
   KimiProvider,
+  GptProvider,
   type Provider,
 } from '@/lib/agent/providers';
 
@@ -23,6 +24,9 @@ export async function testChatProviderKey(
   if (!apiKey.trim()) return false;
   let provider: Provider | null = null;
   switch (providerId) {
+    case 'gpt':
+      provider = new GptProvider({ apiKey, baseUrl, modelId });
+      break;
     case 'glm':
       provider = new GLMProvider({ apiKey, baseUrl: baseUrl || undefined, modelId: modelId || undefined });
       break;

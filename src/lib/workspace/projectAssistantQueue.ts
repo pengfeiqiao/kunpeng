@@ -1,3 +1,4 @@
+import { sameCanvasAssistantIdentity } from './workspaceCanvasAgent.ts';
 import type { ProjectConversationReference } from '../projectObjects/types.ts';
 
 export interface AssistantTarget {
@@ -188,8 +189,10 @@ export class ProjectAssistantQueue {
     if (action === 'delete') { this.publish({ ...this.state, items: this.state.items.filter((entry) => entry.id !== id) }); return; }
     // Editing or promoting an unknown submission must not bypass replay protection.
     if (item.status === 'uncertain' || (action === 'edit' && !prompt?.trim())) return;
-    if (refreshedTarget && assistantThreadKey(refreshedTarget) !== item.threadKey) return;
-    const next = { ...item, target: refreshedTarget ? structuredClone(refreshedTarget) : item.target, status: 'queued' as const, error: undefined, prompt: action === 'edit' ? prompt!.trim() : item.prompt };
+    if (refreshedTarget && assistantThreadKey(refreshedTarget) !== item.threadKey
+      && !(assistantThreadCore(assistantThreadKey(refreshedTarget)) === assistantThreadCore(item.threadKey)
+        && sameCanvasAssistantIdentity(item.target, refreshedTarget))) return;
+    const next = { ...item, threadKey: refreshedTarget ? assistantThreadKey(refreshedTarget) : item.threadKey, target: refreshedTarget ? structuredClone(refreshedTarget) : item.target, status: 'queued' as const, error: undefined, prompt: action === 'edit' ? prompt!.trim() : item.prompt };
     const rest = this.state.items.filter((entry) => entry.id !== id);
     this.publish({ ...this.state, items: action === 'prioritize' ? [next, ...rest]
       : this.state.items.map((entry) => entry.id === id ? next : entry) });

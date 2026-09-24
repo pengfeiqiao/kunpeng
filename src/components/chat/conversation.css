@@ -129,3 +129,6 @@
 .conversation-receipts { list-style: none; padding: 0; margin: 6px 0; font-size: 12px; }
 .conversation-receipts li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; color: var(--conversation-muted); }
 .conversation-receipts li[data-status="failed"] { color: var(--wa-error); }
+
+.conversation-extra-actions { display: flex; flex-wrap: wrap; flex-shrink: 0; min-width: 0; gap: 3px; }
+.conversation-extra-actions > button { width: auto; white-space: nowrap; flex-shrink: 0; }

@@ -59,8 +59,7 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
   const displayTitle = currentSession
     ? sessionTitles[currentSession.id] || sessionTitles[shortSessionId] || currentSession.title
     : currentAgent?.name || '鲲鹏';
-  const hasPendingDecision = pendingDecision?.sourceView === 'chat'
-    && pendingDecision.sourceSessionId === currentSessionId;
+  const hasPendingDecision = pendingDecision != null && pendingDecision.sourceSessionId === currentSessionId;
 
   const wasStreaming = useRef(false);
   useEffect(() => {
@@ -287,19 +286,46 @@ function WelcomeScreen({ agent, onSend }: { agent: { id?: string; name: string; 
     <div className="h-full flex items-center justify-center px-8 py-12 overflow-y-auto">
       <motion.div
         key={agentId}
-        className="conversation-welcome w-full max-w-xl"
+        className="text-center w-full max-w-2xl"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
         {showKeySetup && <ChatKeySetupCard />}
-        <div className="conversation-author">{displayName}</div>
-        <h2 className="conversation-welcome-title">今天想创作什么？</h2>
-        <p className="conversation-welcome-description">{agentId === 'main' ? '写下你的想法，或添加一些参考素材。' : meta.slogan}</p>
-        <div className="conversation-suggestions">
-          {meta.suggestions.map((suggestion) => <button key={suggestion} onClick={() => onSend(suggestion)}>
-            {suggestion}<span aria-hidden="true">↗</span>
-          </button>)}
+        <div className="flex justify-center mb-5">
+          <img
+            src="/logo-char.png"
+            alt={displayName}
+            className="w-40 h-40 object-contain"
+          />
+        </div>
+        <h2 className="mb-1">
+          <span className="block text-[0.85rem] tracking-[0.45em] text-gray-400 mb-1 uppercase">我是</span>
+          <span
+            className="text-[3rem] tracking-[0.18em] font-normal leading-tight"
+            style={{ fontFamily: "'STFangsong', 'FangSong', '仿宋', 'NSimSun', serif" }}
+          >
+            {displayName}
+          </span>
+        </h2>
+        <p className="text-gray-500 mb-12 text-[0.88rem] tracking-[0.2em] mt-3">
+          {meta.slogan}
+        </p>
+        <div className="flex flex-wrap justify-center gap-2.5">
+          {meta.suggestions.map((s, i) => (
+            <motion.button
+              key={s}
+              onClick={() => onSend(s)}
+              className="px-4 py-2 rounded-full border border-dark-border text-sm hover:bg-dark-card transition-colors"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.04, duration: 0.3 }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              {s}
+            </motion.button>
+          ))}
         </div>
       </motion.div>
     </div>

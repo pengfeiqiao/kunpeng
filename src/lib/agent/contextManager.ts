@@ -120,7 +120,7 @@ export class ContextManager {
    */
   private estimateCache = new WeakMap<
     AgentMessage,
-    { content: unknown; toolCalls: unknown; thinking: unknown; mediaCount: number; tokens: number }
+    { content: unknown; toolCalls: unknown; thinking: unknown; responses: unknown; mediaCount: number; tokens: number }
   >();
 
   constructor(maxTokens: number = 128000) {
@@ -167,6 +167,7 @@ export class ContextManager {
     return messages.reduce((total, msg) => {
       const toolCalls = (msg as { tool_calls?: unknown }).tool_calls;
       const thinkingBlocks = (msg as { thinking_blocks?: unknown }).thinking_blocks;
+      const responses = msg.role === 'assistant' ? msg.responses_output : undefined;
       const mediaCount = msg.role === 'tool' ? (msg.media?.length ?? 0) : 0;
       // 用户消息内容块（多模态）：base64/URL 媒体块的传输字节不能当文本计——
       // 一张 172KB 的图 stringify 出来约 23 万“token”，会立刻打爆上下文窗口，
@@ -184,6 +185,7 @@ export class ContextManager {
         && cached.content === msg.content
         && cached.toolCalls === toolCalls
         && cached.thinking === thinkingBlocks
+        && cached.responses === responses
         && cached.mediaCount === mediaCount + blockMediaCount
       ) {
         return total + cached.tokens;
@@ -196,7 +198,8 @@ export class ContextManager {
             : JSON.stringify(msg.content);
       const structured =
         (toolCalls ? JSON.stringify(toolCalls) : '') +
-        (thinkingBlocks ? JSON.stringify(thinkingBlocks) : '');
+        (thinkingBlocks ? JSON.stringify(thinkingBlocks) : '') +
+        (responses ? JSON.stringify(responses) : '');
       // Do not stringify base64 media into the estimator. A fixed visual-token
       // allowance tracks pressure without treating transport bytes as text.
       const totalMediaCount = mediaCount + blockMediaCount;
@@ -206,6 +209,7 @@ export class ContextManager {
         content: msg.content,
         toolCalls,
         thinking: thinkingBlocks,
+        responses,
         mediaCount: totalMediaCount,
         tokens,
       });
@@ -348,8 +352,8 @@ export class ContextManager {
       // a 1M context without adding any user-visible memory. Keep the current
       // turn intact, but retain only the assistant's actual conclusion/tool
       // calls for older turns.
-      if (msg.role === 'assistant' && msg.thinking_blocks?.length && i < latestUserIndex) {
-        const { thinking_blocks: _thinkingBlocks, ...withoutHistoricalThinking } = msg;
+      if (msg.role === 'assistant' && (msg.thinking_blocks?.length || msg.responses_output) && i < latestUserIndex) {
+        const { thinking_blocks: _thinkingBlocks, responses_output: _responses, ...withoutHistoricalThinking } = msg;
         return withoutHistoricalThinking as AgentMessage;
       }
 
@@ -568,6 +572,7 @@ export class ContextManager {
       const keepChars = msg.role === 'tool' ? 8000 : HARD_CLAMP_MAX_MESSAGE_CHARS;
       return {
         ...msg,
+        responses_output: undefined,
         content: `${msg.content.slice(0, keepChars)}\n\n[内容已在发送模型前明确截断于字符 ${keepChars}/${msg.content.length}；请用 offset/output_id 分页续读剩余内容。]`,
       } as AgentMessage;
     });

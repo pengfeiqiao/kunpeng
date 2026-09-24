@@ -4,48 +4,6 @@ import type { Tool, ToolDefinition, ToolResult } from '../types';
 import { agentLog } from '../logger';
 
 /**
- * 将 MCP inputSchema.properties 转为 ToolDefinition 的 parameters.properties 格式
- * MCP 使用完整 JSON Schema，ToolDefinition 使用简化的 { type, description, enum, default }
- */
-function convertProperties(
-  props: Record<string, unknown> | undefined,
-): Record<string, { type: string; description?: string; enum?: string[]; default?: unknown }> {
-  if (!props) return {};
-
-  const result: Record<string, { type: string; description?: string; enum?: string[]; default?: unknown }> = {};
-
-  for (const [key, schema] of Object.entries(props)) {
-    const s = schema as Record<string, unknown>;
-
-    let type = 'string';
-    if (typeof s.type === 'string') {
-      type = s.type;
-    } else if (Array.isArray(s.type)) {
-      // e.g. ["string", "null"] → "string"
-      type = s.type.find((t: string) => t !== 'null') || 'string';
-    }
-
-    const prop: { type: string; description?: string; enum?: string[]; default?: unknown } = { type };
-
-    if (typeof s.description === 'string') {
-      prop.description = s.description;
-    }
-
-    if (Array.isArray(s.enum)) {
-      prop.enum = s.enum.map(String);
-    }
-
-    if (s.default !== undefined) {
-      prop.default = s.default;
-    }
-
-    result[key] = prop;
-  }
-
-  return result;
-}
-
-/**
  * 将 MCP 工具 schema 转为 ToolRegistry 兼容的 Tool 对象
  */
 export function createMcpTool(
@@ -58,18 +16,15 @@ export function createMcpTool(
   const definition: ToolDefinition = {
     name: prefixedName,
     description: schema.description || prefixedName,
-    parameters: {
-      type: 'object',
-      properties: convertProperties(schema.inputSchema.properties),
-      required: schema.inputSchema.required,
-    },
+    // Retain nested arrays/objects, unions and numeric enums from MCP.
+    parameters: structuredClone({ ...schema.inputSchema, properties: schema.inputSchema.properties ?? {} }) as ToolDefinition['parameters'],
   };
 
   return {
     definition,
     async execute(params: Record<string, unknown>): Promise<ToolResult> {
       try {
-        agentLog.info('MCP-Tool', `→ ${prefixedName}`, params);
+        agentLog.info('MCP-Tool', `→ ${prefixedName}`);
         const response = await transport.request('tools/call', {
           name: schema.name, // 用原始名，不带前缀
           arguments: params,
@@ -109,7 +64,10 @@ export function createMcpTool(
           .filter(Boolean)
           .join('\n');
 
-        return { success: true, output: output || '(no output)' };
+        const media: NonNullable<ToolResult['media']> = result.content.flatMap(block =>
+          block.type === 'image' && block.data && block.mimeType && ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(block.mimeType)
+            ? [{ type: 'image' as const, source: { type: 'base64' as const, media_type: block.mimeType, data: block.data } }] : []);
+        return { success: true, output: output || '(no output)', ...(media.length ? { media } : {}) };
       } catch (err) {
         agentLog.error('MCP-Tool', `← ${prefixedName} transport error`, err);
         return {

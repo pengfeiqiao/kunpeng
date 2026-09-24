@@ -88,6 +88,43 @@ export function captureCanvasAssistantTarget(data: WorkshopData, canvasProjectId
   };
 }
 
+/** Content may advance between user turns; ownership and explicit version selection may not. */
+function canvasIdentity(entry: CanvasTargetBinding['nodes'][number]): string {
+  const value = JSON.parse(entry.fingerprint);
+  const data = value.data ?? {};
+  return JSON.stringify([entry.id, value.type, data.projectObjectId, data.mediaObjectId, data.versionObjectId,
+    data.workshopRef, data.workshopPromptRefTarget, value.owner?.id, value.owner?.locked,
+    value.media?.id, value.media?.ownerObjectId, value.media?.versionObjectId,
+    value.version?.id, value.version?.ownerObjectId, value.version?.mediaObjectId]);
+}
+
+export function sameCanvasAssistantIdentity(a: AssistantTarget, b: AssistantTarget): boolean {
+  const left = canvasTargetOf(a), right = canvasTargetOf(b);
+  if (!left || !right || left.director || right.director || left.invalidReason || right.invalidReason
+    || left.projectId !== right.projectId || left.canvasProjectId !== right.canvasProjectId
+    || JSON.stringify(a.references) !== JSON.stringify(b.references)
+    || left.nodes.length !== right.nodes.length) return false;
+  try { return left.nodes.every((entry, index) => canvasIdentity(entry) === canvasIdentity(right.nodes[index])); }
+  catch { return false; }
+}
+
+/** Only call for a new user turn or an explicit retry, never from queue dispatch. */
+export function refreshCanvasAssistantTarget(target: AssistantTarget, data: WorkshopData | null | undefined,
+  snapshot: { nodes: Node[]; edges: Edge[] }, canvasProjectId: string | null): AssistantTarget {
+  const frozen = canvasTargetOf(target);
+  if (!frozen || frozen.director) return target;
+  if (!data || data.projectId !== target.projectId || frozen.projectId !== target.projectId
+    || frozen.canvasProjectId !== canvasProjectId || frozen.invalidReason) throw new Error('原画布项目或目标已变化。');
+  const fresh = captureCanvasAssistantTarget(data, frozen.canvasProjectId, target.sessionId, snapshot, frozen.nodes.map(node => node.id));
+  const next = { ...target, canvasTarget: fresh.canvasTarget };
+  if (!sameCanvasAssistantIdentity(target, next)) throw new Error('原节点归属或版本选择已变化，请重新选择。');
+  if (JSON.stringify(frozen) === JSON.stringify(fresh.canvasTarget)) return target;
+  // Preserve reference permissions, explicit action instructions and mention URLs.
+  if (!target.contextBase || !target.context.startsWith(target.contextBase)) throw new Error('旧画布上下文无法刷新，请重新选择。');
+  return { ...next, contextBase: fresh.contextBase,
+    context: fresh.contextBase + target.context.slice(target.contextBase.length) };
+}
+
 export function validateCanvasAssistantTarget(target: AssistantTarget, data: WorkshopData | null | undefined,
   project: { activeProjectId: string | null; switching: boolean; projects: Array<{ id: string; aigcProjectId?: string }> },
   activeProjectId: string | null, nodes: Node[]): string | null {

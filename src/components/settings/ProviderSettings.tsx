@@ -19,6 +19,7 @@ import {
   GLMProvider,
   DeepSeekProvider,
   KimiProvider,
+  GptProvider,
   AnthropicCompatibleProvider,
   ANTHROPIC_PRESETS,
   getAnthropicPreset,
@@ -45,6 +46,9 @@ interface ProviderMeta {
 }
 
 const KNOWN_PROVIDERS: ProviderMeta[] = [
+  { id: 'gpt', displayName: 'GPT · DMXAPI', shortName: 'GPT', docUrl: 'https://www.dmxapi.cn/rmb',
+    placeholder: '自动复用 DMXAPI Key，也可单独填写', defaultBaseUrl: 'https://www.dmxapi.cn/v1',
+    models: ['gpt-6-luna', 'gpt-6-sol-cdx'] },
   {
     id: 'glm',
     displayName: '智谱 GLM',
@@ -87,6 +91,8 @@ const KNOWN_PROVIDERS: ProviderMeta[] = [
 
 function instantiate(meta: ProviderMeta, apiKey: string, baseUrl?: string, modelId?: string) {
   switch (meta.id) {
+    case 'gpt':
+      return new GptProvider({ apiKey, baseUrl: baseUrl || undefined, modelId: modelId || undefined });
     case 'glm':
       return new GLMProvider({ apiKey, baseUrl: baseUrl || undefined, modelId: modelId || undefined });
     case 'deepseek':
@@ -110,13 +116,14 @@ function StatusIcon({ state }: { state: TestState }) {
 }
 
 export default function ProviderSettings({ mode = 'providers' }: { mode?: ProviderSettingsMode }) {
+  const gptKey = useSettingsStore(s => resolveApiKey(s, 'provider:gpt', s.providerApiKeys.gpt ?? ''));
   const providerApiKeys = useSettingsStore((s) => s.providerApiKeys);
   const setProviderApiKey = useSettingsStore((s) => s.setProviderApiKey);
   const credentials = useSettingsStore((s) => s.credentials);
   const credentialRefs = useSettingsStore((s) => s.credentialRefs);
   // 读时经凭证注册表解析（优先 credentialId 引用，回退旧 providerApiKeys 字段）
   const resolveProviderKey = (id: string): string =>
-    resolveApiKey({ credentials, credentialRefs }, `provider:${id}`, providerApiKeys[id] ?? '');
+    id === 'gpt' ? gptKey : resolveApiKey({ credentials, credentialRefs }, `provider:${id}`, providerApiKeys[id] ?? '');
   const providerBaseUrls = useSettingsStore((s) => s.providerBaseUrls);
   const setProviderBaseUrl = useSettingsStore((s) => s.setProviderBaseUrl);
   const providerModels = useSettingsStore((s) => s.providerModels);
@@ -147,6 +154,8 @@ export default function ProviderSettings({ mode = 'providers' }: { mode?: Provid
       };
     }
     bootstrapProviders({
+      gptApiKey: resolveApiKey(useSettingsStore.getState(), 'provider:gpt', keys.gpt ?? ''),
+      gptBaseUrl: baseUrls.gpt, gptModel: models.gpt,
       glmApiKey: keys.glm,
       glmBaseUrl: baseUrls.glm,
       glmModel: models.glm,
@@ -393,7 +402,7 @@ export default function ProviderSettings({ mode = 'providers' }: { mode?: Provid
               placeholder={selectedMeta.defaultBaseUrl}
               className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2.5 font-mono text-xs outline-none transition-colors focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100"
             />
-            <p className="mt-2 text-[11px] text-zinc-500">留空时使用内置官方地址。</p>
+            <p className="mt-2 text-[11px] text-zinc-500">{selectedMeta.id === 'gpt' ? '默认使用 DMXAPI；自动复用已填写的 DMXAPI Key。更换到其他中转站时需单独填写对应 Key。' : '留空时使用内置官方地址。'}</p>
           </div>
 
           {selectedMeta.id === 'deepseek' && (
@@ -464,7 +473,7 @@ export default function ProviderSettings({ mode = 'providers' }: { mode?: Provid
 
       <div className="divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200 bg-white">
         {KNOWN_PROVIDERS.map((meta) => {
-          const configured = Boolean(providerApiKeys[meta.id]);
+          const configured = Boolean(resolveProviderKey(meta.id).trim());
           const state = testState[meta.id] ?? 'idle';
           const model = providerModels[meta.id] || meta.models[0];
           const baseUrl = providerBaseUrls[meta.id] || meta.defaultBaseUrl;

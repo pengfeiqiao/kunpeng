@@ -29,6 +29,7 @@ export interface BuildRouteOptions {
 }
 
 const CONFIGURED_PROVIDER_FALLBACK_ORDER = [
+  'gpt',
   'deepseek',
   'glm',
   'kimi',

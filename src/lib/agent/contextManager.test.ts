@@ -38,3 +38,12 @@ test('text-only array content still counts text', () => {
   const asString = cm.estimateMessages([{ role: 'user', content: longText }] as never);
   assert.equal(withText, asString);
 });
+
+test('GPT opaque response state contributes to context budget and invalidates cached estimates', () => {
+  const cm = new ContextManager(128_000);
+  const message = { role: 'assistant', content: 'done', responses_output: { model: 'gpt-6-luna', endpoint: 'https://example.invalid/v1', items: [{ type: 'reasoning', encrypted_content: 'x'.repeat(2000) }] } } as const;
+  const before = cm.estimateMessages([message] as never);
+  assert.ok(before > 2000);
+  const smaller = { ...message, responses_output: undefined };
+  assert.ok(cm.estimateMessages([smaller] as never) < before);
+});

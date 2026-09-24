@@ -4,6 +4,8 @@ export type ActiveView = 'chat' | 'editor' | 'canvas' | 'wechat' | 'lark' | 'pro
 import { Message, Session, Agent } from '@/types';
 
 interface ChatState {
+  draftFiles: Record<string, string[]>;
+  setDraftFiles: (key: string, value: string[] | ((previous: string[]) => string[])) => void;
   // Sessions
   sessions: Session[];
   currentSessionId: string | null;
@@ -84,6 +86,13 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set) => ({
+  draftFiles: {},
+  setDraftFiles: (key, value) => set(state => {
+    const next = typeof value === 'function' ? value(state.draftFiles[key] ?? []) : value;
+    const draftFiles = { ...state.draftFiles };
+    if (next.length) draftFiles[key] = [...next]; else delete draftFiles[key];
+    return { draftFiles };
+  }),
   // Sessions
   sessions: [],
   currentSessionId: null,

@@ -1,3 +1,5 @@
+import { GptProvider } from './gpt';
+export { GptProvider } from './gpt';
 /**
  * Provider package entrypoint. Importing this module registers the built-in
  * providers so call sites can look them up via `getProvider(id)`.
@@ -28,6 +30,9 @@ import {
 } from './anthropic';
 
 export interface BootstrapConfig {
+  gptApiKey?: string;
+  gptBaseUrl?: string;
+  gptModel?: string;
   glmApiKey?: string;
   glmBaseUrl?: string;
   glmModel?: string;
@@ -48,6 +53,8 @@ export interface BootstrapConfig {
  * without restart.
  */
 export function bootstrapProviders(cfg: BootstrapConfig): void {
+  if (cfg.gptApiKey) registerProvider(new GptProvider({ apiKey: cfg.gptApiKey, baseUrl: cfg.gptBaseUrl, modelId: cfg.gptModel }));
+  else unregisterProvider('gpt');
   if (cfg.glmApiKey) {
     registerProvider(
       new GLMProvider({

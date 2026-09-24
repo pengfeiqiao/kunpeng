@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorkshopData } from '../workshop/types.ts';
-import { captureCanvasAssistantTarget, validateCanvasAssistantTarget, workspaceBindingForNode, selectCanvasNodes, readCanvasRegionRequest } from './workspaceCanvasAgent.ts';
+import { captureCanvasAssistantTarget, refreshCanvasAssistantTarget, validateCanvasAssistantTarget, workspaceBindingForNode, selectCanvasNodes, readCanvasRegionRequest } from './workspaceCanvasAgent.ts';
 import { serializeWorkspaceAssistantMessage, readDirectorAssistantRequest } from './workspaceAssistantMessage.ts';
 import { inferAgentWorkspaceScope } from '../agent/modelCatalog.ts';
 import { stripHarnessPrefix } from '../agent/harnessDisplay.ts';
-import { ProjectAssistantQueue, AssistantQueueFailure } from './projectAssistantQueue.ts';
+import { ProjectAssistantQueue, AssistantQueueFailure, assistantThreadKey } from './projectAssistantQueue.ts';
 
 function fixture() {
   const data = { projectId: 'P', canvasProjectId: 'C', shots: [], projectObjects: { projectId: 'P',
@@ -83,4 +83,40 @@ test('invalid pre-send binding settles failed/retry-safe, not uncertain and neve
   queue.enqueue(target, 'modify');
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(sent, 0); assert.equal(queue.getSnapshot().items[0].status, 'failed'); detach();
+});
+
+
+test('new canvas turn and explicit retry refresh content without retargeting or dropping action instructions', () => {
+  const { data, nodes, project, target } = fixture();
+  target.context += '\n原动作：只修改提示词，不生成';
+  const queue = new ProjectAssistantQueue();
+  const id = queue.enqueue(target, '地面不要有落叶', []);
+  nodes[0].data.description = '最新的场景描述';
+  data.projectObjects!.objects[0].version++;
+  const currentNodes = [...nodes, { ...nodes[0], id: 'other', selected: true }];
+  const fresh = refreshCanvasAssistantTarget(target, data, { nodes: currentNodes, edges: [] }, 'C');
+  assert.equal(validateCanvasAssistantTarget(fresh, data, project, 'P', nodes), null);
+  assert.ok(validateCanvasAssistantTarget(target, data, project, 'P', nodes));
+  assert.ok(fresh.context.includes('最新的场景描述'));
+  assert.ok(fresh.context.endsWith('原动作：只修改提示词，不生成'));
+  assert.deepEqual(fresh.references, target.references);
+  assert.deepEqual((fresh as typeof target).canvasTarget.nodes.map(node => node.id), ['N']);
+  // Ordinary queued items retain their frozen snapshot until a user explicitly retries.
+  assert.deepEqual(queue.getSnapshot().items[0].target, target);
+  queue.update(id!, 'retry', undefined, fresh);
+  assert.deepEqual(queue.getSnapshot().items[0].target, fresh);
+  assert.equal(queue.getSnapshot().items[0].threadKey, assistantThreadKey(fresh));
+});
+
+test('canvas refresh refuses missing nodes, project changes and ownership changes', () => {
+  const { data, nodes, target } = fixture();
+  assert.throws(() => refreshCanvasAssistantTarget(target, data, { nodes: [], edges: [] }, 'C'));
+  assert.throws(() => refreshCanvasAssistantTarget(target, data, { nodes, edges: [] }, 'other'));
+  const free = [{ ...nodes[0], data: { description: '自由节点' } }];
+  assert.throws(() => refreshCanvasAssistantTarget(target, data, { nodes: free, edges: [] }, 'C'));
+  const queue = new ProjectAssistantQueue();
+  const id = queue.enqueue(target, '修改', []);
+  const different = captureCanvasAssistantTarget(data, 'C', 'S', { nodes: free, edges: [] }, ['N']);
+  queue.update(id!, 'retry', undefined, different);
+  assert.deepEqual(queue.getSnapshot().items[0].target, target);
 });

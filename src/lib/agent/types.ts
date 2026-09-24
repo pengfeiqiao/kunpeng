@@ -133,6 +133,12 @@ export type AgentUserContentBlock =
   | { type: 'image'; source: AgentMediaSource }
   | { type: 'video'; source: AgentMediaSource };
 
+export interface ResponsesOutput {
+  model: string;
+  endpoint: string;
+  items: Record<string, any>[];
+}
+
 /** Agent 消息类型 (兼容 OpenAI messages 格式) */
 export type AgentMessage =
   | { role: 'system'; content: string }
@@ -144,6 +150,7 @@ export type AgentMessage =
       tool_calls?: ToolCall[];
       /** Extended-thinking blocks that must be echoed back verbatim next turn. */
       thinking_blocks?: ThinkingBlock[];
+      responses_output?: ResponsesOutput;
     }
   | { role: 'tool'; tool_call_id: string; content: string; media?: AgentUserContentBlock[] };
 
@@ -160,6 +167,7 @@ export interface StreamDelta {
        * coordinator accumulates these on the assistant message so future
        * requests can echo them back (required by DeepSeek's Anthropic API). */
       thinking_block?: ThinkingBlock;
+      responses_output?: ResponsesOutput;
       tool_calls?: Array<{
         index: number;
         id?: string;

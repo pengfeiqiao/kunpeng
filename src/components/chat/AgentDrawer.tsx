@@ -44,6 +44,8 @@ import '../workspace/workspace-assistant.css';
 import './conversation.css';
 import ConversationAttachment from './ConversationAttachment';
 
+const EMPTY_FILES: string[] = [];
+
 const EASE = [0.32, 0.72, 0, 1] as const;
 
 const MemoMarkdown = memo(function MemoMarkdown({
@@ -376,7 +378,9 @@ export default function AgentDrawer({
   const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
   const [editingQueuePrompt, setEditingQueuePrompt] = useState('');
   const [localInput, setLocalInput] = useState('');
-  const [localFiles, setLocalFiles] = useState<string[]>([]);
+  const fileDraftKey = useChatStore(state => state.currentSessionId ?? `new:${state.currentAgent?.id ?? 'main'}`);
+  const localFiles = useChatStore(state => state.draftFiles?.[fileDraftKey]) ?? EMPTY_FILES;
+  const setLocalFiles = (value: string[] | ((previous: string[]) => string[])) => useChatStore.getState().setDraftFiles(fileDraftKey, value);
   const composer = embedded ? workspaceComposer : undefined;
   const composerRef = useRef(composer); composerRef.current = composer;
   const input = composer?.text ?? localInput;
@@ -424,7 +428,6 @@ export default function AgentDrawer({
 
   const messages = useChatStore((s) => s.messages);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
-  const activeView = useChatStore((s) => s.activeView);
   // Only phase stays in the drawer shell. Token content is subscribed inside
   // DrawerStreamingContent so a delta cannot reconcile the full history/input.
   const streamingPhase = useChatStore((s) => s.streamingPhase);
@@ -610,18 +613,24 @@ export default function AgentDrawer({
   const visibleChat = historyWindow.items;
   const visibleHistoryStart = visibleChat[0]?.timestamp ?? 0;
   const relevantDecisionHistory = useMemo(() => decisionHistory.filter((record) =>
-    record.sourceView === activeView
-      && record.sourceSessionId === currentSessionId
+    record.sourceSessionId === currentSessionId
       && record.createdAt >= visibleHistoryStart
-  ), [activeView, currentSessionId, decisionHistory, visibleHistoryStart]);
-  const relevantPendingDecision = pendingDecision?.sourceView === activeView
-    && pendingDecision.sourceSessionId === currentSessionId
+  ), [currentSessionId, decisionHistory, visibleHistoryStart]);
+  const relevantPendingDecision = pendingDecision != null && pendingDecision.sourceSessionId === currentSessionId
     ? pendingDecision
     : null;
   const drawerEvents = useMemo<DrawerEvent[]>(() => [
     ...visibleChat.map((message) => ({ kind: 'message' as const, at: message.timestamp, message })),
     ...relevantDecisionHistory.map((decision) => ({ kind: 'decision' as const, at: decision.createdAt, decision })),
   ].sort((left, right) => left.at - right.at), [relevantDecisionHistory, visibleChat]);
+  const revealedDecision = useRef<string | null>(null);
+  useEffect(() => {
+    if (!relevantPendingDecision || revealedDecision.current === relevantPendingDecision.id) return;
+    if (!drawerOpen) { setDrawerState('expanded'); return; }
+    revealedDecision.current = relevantPendingDecision.id;
+    scheduleScrollToBottom(true);
+  }, [relevantPendingDecision?.id, drawerOpen, setDrawerState, scheduleScrollToBottom]);
+
   const combinedBadgeCount = (badgeCount ?? 0) + (relevantPendingDecision ? 1 : 0);
   const decisionVariant = variant === 'light' ? 'drawer-light' : 'drawer-dark';
 
@@ -1009,7 +1018,7 @@ export default function AgentDrawer({
                       />
                     </div>
                   )}
-                  {extraActions}
+                  {extraActions && <div className="conversation-extra-actions">{extraActions}</div>}
                   <div className="min-w-0 flex-1" />
                   {isStreaming ? (
                     <div className="flex shrink-0 items-center gap-1.5">

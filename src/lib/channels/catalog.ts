@@ -25,6 +25,9 @@ export interface ChannelEntry {
 
 export const CHANNEL_CATALOG: ChannelEntry[] = [
   // ── 聊天（主模型）──
+  { id: 'gpt', label: 'GPT · DMXAPI', url: 'https://www.dmxapi.cn/rmb',
+    purpose: 'GPT6 Luna / Sol：对话、原生识图、工具调用。', kind: 'chat', needsKey: true,
+    note: '复用已填写的 DMXAPI Key。' },
   {
     id: 'deepseek',
     label: 'DeepSeek',

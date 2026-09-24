@@ -128,6 +128,7 @@ function hasAnyChatProviderKey(
 ): boolean {
   if (resolveApiKey(settings, 'glm', settings.glmApiKey ?? '').trim()) return true;
   const ids = new Set<string>([
+    'gpt',
     ...Object.keys(settings.providerApiKeys ?? {}),
     ...Object.keys(settings.credentialRefs ?? {})
       .filter((cap) => cap.startsWith('provider:'))
@@ -755,13 +756,10 @@ export function useAgent(options?: { primary?: boolean }) {
 
   const glmApiKey = useSettingsStore((s) => resolveApiKey(s, 'glm', s.glmApiKey));
   const providerGlmApiKey = useSettingsStore((s) => resolveApiKey(s, 'provider:glm', s.providerApiKeys?.glm ?? ''));
-  const credentials = useSettingsStore((s) => s.credentials);
-  const credentialRefs = useSettingsStore((s) => s.credentialRefs);
   const glmBaseUrl = useSettingsStore((s) => s.glmBaseUrl);
   const glmModel = useSettingsStore((s) => s.glmModel);
   const defaultCwd = useSettingsStore((s) => s.defaultCwd);
   const maxTurns = useSettingsStore((s) => s.maxTurns);
-  const providerApiKeys = useSettingsStore((s) => s.providerApiKeys);
   const imageSlotsSig = useSettingsStore((s) =>
     JSON.stringify([
       (s.imageApiSlots ?? []).map(x => [x.label, x.baseUrl, x.apiKey, x.credentialId, x.provider, x.enabled]),
@@ -771,7 +769,7 @@ export function useAgent(options?: { primary?: boolean }) {
   const runninghubApiKey = useSettingsStore((s) => resolveApiKey(s, 'runninghub', s.runninghubApiKey));
   const chatImageModel = useSettingsStore((s) => s.chatImageModel);
   const chatVideoModel = useSettingsStore((s) => s.chatVideoModel);
-  const hasConfiguredChatProvider = hasAnyChatProviderKey({ glmApiKey, providerApiKeys, credentials, credentialRefs });
+  const hasConfiguredChatProvider = useSettingsStore(s => hasAnyChatProviderKey(s));
 
   // Initialize agent engine
   useEffect(() => {
@@ -1839,7 +1837,7 @@ export function useAgent(options?: { primary?: boolean }) {
       const releaseWorkspaceDispatch = bindWorkspaceRunDispatch(runId, content);
       registry.bindRunContext(runId, {
         decisionSource,
-        nativeVision: ['deepseek', 'kimi'].includes(primaryRoute.providerId),
+        nativeVision: ['deepseek', 'kimi', 'gpt'].includes(primaryRoute.providerId),
         nativeVideo: primaryRoute.providerId === 'kimi',
       });
       if (isOrdinaryChatRun) {
@@ -1857,7 +1855,7 @@ export function useAgent(options?: { primary?: boolean }) {
         });
         registry.bindRunContext(runId, {
           decisionSource,
-          nativeVision: ['deepseek', 'kimi'].includes(primaryRoute.providerId),
+          nativeVision: ['deepseek', 'kimi', 'gpt'].includes(primaryRoute.providerId),
           nativeVideo: primaryRoute.providerId === 'kimi',
           idempotencyRunId: runId,
           subagentDepth: 0,
