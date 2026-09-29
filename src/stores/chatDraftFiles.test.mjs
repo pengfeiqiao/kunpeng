@@ -5,12 +5,12 @@ import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
 const require = createRequire(import.meta.url);
-function fixture() {
+function fixture(localStorage) {
   const exports = {};
   const code = ts.transpileModule(readFileSync(new URL('./chatStore.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  runInNewContext(code, { exports, require });
+  runInNewContext(code, { exports, require, localStorage });
   return exports.useChatStore;
 }
 test('attachment drafts survive page switches, remain session scoped, and clear after sending', () => {
@@ -68,4 +68,60 @@ test('actual MessageInput native listener routes a post-switch drop into the vis
   assert.equal(store.getState().draftFiles.before,undefined);
   assert.deepEqual(Array.from(store.getState().draftFiles.after),['/current.png']);
   cleanups.forEach(cleanup=>cleanup?.());
+});
+
+function memoryStorage() {
+  const values = new Map();
+  return { writes: 0, getItem: key => values.get(key) ?? null, setItem(key, value) { values.set(key, value); this.writes++; } };
+}
+test('unsent attachments survive a new renderer and retain per-session and welcome drafts', () => {
+  const storage = memoryStorage(); const first = fixture(storage);
+  first.getState().setDraftFiles('s1', ['/image.png', '/reference.pdf']);
+  first.getState().setDraftFiles('s2', ['/second.mp4']);
+  first.getState().setDraftFiles('new:main', ['/welcome.jpg']);
+  const writes = storage.writes;
+  first.getState().setActiveView('copywriting'); first.getState().setStreamingContent('token');
+  assert.equal(storage.writes, writes);
+  const restored = fixture(storage);
+  assert.deepEqual(Array.from(restored.getState().draftFiles.s1), ['/image.png', '/reference.pdf']);
+  assert.deepEqual(Array.from(restored.getState().draftFiles['new:main']), ['/welcome.jpg']);
+  restored.getState().setDraftFiles('s1', []);
+  restored.getState().removeSession('s2');
+  const again = fixture(storage);
+  assert.equal(again.getState().draftFiles.s1, undefined);
+  assert.equal(again.getState().draftFiles.s2, undefined);
+  assert.deepEqual(Array.from(again.getState().draftFiles['new:main']), ['/welcome.jpg']);
+});
+test('invalid cache and write failure cannot erase the live attachment draft', () => {
+  const storage = memoryStorage(); storage.setItem('kunpeng-attachment-drafts-v1', '{bad');
+  const store = fixture(storage);
+  assert.equal(Object.keys(store.getState().draftFiles).length, 0);
+  storage.setItem = () => { throw new Error('quota'); };
+  store.getState().setDraftFiles('s1', ['/keep.png']);
+  assert.deepEqual(Array.from(store.getState().draftFiles.s1), ['/keep.png']);
+  assert.match(store.getState().error, /附件草稿暂时无法保存/);
+});
+
+test('async automatic history restore cannot hide attachments dropped while loading', async () => {
+  const store = fixture();
+  let finishRead;
+  const diskRead = new Promise(resolve => { finishRead = resolve; });
+  const hook = selector => selector(store.getState()); hook.getState = store.getState;
+  const module = {};
+  const code = ts.transpileModule(readFileSync(new URL('../hooks/useSessions.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  runInNewContext(code, { exports: module, require: id => {
+    if (id === 'react') return { useCallback: fn => fn };
+    if (id === '@/stores') return { useChatStore: hook, useSettingsStore: { getState: () => ({ markSessionRead() {} }) } };
+    if (id === '@/lib/historyPersistence') return { readMessagesFromLocalStorage: () => null, readSessionFromFile: () => diskRead, hydrateLocalStorageSession() {} };
+    return {};
+  } });
+  const { loadSession } = module.useSessions();
+  const pending = loadSession('old-session', () => !store.getState().currentSessionId && !store.getState().draftFiles['new:main']?.length);
+  store.getState().appendCurrentDraftFiles(['/just-dropped.png']);
+  finishRead({ messages: [], agentMessages: [] });
+  assert.equal((await pending).loaded, false);
+  assert.equal(store.getState().currentSessionId, null);
+  assert.deepEqual(Array.from(store.getState().draftFiles['new:main']), ['/just-dropped.png']);
 });

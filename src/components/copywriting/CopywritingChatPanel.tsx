@@ -262,7 +262,7 @@ function buildCopywritingHarness(expCtx: string, docCtx: string, taskSignal: str
 2. 如果当前没有打开文档，或 HTML 操作视图是 \`<article data-doc-empty="true"></article>\`，说明编辑器为空。此时任何写入都必须使用 \`\`\`markdown:doc\`\`\` 整篇写入，禁止使用 copy_patch、禁止定位 .doc-content。
 3. 只有当前文档存在可见的 \`data-block-id\` 块时，才使用 \`\`\`json:copy_patch\`\`\` 做局部修改。copy_patch 必须命中具体块编号或 \`[data-block-id='B0007']\` selector，不要使用 .doc-content 这类不存在的容器。
 4. 用户要求“新写一篇、写入编辑器、从空白开始、替换全文、生成完整文案”时，使用 \`\`\`markdown:doc\`\`\`。
-5. 当前文档会以“Markdown 生成的 HTML 操作视图”提供。HTML 里的 section 是可修改节点，data-block-id 是稳定锚点，正文最终仍会回写为 Markdown。
+5. 当前文档会以“Markdown 生成的 HTML 操作视图”提供。HTML 里的 section 是可修改节点，data-block-id 是当前快照的锚点，正文最终仍会回写为 Markdown。
    - data-content="preview" 表示只提供摘要，用于定位。
    - data-content="full" 表示提供完整块内容，可以直接精修。
 6. json:copy_patch 支持数组。常用格式：
@@ -271,7 +271,7 @@ function buildCopywritingHarness(expCtx: string, docCtx: string, taskSignal: str
    - 替换块内文字：{"op":"replace_text","blockId":"B0007","hash":"abc123","find":"原文片段","text":"替换后的片段"}
    - 插入内容：{"op":"insert_after","blockId":"B0007","text":"新增内容"}
 7. text 字段必须写 Markdown 内容，不要写包裹用的 section 标签。
-8. 文档地图里的 B 编号是段落/表格/标题锚点，不是行号。修改时必须优先选择最小影响范围的块。
+8. 文档地图里的 B 编号是当前快照的块编号，不是行号。hash 仅校验对应块；同批补丁使用同一快照。工具写入后返回最新 docMap，后续修改直接使用返回的新编号和 hash，不必重读全文。冲突时本批次不写入，按返回地图重新定位。可以用唯一 find 做局部替换，text 为空字符串表示删除。优先最小范围修改。
 9. 不要要求用户重新粘贴全文；如果文档地图不足以定位，先说明需要哪个关键词或哪一段。
 10. 兼容旧协议：也可以使用 \`\`\`copy:replace\`\`\`，第一行是块编号，后面是替换内容。
 11. 如果只是分析、建议、提纲或问用户问题，不要输出写回代码块。

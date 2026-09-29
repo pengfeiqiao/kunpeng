@@ -3,6 +3,22 @@ import { create } from 'zustand';
 export type ActiveView = 'chat' | 'editor' | 'canvas' | 'wechat' | 'lark' | 'projects' | 'library' | 'workshop' | 'copywriting';
 import { Message, Session, Agent } from '@/types';
 
+const ATTACHMENT_DRAFT_KEY = 'kunpeng-attachment-drafts-v1';
+
+// Save only path metadata, never file bytes or streaming state. No idle expiry.
+function readAttachmentDrafts(): Record<string, string[]> {
+  try {
+    if (typeof localStorage === 'undefined') return {};
+    const parsed: unknown = JSON.parse(localStorage.getItem(ATTACHMENT_DRAFT_KEY) ?? '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).flatMap(([key, value]) => {
+      if (!Array.isArray(value)) return [];
+      const paths = [...new Set(value.filter((path): path is string => typeof path === 'string' && path.trim().length > 0))];
+      return paths.length ? [[key, paths]] : [];
+    }));
+  } catch { return {}; }
+}
+
 interface ChatState {
   draftFiles: Record<string, string[]>;
   appendCurrentDraftFiles: (paths: string[]) => void;
@@ -87,7 +103,7 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
-  draftFiles: {},
+  draftFiles: readAttachmentDrafts(),
   appendCurrentDraftFiles: paths => {
     const state = get();
     const key = state.currentSessionId ?? `new:${state.currentAgent?.id ?? 'main'}`;
@@ -119,10 +135,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     sessions: [session, ...state.sessions],
     currentSessionId: session.id,
   })),
-  removeSession: (sessionId) => set((state) => ({
-    sessions: state.sessions.filter((s) => s.id !== sessionId),
-    currentSessionId: state.currentSessionId === sessionId ? null : state.currentSessionId,
-  })),
+  removeSession: (sessionId) => set((state) => {
+    const draftFiles = { ...state.draftFiles };
+    delete draftFiles[sessionId];
+    return {
+      sessions: state.sessions.filter((s) => s.id !== sessionId),
+      currentSessionId: state.currentSessionId === sessionId ? null : state.currentSessionId,
+      draftFiles,
+    };
+  }),
   updateSession: (sessionId, updates) => set((state) => ({
     sessions: state.sessions.map((s) =>
       s.id === sessionId ? { ...s, ...updates } : s
@@ -242,3 +263,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   draftMessage: '',
   setDraftMessage: (draftMessage) => set({ draftMessage }),
 }));
+
+// Synchronous small writes protect against suspension/reload immediately after a drop.
+// Unrelated updates (including streaming tokens and focus changes) never write here.
+useChatStore.subscribe((state, previous) => {
+  if (state.draftFiles === previous.draftFiles || typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(ATTACHMENT_DRAFT_KEY, JSON.stringify(state.draftFiles));
+  } catch {
+    // Keep the in-memory draft and surface a real failure instead of claiming it was saved.
+    useChatStore.getState().setError('附件草稿暂时无法保存，重启前请先发送或备份附件。');
+  }
+});

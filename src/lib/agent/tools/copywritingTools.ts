@@ -2,7 +2,7 @@ import type { Tool, ToolResult } from '../types';
 import { useCopywritingStore } from '@/stores/copywritingStore';
 import type { CopyDoc } from '@/lib/copywriting/types';
 import {
-  applyCopyPatches,
+  applyCopyPatchesDetailed,
   buildCopyDocMap,
   formatCopyDocHtml,
   formatCopyDocMap,
@@ -223,6 +223,7 @@ export const copywritingSetDocTool: Tool = {
     return ok({
       message: '已写入文案编辑器',
       doc: next ? summarizeDoc(next) : { id: doc.id },
+      docMap: next ? formatCopyDocMap(next.content) : undefined,
       qualityAudit: summarizeAudit(content),
     });
   },
@@ -231,7 +232,7 @@ export const copywritingSetDocTool: Tool = {
 export const copywritingPatchDocTool: Tool = {
   definition: {
     name: 'copywriting_patch_doc',
-    description: '按文档块局部修改文案编辑器。只用于已有 data-block-id 的文档；空文档会把可识别的 replace_block text 当整篇内容写入，避免静默失败。',
+    description: '按块或唯一 find 局部修改 Markdown。hash 是目标块内容校验，不是全文版本；批内补丁基于同一快照，冲突时整批不写入。返回最新 docMap 可直接用于下一次修改，无需重读全文。text 可为空字符串以删除内容。',
     parameters: {
       type: 'object',
       properties: {
@@ -258,18 +259,29 @@ export const copywritingPatchDocTool: Tool = {
       if (!wholeDoc) return { success: false, output: '', error: '当前文档为空，patch 没有可整篇写入的 text；请改用 copywriting_set_doc' };
       nextContent = wholeDoc;
     } else {
-      nextContent = applyCopyPatches(doc.content, patches);
+      const result = applyCopyPatchesDetailed(doc.content, patches);
+      if (result.conflicts.length) return {
+        success: false,
+        error: '补丁冲突，本批次未写入。请根据返回的最新块信息修正。',
+        output: JSON.stringify({ conflicts: result.conflicts, doc: summarizeDoc(doc), docMap: formatCopyDocMap(doc.content) }),
+      };
+      nextContent = result.content;
     }
     if (nextContent === doc.content) {
-      return { success: false, output: '', error: '没有任何 patch 命中文档。请先调用 copywriting_get_state 获取最新块编号。' };
+      return ok({ message: '目标内容已经一致，无需修改', doc: summarizeDoc(doc), docMap: formatCopyDocMap(doc.content) });
     }
     if (doc.content.trim()) await backupDoc(doc);
+    if (getDoc(doc.id)?.content !== doc.content) return {
+      success: false, error: '备份期间正文已被修改，本批次未写入，请按最新块信息重试。',
+      output: JSON.stringify({ docMap: formatCopyDocMap(getDoc(doc.id)?.content ?? '') }),
+    };
     useCopywritingStore.getState().updateDoc(doc.id, { content: nextContent });
     await persistDoc(doc.id);
     const next = getDoc(doc.id);
     return ok({
       message: '已修改文案编辑器',
       doc: next ? summarizeDoc(next) : { id: doc.id },
+      docMap: next ? formatCopyDocMap(next.content) : undefined,
       qualityAudit: summarizeAudit(nextContent),
     });
   },

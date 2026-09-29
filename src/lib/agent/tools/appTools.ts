@@ -56,7 +56,7 @@ export const switchViewTool: Tool = {
 export const viewCapabilitiesTool: Tool = {
   definition: {
     name: 'view_capabilities',
-    description: '查看鲲鹏各工作区的 Agent 能力入口。工具因视图按需加载时，先用它确认目标视图和代表性工具，再 switch_view。',
+    description: '查看鲲鹏各工作区的 Agent 能力入口。未出现在函数列表不代表不支持；先用 tool_search 按名称或模型关键词加载完整参数，确有工作区限制才 switch_view。脚本渠道不是全部能力清单。',
     parameters: {
       type: 'object',
       properties: {
@@ -79,7 +79,7 @@ export const viewCapabilitiesTool: Tool = {
       lark: { label: '飞书工作区', tools: [], note: '飞书内容工作流' },
     };
     const view = String(params.view ?? '');
-    if (view) return { success: true, output: JSON.stringify({ view, ...capabilities[view], next: `调用 switch_view({view:"${view}"}) 后再使用该工作区工具。` }, null, 2) };
+    if (view) return { success: true, output: JSON.stringify({ view, ...capabilities[view], next: '优先用 tool_search 加载上述工具完整参数；仅当工具受目标工作区限制时 switch_view。模型支持以工具定义和注册表为准，凭证与远端可用性需分别核实。' }, null, 2) };
     return { success: true, output: JSON.stringify({ active_view: useChatStore.getState().activeView, capabilities }, null, 2) };
   },
 };

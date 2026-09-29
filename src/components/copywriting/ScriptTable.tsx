@@ -5,33 +5,8 @@ interface TableRow {
   [key: string]: string;
 }
 
-interface ParsedTable {
-  headers: string[];
-  rows: TableRow[];
-}
-
-export function parseMarkdownTable(md: string): ParsedTable | null {
-  const lines = md.trim().split('\n').filter(l => l.trim().length > 0);
-  if (lines.length < 2) return null;
-
-  const headerLine = lines[0];
-  if (!headerLine.includes('|')) return null;
-
-  const headers = headerLine.split('|').map(h => h.trim()).filter(Boolean);
-  if (headers.length < 2) return null;
-
-  const rows: TableRow[] = [];
-  for (let i = 2; i < lines.length; i++) {
-    const cells = lines[i].split('|').map(c => c.trim()).filter(Boolean);
-    const row: TableRow = {};
-    headers.forEach((h, idx) => {
-      row[h] = cells[idx] ?? '';
-    });
-    rows.push(row);
-  }
-
-  return { headers, rows };
-}
+import { parseMarkdownTable } from '@/lib/copywriting/markdownTable';
+export { parseMarkdownTable } from '@/lib/copywriting/markdownTable';
 
 interface Props {
   markdown: string;
@@ -119,7 +94,7 @@ export default function ScriptTable({ markdown, onChange }: Props) {
                         className={onChange ? 'min-w-[72px] rounded px-1 py-0.5 transition-colors hover:bg-white/60' : undefined}
                         title={onChange ? '双击编辑单元格' : undefined}
                       >
-                        <MarkdownRenderer content={row[h] ?? ''} />
+                        {row[h] ? <MarkdownRenderer content={row[h]} /> : <span aria-label="空单元格" className="text-stone-400">—</span>}
                       </div>
                     )}
                   </td>

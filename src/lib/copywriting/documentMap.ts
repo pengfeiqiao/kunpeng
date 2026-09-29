@@ -1,3 +1,6 @@
+import { Lexer } from 'marked';
+import { parseTableCells } from './markdownTable.ts';
+
 export type CopyBlockKind = 'heading' | 'paragraph' | 'list' | 'quote' | 'code' | 'table';
 
 export interface CopyBlock {
@@ -45,7 +48,7 @@ function splitLines(content: string): LineInfo[] {
   let start = 0;
   for (const raw of parts) {
     if (!raw && start >= content.length) continue;
-    const text = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
+    const text = raw.replace(/\r?\n$/, '');
     lines.push({
       text,
       raw,
@@ -110,7 +113,13 @@ function markdownBlockToHtml(block: CopyBlock, includeFullText = false): string 
     return `<pre><code>${escapedText}</code></pre>`;
   }
   if (block.kind === 'table') {
-    return `<table data-markdown-table="true"><caption>Markdown table preserved</caption><tbody><tr><td>${escapedText}</td></tr></tbody></table>`;
+    const table = parseTableCells(block.text);
+    if (table) {
+      const rows = includeFullText ? table.rows : table.rows.slice(0, 3);
+      const cells = (row: string[], tag: string) => row.map(cell => `<${tag}${cell ? '' : ' data-empty="true"'}>${escapeHtml(cell)}</${tag}>`).join('');
+      return `<table><thead><tr>${cells(table.headers, 'th')}</tr></thead><tbody>${rows.map(row => `<tr>${cells(row, 'td')}</tr>`).join('')}</tbody></table>${rows.length < table.rows.length ? '<!-- remaining rows omitted -->' : ''}`;
+    }
+    return `<pre>${escapedText}</pre>`;
   }
   return `<p>${escapedText}</p>`;
 }
@@ -135,7 +144,7 @@ function makeBlock(lines: LineInfo[], from: number, toExclusive: number, idIndex
     .slice(from, toExclusive)
     .map(line => line.raw)
     .join('')
-    .replace(/\n+$/g, '');
+    .replace(/(?:\r?\n)+$/g, '');
   if (!raw.trim()) return null;
   const start = first.start;
   const end = start + raw.length;
@@ -178,6 +187,17 @@ export function buildCopyDocMap(content: string): CopyBlock[] {
       if (i < lines.length) i += 1;
       push(from, i, 'code');
       continue;
+    }
+
+    // Detect GFM tables with or without outer pipes; stop before a following heading.
+    if (i + 1 < lines.length && lines[i].text.includes('|') && /^\s*\|?\s*:?-+/.test(lines[i + 1].text)) {
+      const token = Lexer.lex(content.slice(lines[i].start), { gfm: true })[0];
+      if (token?.type === 'table') {
+        const from = i;
+        i += token.raw.trimEnd().split('\n').length;
+        push(from, i, 'table');
+        continue;
+      }
     }
 
     const kind = lineKind(lines[i].text);
@@ -335,73 +355,65 @@ function blockIdFromSelector(selector?: string): string | undefined {
     ?? undefined;
 }
 
-function replaceInsideBlock(content: string, block: CopyBlock, find: string, replacement: string): string | null {
-  const local = content.slice(block.start, block.end);
-  const exact = local.indexOf(find);
-  if (exact >= 0) {
-    const start = block.start + exact;
-    return content.slice(0, start) + replacement + content.slice(start + find.length);
+export function applyCopyPatchesDetailed(content: string, patches: CopyPatch[]) {
+  const blocks = buildCopyDocMap(content);
+  const edits: { start: number; end: number; text: string; index: number }[] = [];
+  const conflicts: { index: number; reason: string }[] = [];
+  const fail = (index: number, reason: string) => conflicts.push({ index, reason });
+  patches.forEach((patch, index) => {
+    const id = patch.blockId ?? blockIdFromSelector(patch.selector);
+    let block = id ? blocks.find(item => item.id.toLowerCase() === id.toLowerCase()) : undefined;
+    const op = patch.op ?? (patch.find ? 'replace_text' : 'replace_block');
+    const text = resolvePatchText(patch);
+    if (typeof patch.text !== 'string' && typeof patch.replace !== 'string') {
+      fail(index, '缺少 text 或 replace'); return;
+    }
+    if (patch.hash && block?.hash !== patch.hash) {
+      const matches = blocks.filter(item => item.hash === patch.hash);
+      if (matches.length === 1) block = matches[0];
+      else { fail(index, '目标块已改变或无法唯一定位，请使用返回的最新块信息'); return; }
+    }
+    if (id && !block) { fail(index, '目标块不存在'); return; }
+    if (op === 'replace_text') {
+      if (!patch.find) { fail(index, 'replace_text 缺少 find'); return; }
+      const source = block?.text ?? content;
+      const exact = source.indexOf(patch.find);
+      let range: { start: number; end: number } | null = null;
+      if (exact >= 0) {
+        if (source.indexOf(patch.find, exact + 1) >= 0) { fail(index, 'find 匹配多处，请缩小范围'); return; }
+        range = { start: exact, end: exact + patch.find.length };
+      } else {
+        const normalizedSource = normalize(source).value;
+        const target = normalize(patch.find).value;
+        const first = normalizedSource.indexOf(target);
+        if (target && first >= 0 && normalizedSource.indexOf(target, first + 1) >= 0) {
+          fail(index, 'find 匹配多处，请缩小范围'); return;
+        }
+        range = findNormalizedRange(source, patch.find);
+      }
+      if (!range) { fail(index, '目标范围内没有找到 find'); return; }
+      edits.push({ start: (block?.start ?? 0) + range.start, end: (block?.start ?? 0) + range.end, text, index });
+      return;
+    }
+    if (!block) { fail(index, '此操作需要有效的 blockId'); return; }
+    if (op === 'replace_block') edits.push({ start: block.start, end: block.end, text, index });
+    else if (op === 'insert_before') edits.push({ start: block.start, end: block.start, text: text.replace(/\n*$/, '') + '\n\n', index });
+    else if (op === 'insert_after') edits.push({ start: block.end, end: block.end, text: '\n\n' + text.replace(/^\n*/, ''), index });
+    else fail(index, '未知 patch 操作');
+  });
+  edits.sort((a, b) => a.start - b.start || a.end - b.end);
+  for (let i = 1; i < edits.length; i++) {
+    if (edits[i].start < edits[i - 1].end || edits[i].start === edits[i - 1].start) {
+      fail(edits[i].index, '补丁范围重叠，请合并为一个补丁');
+    }
   }
-  const normalized = findNormalizedRange(local, find);
-  if (!normalized) return null;
-  const start = block.start + normalized.start;
-  const end = block.start + normalized.end;
-  return content.slice(0, start) + replacement + content.slice(end);
+  // Every patch in a batch refers to the same original snapshot. Never partially commit.
+  if (conflicts.length) return { content, conflicts, applied: 0 };
+  let result = content;
+  for (const edit of edits.reverse()) result = result.slice(0, edit.start) + edit.text + result.slice(edit.end);
+  return { content: result, conflicts, applied: edits.length };
 }
 
 export function applyCopyPatches(content: string, patches: CopyPatch[]): string {
-  if (patches.length === 0) return content;
-  let result = content;
-
-  for (const patch of patches) {
-    const blocks = buildCopyDocMap(result);
-    const patchBlockId = patch.blockId ?? blockIdFromSelector(patch.selector);
-    const block = patchBlockId ? blocks.find(item => item.id.toLowerCase() === patchBlockId.toLowerCase()) : null;
-    const op = patch.op ?? (patch.find ? 'replace_text' : 'replace_block');
-    const text = resolvePatchText(patch);
-
-    if (block && patch.hash && patch.hash !== block.hash) {
-      // The block moved or changed while the agent was working. Keep the patch local,
-      // but only use it when a find string can still be matched inside the block.
-      if (!patch.find) continue;
-    }
-
-    if (block && op === 'replace_block' && text) {
-      result = result.slice(0, block.start) + text + result.slice(block.end);
-      continue;
-    }
-
-    if (block && op === 'insert_before' && text) {
-      result = result.slice(0, block.start) + text.replace(/\n?$/g, '\n\n') + result.slice(block.start);
-      continue;
-    }
-
-    if (block && op === 'insert_after' && text) {
-      result = result.slice(0, block.end) + text.replace(/^\n?/g, '\n\n') + result.slice(block.end);
-      continue;
-    }
-
-    if (patch.find && text) {
-      if (block) {
-        const next = replaceInsideBlock(result, block, patch.find, text);
-        if (next !== null) {
-          result = next;
-          continue;
-        }
-      }
-
-      const exact = result.indexOf(patch.find);
-      if (exact >= 0) {
-        result = result.slice(0, exact) + text + result.slice(exact + patch.find.length);
-        continue;
-      }
-
-      const normalized = findNormalizedRange(result, patch.find);
-      if (normalized) {
-        result = result.slice(0, normalized.start) + text + result.slice(normalized.end);
-      }
-    }
-  }
-
-  return result;
+  return applyCopyPatchesDetailed(content, patches).content;
 }

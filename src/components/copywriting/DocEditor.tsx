@@ -1,3 +1,4 @@
+import { copyTableRanges, replaceCopyContentRange } from '@/lib/copywriting/markdownTable';
 import { buildStoryReviewPrompt } from '@/lib/copywriting/screenwritingCraft';
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -244,18 +245,17 @@ export default function DocEditor({ doc }: Props) {
   }, [doc, editingBlock, updateDoc]);
 
   const contentBlocks = useMemo(() => {
-    if (!analysisContent) return [];
+    if (!doc?.content) return [];
     const blocks: { type: 'md' | 'table' | 'report'; content: string; start: number; end: number }[] = [];
-    const tableRe = /^(\|[^\n]+\|)\n(\|(?:\s*:?-+:?\s*\|)+)\n((?:\|[^\n]+\|\n?)+)/gm;
     const reportRe = /```json:report\n([\s\S]*?)```/g;
 
     let lastIndex = 0;
-    const content = analysisContent;
+    const content = doc.content;
     const markers: { start: number; end: number; type: 'table' | 'report'; raw: string }[] = [];
 
     let m;
-    while ((m = tableRe.exec(content)) !== null) {
-      markers.push({ start: m.index, end: m.index + m[0].length, type: 'table', raw: m[0] });
+    for (const range of copyTableRanges(content)) {
+      markers.push({ ...range, type: 'table' });
     }
     while ((m = reportRe.exec(content)) !== null) {
       markers.push({ start: m.index, end: m.index + m[0].length, type: 'report', raw: m[1] });
@@ -275,11 +275,11 @@ export default function DocEditor({ doc }: Props) {
     }
 
     return blocks;
-  }, [analysisContent]);
+  }, [doc?.content]);
 
   const replaceContentRange = useCallback((start: number, end: number, nextBlock: string) => {
-    if (!doc) return;
-    updateDoc(doc.id, { content: doc.content.slice(0, start) + nextBlock + doc.content.slice(end) });
+    if (!doc || useCopywritingStore.getState().docs.find(item => item.id === doc.id)?.content !== doc.content) return;
+    updateDoc(doc.id, { content: replaceCopyContentRange(doc.content, start, end, nextBlock) });
   }, [doc, updateDoc]);
 
   const documentTableData = useMemo(() => {
@@ -635,6 +635,7 @@ export default function DocEditor({ doc }: Props) {
                     return (
                       <div key={bi} data-copy-start={block.start} data-copy-end={block.end}>
                         <ScriptTable
+                          key={`${doc.id}:${block.content}`}
                           markdown={block.content}
                           onChange={(next) => replaceContentRange(block.start, block.end, next)}
                         />

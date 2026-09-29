@@ -279,7 +279,7 @@ function App() {
   useEffect(() => {
     if (autoResumed || !settingsReady || !isReady) return;
     const state = _useChatStore.getState();
-    if (state.currentSessionId || state.sessions.length === 0) {
+    if (state.currentSessionId || state.sessions.length === 0 || state.draftMessage.trim() || state.draftFiles[`new:${state.currentAgent?.id ?? 'main'}`]?.length) {
       setAutoResumed(true);
       return;
     }
@@ -292,7 +292,15 @@ function App() {
       })
       .sort((a, b) => b.updatedAt - a.updatedAt);
     if (candidates.length > 0) {
-      void loadSession(candidates[0].id);
+      // Restore the conversation the user left, including its unsent attachments.
+      let rememberedId: string | null = null;
+      try { rememberedId = localStorage.getItem('kunpeng-last-active-session-id'); } catch { /* use recent session */ }
+      void loadSession(candidates.find(session => session.id === rememberedId)?.id ?? candidates[0].id, () => {
+        // Recheck after async history loading: the user may have dropped a file meanwhile.
+        const latest = _useChatStore.getState();
+        return !latest.currentSessionId && !latest.draftMessage.trim()
+          && !latest.draftFiles[`new:${latest.currentAgent?.id ?? 'main'}`]?.length;
+      });
     }
     setAutoResumed(true);
   }, [autoResumed, settingsReady, isReady, loadSession]);

@@ -370,7 +370,8 @@ export function useSessions() {
 
   // Load session messages
   const loadSession = useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string, canActivate?: () => boolean) => {
+      if (canActivate && !canActivate()) return { messages: [], loaded: false };
       const currentState = useChatStore.getState();
       if (currentState.isStreaming && currentState.currentSessionId !== sessionId) {
         return { messages: [], loaded: false };
@@ -410,9 +411,11 @@ export function useSessions() {
         console.warn('[useSessions] refusing to load an index-only session:', sessionId);
         return { messages: [], loaded: false };
       }
+      if (canActivate && !canActivate()) return { messages: [], loaded: false };
       // Restore coordinator BEFORE setting UI state
       await _coordinatorRestoreCallback?.(sessionId);
 
+      if (canActivate && !canActivate()) return { messages: [], loaded: false };
       setCurrentSession(sessionId);
       rememberActiveSession(sessionId);
       if (messages !== null) {

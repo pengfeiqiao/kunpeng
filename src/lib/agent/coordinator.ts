@@ -812,7 +812,7 @@ export class AgentCoordinator {
           callbacks.onToolStart(p.call.function.name, p.params);
           const startedAt = Date.now();
           const result: ToolResult = p.call.function.name === 'tool_search'
-            ? this.toolExposure.load(p.params.names, this.config.toolRegistry.getDefinitions())
+            ? this.toolExposure.load(p.params.names, this.config.toolRegistry.getDefinitions(), p.params.query)
             : await this.config.toolRegistry.execute(
             p.call.function.name,
             p.params,
