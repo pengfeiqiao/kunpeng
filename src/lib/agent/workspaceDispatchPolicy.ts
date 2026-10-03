@@ -25,7 +25,7 @@ const denied = '工作台范围保护：本次工具调用超出当前项目；�
 const reads = new Set(['read_file', 'glob_search', 'grep_search', 'list_directory', 'bash_read_output',
   'project_get_paths', 'project_get_objects', 'project_get_generation_draft', 'workshop_get_state', 'workshop_get_shot_refs',
   'workshop_read_source', 'view_capabilities', 'canvas_get_state', 'canvas_capture_node', 'timeline_get_state',
-  'timeline_get_fx_detail', 'image_recognition', 'ask_user_question', 'task_status', 'skill_invoke', 'aigc_optimize_prompt',
+  'timeline_get_fx_detail', 'image_recognition', 'image_inspect', 'ask_user_question', 'task_status', 'skill_invoke', 'aigc_optimize_prompt',
   'web_search', 'web_fetch', 'apimart_route_status']);
 
 function record(value: unknown): value is Record<string, unknown> {

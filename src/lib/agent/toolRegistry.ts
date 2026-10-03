@@ -196,6 +196,7 @@ import { skillInvokeTool } from './tools/skillInvokeTool';
 import { webFetchTool } from './tools/webFetchTool';
 import { webSearchTool } from './tools/webSearchTool';
 import { browserControlTool, browserInstallTool } from './tools/browserTool';
+import { imageInspectTool } from './tools/imageInspectTool';
 import { visionTool } from './tools/visionTool';
 import { videoUnderstandingTool } from './tools/videoUnderstandingTool';
 import { capabilityApiConfigTool } from './tools/capabilityApiConfigTool';
@@ -235,6 +236,7 @@ export function createDefaultRegistry(): ToolRegistry {
   registry.register(browserControlTool);
   registry.register(browserInstallTool);
   registry.register(visionTool);
+  registry.register(imageInspectTool);
   registry.register(videoUnderstandingTool);
   registry.register(capabilityApiConfigTool);
   registry.register(mediaApiPluginTool);

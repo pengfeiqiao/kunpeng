@@ -159,6 +159,8 @@ export const copywritingGetStateTool: Tool = {
       type: 'object',
       properties: {
         include_content: { type: 'boolean', description: '是否返回完整正文，默认 false。长文档慎用。' },
+        block_ids: { type: 'array', items: { type: 'string' }, description: '按块编号读取完整正文（最多20块），重复句也能精确定位' },
+        query: { type: 'string', description: '在完整块内容中查找关键词，返回匹配块的全文与hash，最多20块' },
         doc_id: { type: 'string', description: '可选，指定文档 id；默认当前打开文档' },
       },
     },
@@ -174,7 +176,15 @@ export const copywritingGetStateTool: Tool = {
         message: '当前没有打开文档。要写入编辑器请调用 copywriting_set_doc 创建并写入，或输出 markdown:doc。',
       });
     }
+    const ids = Array.isArray(params.block_ids) ? params.block_ids.map(String) : [];
+    const query = typeof params.query === 'string' ? params.query.trim() : '';
+    const blocks = buildCopyDocMap(doc.content);
+    const matches = ids.length || query ? blocks.filter(block =>
+      (!ids.length || ids.includes(block.id)) && (!query || block.text.includes(query))) : [];
     return ok({
+      matchingBlocks: matches.slice(0, 20),
+      matchingBlockCount: matches.length,
+      missingBlockIds: ids.filter(id => !blocks.some(block => block.id === id)),
       activeDocId: store.activeDocId,
       doc: {
         ...summarizeDoc(doc),

@@ -90,6 +90,11 @@ export const imageGenerateTool: Tool = {
     return `chat-image:${outputPath || prompt.slice(0, 80)}`;
   },
   async execute(params) {
+    const suppliedReferences = Array.isArray(params.reference_urls) ? params.reference_urls : [];
+    if ((params.reference_urls !== undefined && !Array.isArray(params.reference_urls)) || suppliedReferences.length > 10 || suppliedReferences.some(path => typeof path !== 'string' || !path.trim())) {
+      return { success: false, output: '', error: '提交前参考图校验失败：最多10张，路径不得为空；不会静默截断或重排。', paidSubmissionState: 'not_submitted' };
+    }
+    const referenceReceipt = `参考顺序回执：${JSON.stringify(suppliedReferences.map((path, index) => ({ index: index + 1, token: '@图片' + (index + 1), path })))}`;
     const settings = useSettingsStore.getState();
     let requestedModel = String(params.model || settings.chatImageModel || 'gpt-image-2.5');
     // Midjourney 别名归一：agent 常会写 'midjourney' / 'mj' / 'midjourney-v8.2'
@@ -126,6 +131,7 @@ export const imageGenerateTool: Tool = {
         success: true,
         output: [
           '图片生成完成。',
+          referenceReceipt,
           `模型：${api?.label ?? requestedModel}（自定义插件）`,
           `文件：${path}`,
         ].join('\n'),
@@ -207,6 +213,7 @@ export const imageGenerateTool: Tool = {
         success: true,
         output: [
           `Midjourney 图片生成完成，共 ${result.resultPaths.length} 张候选。`,
+          referenceReceipt,
           `画幅：${aspectRatio}`,
           `版本：${version.toUpperCase()}`,
           ...(style ? [`风格：${style.name}`] : []),
@@ -235,6 +242,7 @@ export const imageGenerateTool: Tool = {
       success: true,
       output: [
         '图片生成完成。',
+        referenceReceipt,
         `模型：${result.modelUsed || model}`,
         `画幅：${aspectRatio}`,
         `通道：${result.apiUsed}`,

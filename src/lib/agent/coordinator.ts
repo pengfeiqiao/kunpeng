@@ -1265,7 +1265,13 @@ export class AgentCoordinator {
     // 保留当前 system prompt
     const system = this.messages.filter((m) => m.role === 'system');
     // 过滤掉已保存的 system 消息（避免重复）
-    const nonSystem = savedMessages.filter((m) => m.role !== 'system');
+    let nonSystem: AgentMessage[] = savedMessages.filter((m) => m.role !== 'system');
+    if (nonSystem.some(message => message.role === 'user' && Array.isArray(message.content)
+      && message.content.some(block => block.type === 'image' && block.sourcePath))) {
+      const [{ recoverStoredImages }, { loadImageInput }] = await Promise.all([import('./mediaRecovery'), import('./tools/dmxClient')]);
+      nonSystem = await recoverStoredImages(nonSystem, loadImageInput);
+      if (revision !== this.historyRevision || this.isRunning) return;
+    }
 
     if (nonSystem.length === 0) return;
 
@@ -1302,6 +1308,7 @@ export class AgentCoordinator {
         ...message,
         content: message.content.map((block) => {
           if (block.type === 'text') return block;
+          if (block.type === 'image' && block.sourcePath) return { ...block, source: { type: 'url' as const, url: block.sourcePath } };
           if (block.type === 'image' && block.source.type === 'url') return block;
           return {
             type: 'text' as const,

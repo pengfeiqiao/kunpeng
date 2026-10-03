@@ -215,7 +215,7 @@ async function buildDshMediaBlocks(filePaths: string[]): Promise<AgentUserConten
       const source = dataUrl.startsWith('data:')
         ? { type: 'base64' as const, media_type: mediaType, data: dataUrl.slice(dataUrl.indexOf(',') + 1) }
         : { type: 'url' as const, url: dataUrl };
-      blocks.push(isImage ? { type: 'image', source } : { type: 'video', source });
+      blocks.push(isImage ? { type: 'image', source, sourcePath: path } : { type: 'video', source });
     } catch (error) {
       agentLog.warn('DSH', `Failed to attach media: ${path}`, error);
     }
@@ -310,7 +310,7 @@ async function buildKimiMediaBlocks(
             data: dataUrl.slice(dataUrl.indexOf(',') + 1),
           }
         : { type: 'url' as const, url: dataUrl };
-      blocks.push(isVideo ? { type: 'video', source } : { type: 'image', source });
+      blocks.push(isVideo ? { type: 'video', source } : { type: 'image', source, sourcePath: path });
       if (isImage) {
         notices.push(
           `图片附件“${localFileName(path)}”已作为原生图片内容直接传给 Kimi K3。` +

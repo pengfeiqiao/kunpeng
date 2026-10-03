@@ -39,7 +39,7 @@ export const visionTool: Tool = {
     if (!image || !image.trim()) {
       return { success: false, output: '', error: 'image required' };
     }
-    const question = (prompt && prompt.trim()) || DEFAULT_PROMPT;
+    const question = ((prompt && prompt.trim()) || DEFAULT_PROMPT) + '\n\n核验纪律：问题中的判断不是事实，不要顺从是非问法。先列可见证据、反证与遮挡/分辨率限制，再给结论。空间方向区分画面左右和物体自身左右。对每个缺陷给出区域 [x,y,width,height]（0–1归一化，原图坐标）及 high/medium/low 的主观把握程度和原因；这不是统计置信度。看不清文字必须标未知，不能因放大而编造笔画。需要局部证据时用 image_inspect 裁切后重读；像素一致性用差分指标，不能凭语义保证像素未变。';
 
     try {
       let input = await loadImageInput(image);

@@ -14,7 +14,6 @@ import {
   readSessionIndex,
   deleteSessionFile,
   hydrateLocalStorageSession,
-  hydrateLocalStorageSessions,
   compactMessagesForStorage,
 } from '@/lib/historyPersistence';
 import { safeLocalStorage } from '@/lib/safeStorage';
@@ -100,6 +99,7 @@ export function ensureSessionTitleRaw(sessionId: string, firstRequest: string): 
 }
 
 // ── Coordinator 恢复回调（由 useAgent 注册，避免循环依赖）─────────────────
+let sessionNavigationRevision = 0;
 let _coordinatorRestoreCallback: ((sessionId: string) => Promise<void>) | null = null;
 
 export function setCoordinatorRestoreCallback(fn: (sessionId: string) => Promise<void>) {
@@ -115,6 +115,7 @@ export async function createSessionRaw(title?: string, projectId?: string): Prom
     console.warn('[useSessions] refusing to create a session while streaming');
     return null;
   }
+  const navigationRevision = ++sessionNavigationRevision;
   const agentId = 'main';
   const sessionId = `agent:${agentId}:${uuidv4()}`;
   const now = Date.now();
@@ -132,16 +133,15 @@ export async function createSessionRaw(title?: string, projectId?: string): Prom
   store.addSession(session);
   store.clearMessages();
   rememberActiveSession(sessionId);
-  // Reset coordinator so the new chat does NOT inherit prior context.
+  // Publish the index and enqueue the empty body before any await. A later send
+  // must never be overwritten by a delayed empty-document initialization.
+  const initialWrite = writeSessionToFile(sessionId, { messages: [], agentMessages: [] });
+  saveSessionsToStorage(useChatStore.getState().sessions);
+  void writeSessionIndex(useChatStore.getState().sessions);
+  await initialWrite;
+  if (navigationRevision !== sessionNavigationRevision) return null;
   await _coordinatorRestoreCallback?.(sessionId);
-  // Create the durable body before exposing the session in the sidebar.
-  // Otherwise a fast view switch can select an index-only session and appear
-  // to lose the assistant conversation.
-  await writeSessionToFile(sessionId, { messages: [], agentMessages: [] });
-
-  const allSessions = [session, ...useChatStore.getState().sessions.filter((x) => x.id !== sessionId)];
-  saveSessionsToStorage(allSessions);
-  void writeSessionIndex(allSessions);
+  if (navigationRevision !== sessionNavigationRevision) return null;
   return session;
 }
 
@@ -149,6 +149,7 @@ export async function createSessionRaw(title?: string, projectId?: string): Prom
 export async function loadSessionRaw(sessionId: string): Promise<boolean> {
   const store = useChatStore.getState();
   if (store.isStreaming) return false;
+  const navigationRevision = ++sessionNavigationRevision;
   if (store.currentSessionId === sessionId) {
     rememberActiveSession(sessionId);
     return true;
@@ -165,7 +166,9 @@ export async function loadSessionRaw(sessionId: string): Promise<boolean> {
       return false;
     }
   }
+  if (navigationRevision !== sessionNavigationRevision) return false;
   await _coordinatorRestoreCallback?.(sessionId);
+  if (navigationRevision !== sessionNavigationRevision) return false;
   store.setCurrentSession(sessionId);
   rememberActiveSession(sessionId);
   store.setMessages(messages ?? []);
@@ -257,6 +260,7 @@ export function useSessions() {
   // written by older code paths). Stale localStorage no longer hides newer
   // sessions on disk.
   const loadSessions = useCallback(async () => {
+    const baseline = new Map(useChatStore.getState().sessions.map(session => [session.id, session]));
     try {
       const fromFile = (await readSessionIndex()) ?? [];
       const fromLs = loadSessionsFromStorage() ?? [];
@@ -274,14 +278,6 @@ export function useSessions() {
       const merged = Array.from(byId.values()).sort(
         (a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
       );
-
-      // Re-sync localStorage cache to match the merged source of truth so the
-      // next read returns the same set; also ensures the file index keeps the
-      // forward-compat additions.
-      if (merged.length > 0) {
-        hydrateLocalStorageSessions(merged);
-        void writeSessionIndex(merged);
-      }
 
       const { deletedSessionIds } = useSettingsStore.getState();
 
@@ -315,12 +311,22 @@ export function useSessions() {
         return { ...session, title };
       }));
 
-      setSessions(healed);
-      if (healed.some((session, index) => session.title !== visible[index]?.title)) {
-        saveSessionsToStorage(healed);
-        void writeSessionIndex(healed);
+      // Keep sessions created/edited while disk reads and title healing were in flight.
+      const latest = useChatStore.getState().sessions;
+      const latestIds = new Set(latest.map(session => session.id));
+      const deleted = useSettingsStore.getState().deletedSessionIds;
+      const combined = new Map(healed.filter(session =>
+        !(baseline.has(session.id) && !latestIds.has(session.id))
+        && !deleted.includes(session.id) && !deleted.includes(session.id.split(':').pop() || '')
+      ).map(session => [session.id, session]));
+      for (const session of latest) {
+        if (deleted.includes(session.id) || deleted.includes(session.id.split(':').pop() || '')) continue;
+        if (baseline.get(session.id) !== session || !combined.has(session.id)
+          || session.updatedAt > combined.get(session.id)!.updatedAt) combined.set(session.id, session);
       }
-
+      setSessions([...combined.values()].sort((a, b) => b.updatedAt - a.updatedAt));
+      saveSessionsToStorage(useChatStore.getState().sessions);
+      void writeSessionIndex(useChatStore.getState().sessions);
       // Seed unread state
       const { sessionLastReadAt } = useSettingsStore.getState();
       const chatState = useChatStore.getState();
@@ -372,6 +378,7 @@ export function useSessions() {
   const loadSession = useCallback(
     async (sessionId: string, canActivate?: () => boolean) => {
       if (canActivate && !canActivate()) return { messages: [], loaded: false };
+      const navigationRevision = ++sessionNavigationRevision;
       const currentState = useChatStore.getState();
       if (currentState.isStreaming && currentState.currentSessionId !== sessionId) {
         return { messages: [], loaded: false };
@@ -389,6 +396,7 @@ export function useSessions() {
           messages: compactMessagesForStorage(currentMessages),
           agentMessages,
         });
+        if (navigationRevision !== sessionNavigationRevision) return { messages: [], loaded: false };
         const firstUserMessage = firstMeaningfulUserRequest(currentMessages);
         if (firstUserMessage) ensureSessionTitleRaw(sessionId, firstUserMessage.content);
         currentState.clearSessionUnread(sessionId);
@@ -411,11 +419,11 @@ export function useSessions() {
         console.warn('[useSessions] refusing to load an index-only session:', sessionId);
         return { messages: [], loaded: false };
       }
-      if (canActivate && !canActivate()) return { messages: [], loaded: false };
+      if (navigationRevision !== sessionNavigationRevision || (canActivate && !canActivate())) return { messages: [], loaded: false };
       // Restore coordinator BEFORE setting UI state
       await _coordinatorRestoreCallback?.(sessionId);
 
-      if (canActivate && !canActivate()) return { messages: [], loaded: false };
+      if (navigationRevision !== sessionNavigationRevision || (canActivate && !canActivate())) return { messages: [], loaded: false };
       setCurrentSession(sessionId);
       rememberActiveSession(sessionId);
       if (messages !== null) {
@@ -437,6 +445,7 @@ export function useSessions() {
   const switchToAgent = useCallback(async (agent: Agent) => {
     if (useChatStore.getState().isStreaming) return;
     const store = useChatStore.getState();
+    const navigationRevision = ++sessionNavigationRevision;
     store.setCurrentAgent(agent);
 
     const { deletedSessionIds } = useSettingsStore.getState();
@@ -468,7 +477,9 @@ export function useSessions() {
       }
       // Restore coordinator BEFORE setting UI state, so the coordinator is
       // ready before any code reads currentSessionId.
+      if (navigationRevision !== sessionNavigationRevision) return;
       await _coordinatorRestoreCallback?.(sessionId);
+      if (navigationRevision !== sessionNavigationRevision) return;
 
       store.setCurrentSession(sessionId);
       rememberActiveSession(sessionId);

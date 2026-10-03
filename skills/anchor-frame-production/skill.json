@@ -1,0 +1,7 @@
+{
+  "id": "anchor-frame-production",
+  "name": "锚定图制作",
+  "description": "参考分工、局部核验、版本记录与跨镜一致性",
+  "visibility": "library",
+  "version": "1.0.0"
+}

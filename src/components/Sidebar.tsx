@@ -59,6 +59,11 @@ function SidebarNavItem({
 export default function Sidebar() {
   const { sessions, currentSessionId, loadSession, deleteSession, createSession } = useSessions();
   const [expandedProjectGroups, setExpandedProjectGroups] = useState<Set<string>>(new Set());
+  const currentProjectGroup = sessions.find(session => session.id === currentSessionId)?.projectId;
+  useEffect(() => {
+    if (currentProjectGroup) setExpandedProjectGroups(previous => previous.has(currentProjectGroup)
+      ? previous : new Set([...previous, currentProjectGroup]));
+  }, [currentSessionId, currentProjectGroup]);
   const { soundEnabled, setSoundEnabled, toggleSidebar, sessionTitles } = useSettingsStore();
   const activeView = useChatStore((s) => s.activeView);
   const setActiveView = useChatStore((s) => s.setActiveView);
@@ -91,7 +96,8 @@ export default function Sidebar() {
   };
 
   const handleNewChat = async () => {
-    await createSession();
+    const session = await createSession();
+    if (session) setActiveView('chat');
   };
 
   // 有统一项目打开时，画布/剪辑/工坊一律进入新项目工作台对应工作面；

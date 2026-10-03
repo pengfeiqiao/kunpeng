@@ -60,6 +60,7 @@ export function classifyPaidSubmission(result: ToolResult): PaidSubmissionState 
 
 export class PaidToolIdempotencyGate {
   private readonly records = new Map<string, PaidSubmissionState>();
+  private readonly receipts = new Map<string, string>();
 
   /**
    * Atomically claim a paid call before execution. JavaScript is single
@@ -70,7 +71,7 @@ export class PaidToolIdempotencyGate {
     if (!runId || !isPaidTool(name) || params.force === true) return null;
     const key = normalizedPaidCallKey(runId, name, params);
     const state = this.records.get(key);
-    if (state && state !== 'not_submitted') return this.blockedMessage(name, state);
+    if (state && state !== 'not_submitted') return this.blockedMessage(name, state) + (this.receipts.get(key) ? `\n上次执行回执（不是新提交）：\n${this.receipts.get(key)}` : '');
     this.records.set(key, 'in_flight');
     return null;
   }
@@ -79,7 +80,7 @@ export class PaidToolIdempotencyGate {
     if (!runId || !isPaidTool(name) || params.force === true) return null;
     const state = this.records.get(normalizedPaidCallKey(runId, name, params));
     if (!state || state === 'not_submitted') return null;
-    return this.blockedMessage(name, state);
+    return this.blockedMessage(name, state) + (this.receipts.get(normalizedPaidCallKey(runId, name, params)) ?? '');
   }
 
   private blockedMessage(name: string, state: PaidSubmissionState): string {
@@ -95,16 +96,16 @@ export class PaidToolIdempotencyGate {
     if (!runId || !isPaidTool(name) || params.force === true) return;
     const state = classifyPaidSubmission(result);
     const key = normalizedPaidCallKey(runId, name, params);
-    if (state === 'not_submitted') this.records.delete(key);
-    else this.records.set(key, state);
+    if (state === 'not_submitted') { this.records.delete(key); this.receipts.delete(key); }
+    else { this.records.set(key, state); if (result.output) this.receipts.set(key, result.output.slice(0, 24000)); }
     if (this.records.size > 500) {
-      for (const oldKey of [...this.records.keys()].slice(0, this.records.size - 400)) this.records.delete(oldKey);
+      for (const oldKey of [...this.records.keys()].slice(0, this.records.size - 400)) { this.records.delete(oldKey); this.receipts.delete(oldKey); }
     }
   }
 
   clearRun(runId: string): void {
     for (const key of this.records.keys()) {
-      if (key.startsWith(`${runId}\u0000`)) this.records.delete(key);
+      if (key.startsWith(`${runId}\u0000`)) { this.records.delete(key); this.receipts.delete(key); }
     }
   }
 }

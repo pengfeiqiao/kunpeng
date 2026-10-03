@@ -21,6 +21,7 @@ export class ToolExposure {
       const aliases: Record<string, string> = {
         video_generate: '视频生成 生视频 文生视频 图生视频',
         image_generate: '图片生成 生图 文生图 图生图',
+        image_inspect: '图片核验 局部放大 裁切 像素差分 对比 diff crop',
       };
       const matches = current.map(tool => {
         const text = normalize(tool.name + ' ' + tool.description + ' ' + JSON.stringify(tool.parameters) + ' ' + (aliases[tool.name] ?? ''));

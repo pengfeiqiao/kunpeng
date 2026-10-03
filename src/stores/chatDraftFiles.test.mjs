@@ -125,3 +125,76 @@ test('async automatic history restore cannot hide attachments dropped while load
   assert.equal(store.getState().currentSessionId, null);
   assert.deepEqual(Array.from(store.getState().draftFiles['new:main']), ['/just-dropped.png']);
 });
+
+function sessionHooksFixture(store, history = {}) {
+  const hook = selector => selector(store.getState()); hook.getState = store.getState;
+  const module = {};
+  const settings = { deletedSessionIds: [], sessionTitles: {}, sessionLastReadAt: {}, setSessionTitle() {}, markSessionRead() {} };
+  const code = ts.transpileModule(readFileSync(new URL('../hooks/useSessions.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  runInNewContext(code, { exports: module, console, require: id => {
+    if (id === 'react') return { useCallback: fn => fn };
+    if (id === 'uuid') return { v4: () => 'created' };
+    if (id === '@/stores') return { useChatStore: hook, useSettingsStore: { getState: () => settings } };
+    if (id === '@/lib/safeStorage') return { safeLocalStorage: memoryStorage() };
+    if (id === '@/lib/historyPersistence') return {
+      readMessagesFromLocalStorage: () => null, readSessionsFromLocalStorage: () => [],
+      writeSessionIndex: async () => {}, hydrateLocalStorageSessions() {}, hydrateLocalStorageSession() {},
+      ...history,
+    };
+    return {};
+  } });
+  return module;
+}
+const sessionEntry = (id, updatedAt = 1) => ({ id, title: `任务${id}`, agentId: 'main', createdAt: 1, updatedAt, messageCount: 0 });
+test('empty current session remains visible when an older session list returns', () => {
+  const store = fixture(); store.getState().addSession(sessionEntry('new'));
+  store.getState().setSessions([sessionEntry('old')]);
+  assert.ok(store.getState().sessions.some(s => s.id === 'new'));
+});
+test('background session refresh preserves newly created noncurrent sessions and concurrent edits', async () => {
+  const store = fixture(); store.getState().setSessions([sessionEntry('old')]);
+  let finishRead; const read = new Promise(resolve => { finishRead = resolve; });
+  const hooks = sessionHooksFixture(store, { readSessionIndex: () => read });
+  const pending = hooks.useSessions().loadSessions();
+  store.getState().addSession(sessionEntry('new'));
+  store.getState().updateSession('old', { title: '用户刚改的标题' });
+  store.getState().setCurrentSession('old');
+  finishRead([sessionEntry('old')]); await pending;
+  assert.ok(store.getState().sessions.some(s => s.id === 'new'));
+  assert.equal(store.getState().sessions.find(s => s.id === 'old').title, '用户刚改的标题');
+});
+test('a slower earlier navigation cannot replace the latest conversation', async () => {
+  const store = fixture(); const pendingReads = new Map();
+  const hooks = sessionHooksFixture(store, { readSessionFromFile: id => new Promise(resolve => pendingReads.set(id, resolve)) });
+  const restored = []; hooks.setCoordinatorRestoreCallback(async id => { restored.push(id); });
+  const api = hooks.useSessions();
+  const first = api.loadSession('first'); const second = api.loadSession('second');
+  pendingReads.get('second')({ messages: [] }); assert.equal((await second).loaded, true);
+  pendingReads.get('first')({ messages: [] }); assert.equal((await first).loaded, false);
+  assert.equal(store.getState().currentSessionId, 'second');
+  assert.deepEqual(restored, ['second']);
+});
+test('new session publishes index and initializes body before coordinator restoration', async () => {
+  const store = fixture(); const events = [];
+  const hooks = sessionHooksFixture(store, {
+    writeSessionToFile: async () => { events.push('body'); },
+    writeSessionIndex: async () => { events.push('index'); },
+  });
+  hooks.setCoordinatorRestoreCallback(async () => { events.push('restore'); });
+  await hooks.createSessionRaw();
+  assert.deepEqual(events, ['body', 'index', 'restore']);
+  store.getState().setActiveView('library'); store.getState().setActiveView('chat');
+  assert.equal(store.getState().currentSessionId, 'agent:main:created');
+  assert.ok(store.getState().sessions.some(s => s.id === 'agent:main:created'));
+});
+test('background refresh does not resurrect a conversation deleted during the read', async () => {
+  const store = fixture(); store.getState().setSessions([sessionEntry('removed')]);
+  let finishRead; const read = new Promise(resolve => { finishRead = resolve; });
+  const hooks = sessionHooksFixture(store, { readSessionIndex: () => read });
+  const pending = hooks.useSessions().loadSessions();
+  store.getState().removeSession('removed');
+  finishRead([sessionEntry('removed')]); await pending;
+  assert.equal(store.getState().sessions.some(s => s.id === 'removed'), false);
+});

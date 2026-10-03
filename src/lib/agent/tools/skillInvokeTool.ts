@@ -22,6 +22,7 @@ import { resolveApiKey, resolveSlotApiKey } from '@/lib/credentials';
 import { isSkillEnabled, markSkillUsed } from '@/lib/skills/skillPreferences';
 import { useWorkshopStore } from '@/stores/workshopStore';
 
+const readInRun = new Map<string, string>();
 export const skillInvokeTool: Tool = {
   definition: {
     name: 'skill_invoke',
@@ -32,6 +33,8 @@ export const skillInvokeTool: Tool = {
     parameters: {
       type: 'object',
       properties: {
+        summary_only: { type: 'boolean', description: '仅返回摘要、路径与本轮是否已读，不回灌全文' },
+        force_full: { type: 'boolean', description: '上下文压缩后需要重读时返回全文' },
         skillId: { type: 'string', description: '技能 id。不传则列出全部可用技能' },
         userContent: { type: 'string', description: '注入 {{userContent}} 的内容' },
         fieldValues: {
@@ -43,7 +46,7 @@ export const skillInvokeTool: Tool = {
     },
   },
   risk: 'safe',
-  async execute(params) {
+  async execute(params, _signal, context) {
     const { skillId, userContent, fieldValues } = params as {
       skillId?: string;
       userContent?: string;
@@ -83,6 +86,12 @@ export const skillInvokeTool: Tool = {
         ...(fieldValues ?? {}),
         userContent: userContent ?? '',
       });
+      const key = context?.runId ? `${context.runId}:${skillId}` : '';
+      const alreadyRead = Boolean(key && readInRun.get(key) === composed);
+      if (params.summary_only === true || (alreadyRead && params.force_full !== true)) {
+        return { success: true, output: JSON.stringify({ skillId, path: diskSkill.skillPath, summary: diskSkill.description, alreadyRead, note: '需要正文时使用 force_full:true；技能调用未执行生成。' }) };
+      }
+      if (key) { readInRun.set(key, composed); if (readInRun.size > 100) readInRun.delete(readInRun.keys().next().value!); }
       markSkillUsed(skillId);
       return { success: true, output: composed };
     }

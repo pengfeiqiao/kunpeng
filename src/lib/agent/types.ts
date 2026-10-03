@@ -37,7 +37,7 @@ export interface ToolResult {
   /** User-facing final copy used when terminal is true. */
   terminalMessage?: string;
   /** Conservative ledger state for a batch with partially submitted paid work. */
-  paidSubmissionState?: 'submitted' | 'unknown';
+  paidSubmissionState?: 'submitted' | 'unknown' | 'not_submitted';
 }
 
 export type SubAgentTerminalStatus = 'completed' | 'failed' | 'timeout' | 'aborted';
@@ -130,7 +130,7 @@ export type AgentMediaSource =
 
 export type AgentUserContentBlock =
   | { type: 'text'; text: string }
-  | { type: 'image'; source: AgentMediaSource }
+  | { type: 'image'; source: AgentMediaSource; sourcePath?: string }
   | { type: 'video'; source: AgentMediaSource };
 
 export interface ResponsesOutput {

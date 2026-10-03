@@ -81,3 +81,13 @@ test('a validation message mentioning task_id is not mistaken for a submitted ta
     output: '{"task_id":"task_12345","status":"submitted"}',
   }), 'submitted');
 });
+
+test('blocked repeated batches return the original per-job receipt', () => {
+ const gate=new PaidToolIdempotencyGate();
+ const params={jobs:[{prompt:'anchor'}]};
+ gate.record('receipt-run','image_generate_batch',params,{success:false,paidSubmissionState:'unknown',output:'job_index=1 state=unknown task_id=remote-1'});
+ assert.match(gate.reserve('receipt-run','image_generate_batch',params) ?? '',/上次执行回执/);
+ assert.match(gate.check('receipt-run','image_generate_batch',params) ?? '',/remote-1/);
+ gate.clearRun('receipt-run');
+ assert.equal(gate.reserve('receipt-run','image_generate_batch',params),null);
+});

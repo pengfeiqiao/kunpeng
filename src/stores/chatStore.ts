@@ -119,20 +119,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
   currentSessionId: null,
   setSessions: (sessions) => set((state) => {
-    // Prevent ghost session: if currentSessionId has messages but is not in the
-    // new list, preserve it so the sidebar keeps showing it.
-    if (state.currentSessionId && state.messages.length > 0) {
+    // Keep the current conversation reachable even before its first message or
+    // when recovering an older session whose index entry was lost.
+    if (state.currentSessionId) {
       const hasCurrent = sessions.some((s) => s.id === state.currentSessionId);
       if (!hasCurrent) {
         const existing = state.sessions.find((s) => s.id === state.currentSessionId);
-        if (existing) sessions = [existing, ...sessions];
+        const now = Date.now();
+        sessions = [existing ?? {
+          id: state.currentSessionId, title: '新对话', agentId: state.currentSessionId.split(':')[1] || 'main',
+          createdAt: now, updatedAt: now, messageCount: state.messages.length,
+        }, ...sessions];
       }
     }
     return { sessions };
   }),
   setCurrentSession: (sessionId) => set({ currentSessionId: sessionId }),
   addSession: (session) => set((state) => ({
-    sessions: [session, ...state.sessions],
+    sessions: [session, ...state.sessions.filter(item => item.id !== session.id)],
     currentSessionId: session.id,
   })),
   removeSession: (sessionId) => set((state) => {

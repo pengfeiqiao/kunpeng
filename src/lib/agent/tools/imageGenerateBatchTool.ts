@@ -27,13 +27,13 @@ export const imageGenerateBatchTool: Tool = {
       const id = `image-batch-${++sequence}`;
       await slots.acquire(id);
       try {
-        if (signal?.aborted) return { success: false, output: '', error: '已中止，未提交。' };
+        if (signal?.aborted) return { success: false, output: '', error: '已中止，未提交。', paidSubmissionState: 'not_submitted' };
         return await imageGenerateTool.execute(job, signal, context);
       } catch (error) {
         return { success: false, output: '', error: `生成异常，禁止自动重提：${error instanceof Error ? error.message : String(error)}` };
       } finally { slots.release(id); }
     }));
-    const output = results.map((r, i) => `任务 ${i + 1}：${r.success ? r.output : r.error || '失败'}`).join('\n');
+    const output = results.map((r, i) => `任务 ${i + 1}：${r.success ? r.output : r.error || '失败'}\n${JSON.stringify({ job_index: i + 1, output_path: jobs[i].output_path ?? null, state: r.paidSubmissionState ?? (r.success ? 'completed' : 'unknown'), receipt: r.output, reference_order: jobs[i].reference_urls ?? [], automatic_retry: false })}`).join('\n');
     const success = results.every(r => r.success);
     return {
       success, output, media: results.flatMap(r => r.media ?? []),
