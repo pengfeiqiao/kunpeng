@@ -1,3 +1,5 @@
+import { REFERENCE_CRAFT_HARNESS } from './referenceCraft.ts';
+
 /** Original Kunpeng craft guidance; research and attribution: docs/screenwriting-upgrade-2026-09-14.md. */
 export const SCREENPLAY_CRAFT_HARNESS = `## 编剧方法（仅用于故事、剧本、对白和剧作审阅）
 
@@ -34,6 +36,8 @@ export const SCREENPLAY_CRAFT_HARNESS = `## 编剧方法（仅用于故事、剧
 - 改稿先判断改动影响的是人物动机、知情范围、动作结果、服装阶段还是空间条件；沿相关场景核对后果，保留无关的有效内容。对白修改不顺带换人设，视觉润色不顺带改剧情。
 - 先判断场景的可见行动与情绪是否成立，再考虑视觉表现。区别角色身份与临时表情、固定场景布局与摄影机角度、持有道具与手持动作；不凭风格参考改掉人物或故事事实。
 - 上述检查在后台完成，沿用现有正文、批注和设定，不要求用户填写新表、逐条确认或创建额外资产。只呈现与本次任务直接相关的成稿和必要说明。
+
+${REFERENCE_CRAFT_HARNESS}
 
 ### 长稿与改稿
 - 持续项目用独立创作档案保存已确认设定、人物当前状态与知情范围、时间线、伏笔及回收位置、改稿决策和下一步；正文另存。只保存结论，不保存推理。先读取现有档案，实际写入成功才能声称已记住。

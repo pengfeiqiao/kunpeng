@@ -12,6 +12,7 @@ import type {
 import type { GLMClient } from './glmClient';
 import type { ToolRegistry } from './toolRegistry';
 import { ContextManager } from './contextManager';
+import { buildReferenceCraftTurnContext } from '../copywriting/referenceCraft';
 import { buildSystemPrompt, type OutputStyle } from './systemPrompt';
 import { agentLog } from './logger';
 import { createAbortController, createChildAbortController } from './abortController';
@@ -167,6 +168,7 @@ export class AgentCoordinator {
   // at request time but NEVER pushed into this.messages — keeps recalled
   // memories out of the persisted history (CC-style attachment pattern).
   private transientMemory: AgentMessage | null = null;
+  private transientCraftContext: AgentMessage | null = null;
   private transientTemporalContext: AgentMessage | null = null;
   // Transient per-run skill-relevance notice (query-dependent, so it must
   // NOT live in the system prompt — same attachment pattern as memory).
@@ -356,6 +358,8 @@ export class AgentCoordinator {
   }> {
     this.refreshScopedSkills(userInput);
     const additions: string[] = [];
+    const craftContext = buildReferenceCraftTurnContext(userInput);
+    if (craftContext) additions.push(craftContext);
     const speechRoutingNotice = buildDoubaoSpeechRoutingNotice(userInput);
     if (speechRoutingNotice) additions.push(speechRoutingNotice);
     if (isTimeSensitiveQuery(userInput)) additions.push(buildTemporalTurnContext());
@@ -504,6 +508,8 @@ export class AgentCoordinator {
 
     try {
       this.refreshScopedSkills(userInput);
+      const craftContext = buildReferenceCraftTurnContext(userInput);
+      this.transientCraftContext = craftContext ? { role: 'user', content: craftContext } : null;
       this.transientTemporalContext = isTimeSensitiveQuery(userInput)
         ? { role: 'user', content: buildTemporalTurnContext() }
         : null;
@@ -973,6 +979,7 @@ export class AgentCoordinator {
       this.abortController = null;
       this.currentCallbacks = null;
       this.transientMemory = null;
+      this.transientCraftContext = null;
       this.transientTemporalContext = null;
       this.transientNotices.endRun();
       this.pendingGuidance = [];
@@ -1084,6 +1091,7 @@ export class AgentCoordinator {
     const transientAddenda = [
       this.transientTemporalContext,
       this.transientMemory,
+      this.transientCraftContext,
       this.transientSkillNotice,
       ...this.transientNotices.takeForRequest(),
     ].filter((message): message is AgentMessage => message !== null);

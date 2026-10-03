@@ -1,0 +1,7 @@
+{
+  "id": "video-depth-estimation-pipeline",
+  "name": "视频转黑白深度",
+  "description": "Video Depth Anything 时序深度转换，校正变帧率，保留原声与时长",
+  "visibility": "library",
+  "version": "1.0.0"
+}

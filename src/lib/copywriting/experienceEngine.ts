@@ -1,14 +1,15 @@
 import type { WritingExperience, StyleProfile } from './types';
-import { readExperienceLog, readStyleProfile, writeStyleProfile } from './persist';
+import { readExperienceLog, writeStyleProfile } from './persist';
 
 function asStringArray(value: string[] | string | undefined): string[] {
   if (!value) return [];
-  if (Array.isArray(value)) return value.filter(Boolean);
+  if (Array.isArray(value)) return value.filter(v => typeof v === 'string' && Boolean(v));
+  if (typeof value !== 'string') return [];
   return value.split(/[；;,\n]/).map(s => s.trim()).filter(Boolean);
 }
 
 function addWeighted(map: Record<string, number>, key: string | undefined, weight: number) {
-  const normalized = key?.trim();
+  const normalized = typeof key === 'string' ? key.trim() : '';
   if (!normalized) return;
   map[normalized] = (map[normalized] || 0) + weight;
 }
@@ -17,12 +18,12 @@ export function buildExperienceContext(profile: StyleProfile | null): string {
   if (!profile || profile.totalSessions === 0) return '';
 
   const parts: string[] = [
-    `\n**用户文体画像**（基于 ${profile.totalSessions} 次写作积累，仅作偏好证据，不是必须复刻的模板）：`,
+    `\n**历史文体线索**（基于 ${profile.totalSessions} 次写作积累，仅作偏好证据，不是必须复刻的模板）：`,
     profile.coreStyle,
   ];
 
   if (profile.favoritePatterns.length > 0) {
-    parts.push(`用户曾认可的手法（按内容需要选择，禁止机械重复）：${profile.favoritePatterns.join('、')}`);
+    parts.push(`旧记录中的手法（尚未验证用户认可）（按内容需要选择，禁止机械重复）：${profile.favoritePatterns.join('、')}`);
   }
   if (profile.avoidPatterns.length > 0) {
     parts.push(`应避免（优先级高于常用手法）：${profile.avoidPatterns.join('、')}`);
@@ -46,12 +47,14 @@ export function buildExperienceContext(profile: StyleProfile | null): string {
 }
 
 export async function rebuildStyleProfile(experiences?: WritingExperience[]): Promise<StyleProfile> {
-  const exps = experiences ?? await readExperienceLog();
-  const existing = await readStyleProfile();
+  const all = (experiences ?? await readExperienceLog()).filter(e => !e.disabled);
+  // V3 learning is recalled by task; never flatten model reflections into a global user personality.
+  const exps = all.filter(e => !e.lessons?.length);
+
 
   if (exps.length === 0) {
     const empty: StyleProfile = {
-      version: 2,
+      version: 3,
       lastUpdated: Date.now(),
       coreStyle: '',
       toneSpectrum: {},
@@ -60,7 +63,8 @@ export async function rebuildStyleProfile(experiences?: WritingExperience[]): Pr
       avoidPatterns: [],
       totalSessions: 0,
     };
-    return existing ?? empty;
+    await writeStyleProfile(empty);
+    return empty;
   }
 
   const sorted = [...exps].sort((a, b) => a.timestamp - b.timestamp);
@@ -123,7 +127,7 @@ export async function rebuildStyleProfile(experiences?: WritingExperience[]): Pr
     .map(([item]) => item);
 
   const profile: StyleProfile = {
-    version: 2,
+    version: 3,
     lastUpdated: Date.now(),
     coreStyle,
     toneSpectrum,

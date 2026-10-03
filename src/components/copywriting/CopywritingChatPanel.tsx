@@ -1,5 +1,4 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { nanoid } from 'nanoid';
 import { BookMarked } from 'lucide-react';
 import { useChatStore } from '@/stores';
 import { useCopywritingStore } from '@/stores/copywritingStore';
@@ -16,10 +15,9 @@ import {
 import { backupDoc } from '@/lib/copywriting/persist';
 import { buildCopywritingTaskHarness } from '@/lib/copywriting/antiAiStyle';
 import AgentDrawer from '../chat/AgentDrawer';
-import type { WritingExperience } from '@/lib/copywriting/types';
+import { writingLearningContext } from '@/lib/copywriting/learningPolicy';
 
 const STRIP_RE = /^\[用户正在鲲鹏文案工作室[\s\S]*?\]\n\n/;
-const EXP_RE = /```json:experience\n([\s\S]*?)```/;
 const DOC_RE = /```markdown:doc\n([\s\S]*?)```/;
 const PATCH_RE = /```markdown:patch\n([\s\S]*?)```/g;
 const COPY_REPLACE_RE = /```copy:replace\n([\s\S]*?)```/g;
@@ -275,7 +273,7 @@ function buildCopywritingHarness(expCtx: string, docCtx: string, taskSignal: str
 9. 不要要求用户重新粘贴全文；如果文档地图不足以定位，先说明需要哪个关键词或哪一段。
 10. 兼容旧协议：也可以使用 \`\`\`copy:replace\`\`\`，第一行是块编号，后面是替换内容。
 11. 如果只是分析、建议、提纲或问用户问题，不要输出写回代码块。
-12. 输出经验沉淀时可追加 \`\`\`json:experience\`\`\`，但不要把它混入文档正文。
+12. 系统会在成功完成写作后后台整理经验；不要输出 \`\`\`json:experience\`\`\`，也不要将经验混入文档正文。
 13. 新写、改写或扩写完成后，调用 copywriting_review_doc 做一次机械审校。非剧本的工具结果返回 blocker 或分数低于 80 时，只修命中的问题段，再复查一次；最多两轮，禁止为了刷分改坏事实和用户声线。
 剧本的机械结果只作人工判断线索，不因词频或标点自动改对白与伏笔；剧作验收使用 copywriting_review_doc 的 mode=story 并由当前模型结合原文审阅。
 14. copywriting_set_doc / copywriting_patch_doc 的返回值自带文风审校。不要忽略审校结果，也不要把审校清单原样塞进正文。
@@ -309,6 +307,8 @@ function CopywritingChatPanel({ onSendMessage, onAbort }: Props) {
   const backedUpRef = useRef(false);
 
   const chat = useChatStore(s => s.messages);
+  const learningStatus = useCopywritingStore(s => s.learningStatus);
+  const learningMessage = useCopywritingStore(s => s.learningMessage);
 
   // 流结束后：提取 markdown:doc → 备份旧版 → 写入编辑器；提取 experience
   useEffect(() => {
@@ -369,27 +369,6 @@ function CopywritingChatPanel({ onSendMessage, onAbort }: Props) {
       }
     }
 
-    // 提取经验
-    const expMatch = EXP_RE.exec(last.content);
-    if (!expMatch) return;
-    try {
-      const raw = JSON.parse(expMatch[1]);
-      const { activeDocId, docs } = store;
-      const activeDoc = docs.find(d => d.id === activeDocId);
-      const exp: WritingExperience = {
-        id: nanoid(10),
-        timestamp: Date.now(),
-        docId: activeDocId ?? '',
-        docTitle: activeDoc?.title ?? '未命名',
-        styleNotes: Array.isArray(raw.styleNotes) ? raw.styleNotes : raw.styleNotes ? [raw.styleNotes] : [],
-        vocabularyHits: Array.isArray(raw.vocabularyHits) ? raw.vocabularyHits : raw.vocabularyHits ? [raw.vocabularyHits] : [],
-        tonePreference: raw.tonePreference ?? '',
-        structurePattern: raw.structurePattern ?? '',
-        whatWorked: raw.whatWorked ?? '',
-        whatToImprove: raw.whatToImprove ?? '',
-      };
-      void store.appendExperience(exp);
-    } catch { /* ignore parse errors */ }
   }, [chat, isStreaming]);
 
   // Stream text is a high-frequency external signal. Subscribe imperatively so
@@ -466,8 +445,8 @@ function CopywritingChatPanel({ onSendMessage, onAbort }: Props) {
   }, []);
 
   const sendWithContext = (text: string, files?: string[], selectedText?: string) => {
-    const { styleProfile, activeDocId, docs } = useCopywritingStore.getState();
-    const expCtx = buildExperienceContext(styleProfile);
+    const { styleProfile, activeDocId, docs, experiences } = useCopywritingStore.getState();
+    const expCtx = writingLearningContext(experiences, text + '\n' + (docs.find(d => d.id === activeDocId)?.title ?? '') + '\n' + (docs.find(d => d.id === activeDocId)?.content.slice(0, 400) ?? ''), activeDocId ?? undefined) || (experiences.some(e => e.lessons?.length) ? '' : buildExperienceContext(styleProfile).slice(0, 1200));
     const activeDoc = activeDocId ? docs.find(d => d.id === activeDocId) : null;
     let docCtx = '\n\n当前编辑器中没有打开的文档。\n';
     if (activeDoc) {
@@ -553,16 +532,16 @@ function CopywritingChatPanel({ onSendMessage, onAbort }: Props) {
       placeholder="描述你的写作需求，或直接粘贴文字让我润色"
       extraActions={
         <button
-          onClick={() => sendWithContext('请总结本次对话的写作经验，输出 json:experience 块。')}
-          disabled={isStreaming}
+          onClick={() => sendWithContext('请结合本次写作和我的反馈，总结可复用的文笔、题材与结构方法，说明适用条件，不改正文。后台会自动沉淀经验，不要输出特殊JSON块。')}
+          disabled={isStreaming || learningStatus === 'learning'}
           className="h-7 px-2 rounded-full flex items-center gap-1 text-[11px] transition-colors disabled:opacity-40"
           style={{ color: '#6B7280' }}
           onMouseEnter={e => { e.currentTarget.style.color = '#1A1A1A'; e.currentTarget.style.background = '#F3F4F6'; }}
           onMouseLeave={e => { e.currentTarget.style.color = '#6B7280'; e.currentTarget.style.background = 'transparent'; }}
-          title="让 AI 总结本次写作经验"
+          title={learningMessage || "整理本次写作经验，按题材和文笔在后续写作中调用"}
         >
           <BookMarked size={13} />
-          总结经验
+          {learningStatus === 'learning' ? '正在沉淀' : learningStatus === 'error' ? '沉淀未完成' : learningStatus === 'saved' ? '经验已沉淀' : '总结经验'}
         </button>
       }
     />

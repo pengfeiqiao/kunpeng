@@ -29,6 +29,14 @@ export interface CopyComment {
 }
 
 export interface WritingExperience {
+  schemaVersion?: number;
+  sourceSessionId?: string;
+  sourceRunId?: string;
+  sourceRevision?: number;
+  genres?: string[];
+  styles?: string[];
+  lessons?: WritingLesson[];
+  disabled?: boolean;
   id: string;
   timestamp: number;
   docId: string;
@@ -50,4 +58,15 @@ export interface StyleProfile {
   vocabulary: { word: string; freq: number }[];
   avoidPatterns: string[];
   totalSessions: number;
+}
+
+export interface WritingLesson {
+  dimension: string;
+  situation: string;
+  guidance: string;
+  avoid: string;
+  evidence: string;
+  basis: 'user_feedback' | 'revision' | 'reflection';
+  before: string;
+  after: string;
 }

@@ -90,41 +90,56 @@ export async function readStyleProfile(): Promise<StyleProfile | null> {
   }
 }
 
-export async function writeStyleProfile(profile: StyleProfile): Promise<void> {
-  try {
-    await ensureDirs();
-    const tmp = `${PROFILE_PATH}.tmp`;
-    await writeTextFile({ path: tmp, contents: JSON.stringify(profile, null, 2) }, opts);
-    await renameFile(tmp, PROFILE_PATH, opts);
-  } catch (err) {
-    console.warn('[copywriting] writeStyleProfile failed:', err);
-  }
+// One ordered queue protects read-modify-write and profile publication from lost updates.
+let experienceWrites: Promise<unknown> = Promise.resolve();
+function serializeExperience<T>(operation: () => Promise<T>): Promise<T> {
+  const next = experienceWrites.catch(() => {}).then(operation);
+  experienceWrites = next;
+  return next;
 }
-
+async function atomicExperienceWrite(path: string, contents: string) {
+  await ensureDirs();
+  const tmp = `${path}.tmp`;
+  await writeTextFile({ path: tmp, contents }, opts);
+  await renameFile(tmp, path, opts);
+}
+export function writeStyleProfile(profile: StyleProfile): Promise<void> {
+  return serializeExperience(() => atomicExperienceWrite(PROFILE_PATH, JSON.stringify(profile, null, 2)));
+}
 export async function readExperienceLog(): Promise<WritingExperience[]> {
-  try {
-    if (!(await exists(LOG_PATH, opts))) return [];
-    const raw = await readTextFile(LOG_PATH, opts);
-    return raw.trim().split('\n').map(line => safeParse<WritingExperience>(line)).filter(Boolean) as WritingExperience[];
-  } catch (err) {
-    console.warn('[copywriting] readExperienceLog failed:', err);
-    return [];
-  }
+  if (!(await exists(LOG_PATH, opts))) return [];
+  const raw = await readTextFile(LOG_PATH, opts);
+  const str = (v: unknown) => typeof v === 'string' ? v : '';
+  const strings = (v: unknown) => Array.isArray(v) ? v.filter(x => typeof x === 'string') : typeof v === 'string' ? [v] : [];
+  return raw.split('\n').map(line => safeParse<WritingExperience>(line))
+    .filter((e): e is WritingExperience => Boolean(e && typeof e.id === 'string' && typeof e.docId === 'string'))
+    .map(e => ({ ...e, timestamp: Number.isFinite(e.timestamp) ? e.timestamp : 0,
+      docTitle: str(e.docTitle), styleNotes: strings(e.styleNotes), vocabularyHits: strings(e.vocabularyHits),
+      tonePreference: str(e.tonePreference), structurePattern: str(e.structurePattern),
+      whatWorked: str(e.whatWorked), whatToImprove: str(e.whatToImprove), genres: strings(e.genres), styles: strings(e.styles),
+      lessons: Array.isArray(e.lessons) ? e.lessons.filter(l => l && typeof l.guidance === 'string' && typeof l.situation === 'string')
+        .slice(0, 6).map(l => ({ dimension: str(l.dimension), situation: l.situation, guidance: l.guidance,
+          avoid: str(l.avoid), evidence: str(l.evidence), before: str(l.before), after: str(l.after),
+          basis: l.basis === 'user_feedback' || l.basis === 'revision' ? l.basis : 'reflection' as const })) : [],
+    }));
 }
-
-export async function appendExperienceLog(exp: WritingExperience): Promise<void> {
-  try {
-    await ensureDirs();
-    const path = LOG_PATH;
-    let existing = '';
-    if (await exists(path, opts)) {
-      existing = await readTextFile(path, opts);
+export function appendExperienceLog(exp: WritingExperience): Promise<void> {
+  return serializeExperience(async () => {
+    const entries = await readExperienceLog();
+    if (entries.some(e => e.id === exp.id || (exp.sourceRunId && e.sourceRunId === exp.sourceRunId))) return;
+    // Keep malformed legacy lines intact; do not rewrite history from parsed rows.
+    const original = await exists(LOG_PATH, opts) ? await readTextFile(LOG_PATH, opts) : '';
+    await atomicExperienceWrite(LOG_PATH, original.trimEnd() + (original.trim() ? '\n' : '') + JSON.stringify(exp) + '\n');
+  });
+}
+export function replaceExperienceLog(entries: WritingExperience[]): Promise<void> {
+  return serializeExperience(async () => {
+    if (await exists(LOG_PATH, opts)) {
+      const previous = await readTextFile(LOG_PATH, opts);
+      await atomicExperienceWrite(`${EXP_DIR}/writing-log.backup-${Date.now()}.jsonl`, previous);
     }
-    const newContent = existing ? `${existing}\n${JSON.stringify(exp)}` : JSON.stringify(exp);
-    await writeTextFile({ path, contents: newContent }, opts);
-  } catch (err) {
-    console.warn('[copywriting] appendExperienceLog failed:', err);
-  }
+    await atomicExperienceWrite(LOG_PATH, entries.map(e => JSON.stringify(e)).join('\n'));
+  });
 }
 
 // ─── Backup ──────────────────────────────────────────────

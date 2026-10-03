@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, RotateCcw, BookOpen, ChevronDown, ChevronRight, Lightbulb, AlertTriangle } from 'lucide-react';
+import type { WritingExperience } from '@/lib/copywriting/types';
+import { invalidateWritingLearning } from '@/lib/copywriting/learningRuntime';
 import { useCopywritingStore } from '@/stores/copywritingStore';
 
 interface Props {
@@ -24,10 +26,10 @@ function relativeTime(ts: number): string {
   return new Date(ts).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
-function ExperienceCard({ exp }: { exp: { id: string; timestamp: number; docTitle: string; styleNotes: string | string[]; whatWorked: string; whatToImprove: string; tonePreference: string; structurePattern: string; vocabularyHits: string | string[] } }) {
+function ExperienceCard({ exp }: { exp: WritingExperience }) {
   const [expanded, setExpanded] = useState(false);
   const notes = formatNotes(exp.styleNotes);
-  const hasDetail = exp.whatWorked || exp.whatToImprove || exp.tonePreference || exp.structurePattern;
+  const hasDetail = exp.lessons?.length || exp.whatWorked || exp.whatToImprove || exp.tonePreference || exp.structurePattern;
 
   return (
     <div
@@ -44,12 +46,13 @@ function ExperienceCard({ exp }: { exp: { id: string; timestamp: number; docTitl
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-medium truncate" style={{ color: 'var(--cw-text)' }}>
-              {exp.docTitle || '未命名'}
+              {exp.docTitle || '未命名'}{exp.disabled ? ' · 已停用' : ''}
             </span>
             <span className="text-[10px] shrink-0" style={{ color: 'var(--cw-text-muted)' }}>
               {relativeTime(exp.timestamp)}
             </span>
           </div>
+          {(exp.genres?.length || exp.styles?.length) ? <p className="text-[10px] mt-1 break-words" style={{ color: 'var(--cw-text-muted)' }}>{[...(exp.genres ?? []), ...(exp.styles ?? [])].join(' · ')} · {exp.lessons?.length ?? 0} 条方法</p> : null}
           {notes && (
             <p className="text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--cw-text-2)' }}>
               {expanded ? notes : truncate(notes, 80)}
@@ -60,6 +63,15 @@ function ExperienceCard({ exp }: { exp: { id: string; timestamp: number; docTitl
 
       {expanded && hasDetail && (
         <div className="px-3 pb-3 pt-0 ml-[22px] space-y-2">
+          {exp.lessons?.map((lesson, index) => <div key={index} className="text-[11px] leading-relaxed space-y-1 break-words" style={{ color: 'var(--cw-text-2)' }}>
+            <p className="font-medium">{lesson.dimension} · {lesson.situation}</p>
+            <p>{lesson.guidance}</p>
+            {lesson.avoid && <p>避免：{lesson.avoid}</p>}
+            {lesson.before && <p>改前：{lesson.before}</p>}
+            {lesson.after && <p>改后：{lesson.after}</p>}
+            <p style={{ color: 'var(--cw-text-muted)' }}>{lesson.basis === 'user_feedback' ? '用户要求/反馈' : lesson.basis === 'revision' ? '修订证据，尚不代表认可' : '模型复盘，待验证'}：{lesson.evidence}</p>
+          </div>)}
+          <button className="text-[10px] underline" onClick={() => { void useCopywritingStore.getState().setExperienceEnabled(exp.id, Boolean(exp.disabled)).catch(() => {}); }}>{exp.disabled ? '恢复用于写作' : '不再用于写作'}</button>
           {exp.whatWorked && (
             <div className="flex gap-2">
               <Lightbulb size={11} className="mt-0.5 shrink-0" style={{ color: '#059669' }} />
@@ -93,6 +105,7 @@ function ExperienceCard({ exp }: { exp: { id: string; timestamp: number; docTitl
 export default function ExperiencePanel({ onClose }: Props) {
   const styleProfile = useCopywritingStore(s => s.styleProfile);
   const experiences = useCopywritingStore(s => s.experiences);
+  const learningMessage = useCopywritingStore(s => s.learningMessage);
 
   const hasTone = styleProfile?.toneSpectrum && Object.keys(styleProfile.toneSpectrum).length > 0;
   const hasPatterns = styleProfile?.favoritePatterns && styleProfile.favoritePatterns.length > 0;
@@ -116,17 +129,18 @@ export default function ExperiencePanel({ onClose }: Props) {
         <span className="text-[14px] font-semibold" style={{ color: 'var(--cw-text)' }}>写作经验</span>
         <div className="flex-1" />
         <span className="text-[11px]" style={{ color: 'var(--cw-text-muted)' }}>
-          {styleProfile?.totalSessions ?? 0} 次写作 · {experiences.length} 条记录
+          {experiences.filter(e => !e.disabled).reduce((n, e) => n + (e.lessons?.length ?? 0), 0)} 条方法 · {experiences.length} 次记录
         </span>
       </div>
 
       <div className="flex-1 overflow-y-auto">
+        <p className="px-4 pt-3 text-[11px] break-words" style={{ color: 'var(--cw-text-muted)' }}>{learningMessage || '按题材与文笔召回经验；当前要求优先，模型复盘不等于用户认可。'}</p>
         {/* Style Profile */}
         {hasProfile && (
           <div className="px-4 py-4" style={{ borderBottom: '1px solid var(--cw-border)' }}>
             <div className="flex items-center gap-1.5 mb-3">
               <BookOpen size={13} style={{ color: 'var(--cw-text-muted)' }} />
-              <span className="text-[12px] font-medium" style={{ color: 'var(--cw-text-muted)' }}>文体画像</span>
+              <span className="text-[12px] font-medium" style={{ color: 'var(--cw-text-muted)' }}>旧版文体线索（未经验证）</span>
             </div>
 
             {styleProfile?.coreStyle && (
@@ -231,8 +245,9 @@ export default function ExperiencePanel({ onClose }: Props) {
           onMouseEnter={e => { e.currentTarget.style.color = 'var(--cw-danger)'; }}
           onMouseLeave={e => { e.currentTarget.style.color = 'var(--cw-text-muted)'; }}
           onClick={() => {
-            if (confirm('确定重置所有经验数据？此操作不可恢复。')) {
-              // TODO: implement reset
+            if (confirm('重置写作经验？旧记录会先备份，后续写作不再使用这些经验。')) {
+              invalidateWritingLearning();
+              void useCopywritingStore.getState().resetExperiences().catch(() => {});
             }
           }}
         >

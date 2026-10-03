@@ -41,3 +41,4 @@ skills/digital-human-skill/
 
 # 内部文档
 AIGC_MEMORY_ARCHITECTURE.md
+__pycache__/

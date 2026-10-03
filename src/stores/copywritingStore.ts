@@ -8,6 +8,7 @@ import {
   readStyleProfile,
   readExperienceLog,
   appendExperienceLog,
+  replaceExperienceLog,
 } from '@/lib/copywriting/persist';
 import { rebuildStyleProfile } from '@/lib/copywriting/experienceEngine';
 import { reanchorCopyComments } from '@/lib/copywriting/commentAnchors';
@@ -18,6 +19,10 @@ interface CopywritingState {
   styleProfile: StyleProfile | null;
   experiences: WritingExperience[];
   loaded: boolean;
+  learningStatus: 'idle' | 'learning' | 'saved' | 'error';
+  learningMessage: string;
+  resetExperiences: () => Promise<void>;
+  setExperienceEnabled: (id: string, enabled: boolean) => Promise<void>;
 
   loadAll: () => Promise<void>;
   createDoc: () => CopyDoc;
@@ -29,6 +34,11 @@ interface CopywritingState {
   setActiveDoc: (id: string | null) => void;
   appendExperience: (exp: WritingExperience) => Promise<void>;
   rebuildProfile: () => Promise<void>;
+}
+
+let learningWrites: Promise<unknown> = Promise.resolve();
+function serializeLearning<T>(job: () => Promise<T>): Promise<T> {
+  const next = learningWrites.catch(() => {}).then(job); learningWrites = next; return next;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -51,15 +61,23 @@ export const useCopywritingStore = create<CopywritingState>((set, get) => ({
   styleProfile: null,
   experiences: [],
   loaded: false,
+  learningStatus: 'idle',
+  learningMessage: '',
 
   loadAll: async () => {
-    const docs = await readDocsIndex();
-    const experiences = await readExperienceLog();
-    let styleProfile = await readStyleProfile();
-    if (experiences.length > 0 && (!styleProfile || styleProfile.version < 2 || styleProfile.totalSessions !== experiences.length)) {
-      styleProfile = await rebuildStyleProfile(experiences);
+    if (get().loaded) return;
+    try {
+      const docs = await readDocsIndex();
+      const persisted = await readExperienceLog();
+      const experiences = [...new Map([...persisted, ...get().experiences].map(e => [e.id, e])).values()];
+      let styleProfile = await readStyleProfile();
+      if (!styleProfile || styleProfile.version < 3 || styleProfile.totalSessions !== experiences.filter(e => !e.disabled && !e.lessons?.length).length) {
+        styleProfile = await rebuildStyleProfile(experiences);
+      }
+      set({ docs: get().docs.length ? get().docs : docs, styleProfile, experiences, loaded: true });
+    } catch (error) {
+      set({ learningStatus: 'error', learningMessage: `经验读取失败，未覆盖原记录：${String(error)}` });
     }
-    set({ docs, styleProfile, experiences, loaded: true });
   },
 
   createDoc: () => {
@@ -150,15 +168,38 @@ export const useCopywritingStore = create<CopywritingState>((set, get) => ({
 
   setActiveDoc: (id) => set({ activeDocId: id }),
 
-  appendExperience: async (exp) => {
-    await appendExperienceLog(exp);
-    const experiences = [...get().experiences, exp];
-    set({ experiences });
-    await get().rebuildProfile();
-  },
-
-  rebuildProfile: async () => {
+  appendExperience: (exp) => serializeLearning(async () => {
+    try {
+      if (get().experiences.some(e => e.id === exp.id || (exp.sourceRunId && e.sourceRunId === exp.sourceRunId))) return;
+      await appendExperienceLog(exp);
+      const experiences = [...get().experiences, exp];
+      set({ experiences });
+      const profile = await rebuildStyleProfile(experiences);
+      set({ styleProfile: profile, learningStatus: 'saved', learningMessage: `已沉淀 ${exp.lessons?.length ?? 1} 条写作经验` });
+    } catch (error) {
+      set({ learningStatus: 'error', learningMessage: `经验保存失败：${String(error)}` });
+      throw error;
+    }
+  }),
+  resetExperiences: () => serializeLearning(async () => {
+    try {
+      await replaceExperienceLog([]);
+      set({ experiences: [] });
+      const profile = await rebuildStyleProfile([]);
+      set({ styleProfile: profile, learningStatus: 'idle', learningMessage: '经验已重置，旧记录已备份' });
+    } catch (error) { set({ learningStatus: 'error', learningMessage: `重置失败：${String(error)}` }); throw error; }
+  }),
+  setExperienceEnabled: (id, enabled) => serializeLearning(async () => {
+    try {
+      const experiences = get().experiences.map(e => e.id === id ? { ...e, disabled: !enabled } : e);
+      await replaceExperienceLog(experiences);
+      set({ experiences });
+      const profile = await rebuildStyleProfile(experiences);
+      set({ styleProfile: profile });
+    } catch (error) { set({ learningStatus: 'error', learningMessage: `更新失败：${String(error)}` }); throw error; }
+  }),
+  rebuildProfile: () => serializeLearning(async () => {
     const profile = await rebuildStyleProfile(get().experiences);
     set({ styleProfile: profile });
-  },
+  }),
 }));

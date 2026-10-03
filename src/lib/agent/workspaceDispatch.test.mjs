@@ -1,3 +1,4 @@
+import { buildReferenceCraftTurnContext } from '../copywriting/referenceCraft.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -462,6 +463,7 @@ test('queued project authority binds only after dequeue; admitted runs share pro
 });
 
 const { AgentCoordinator } = load('./coordinator.ts', {
+  '../copywriting/referenceCraft': { buildReferenceCraftTurnContext },
   './toolExposure': load('./toolExposure.ts'),
   './summaryCircuit': load('./summaryCircuit.ts'),
   './requestBudget': load('./requestBudget.ts'),
@@ -475,7 +477,7 @@ const { AgentCoordinator } = load('./coordinator.ts', {
   './toolSummary': { sanitizeProgressText: (text) => text },
   './completionGuard': { terminalToolResults: () => [] },
   '../projectObjects/generationDraft': { shouldOfferToolConfirmation },
-  './transientNoticeQueue': { TransientNoticeQueue: class { addOnce() {} endRun() {} } },
+  './transientNoticeQueue': { TransientNoticeQueue: class { addOnce() {} endRun() {} takeForRequest() { return []; } } },
 });
 
 test('real coordinator tool-call loop routes every call through the same enforced registry', async () => {
@@ -571,4 +573,39 @@ test('ordinary coordinator blocks unauthorized generation before confirmation bu
     assert.equal(confirms, 0);
     assert.deepEqual(writes.map(item => item.name), ['project_update_generation_prompt']);
   } finally { release(); f.close(); }
+});
+
+
+test('ordinary requests and DSH share bounded craft evidence without persisting or leaking it to the next task', async () => {
+  const requests = [];
+  let failNext = false;
+  const { r } = registry();
+  const coordinator = new AgentCoordinator({
+    glmClient: { async *streamChat(messages) {
+      requests.push(messages.map(message => ({ ...message })));
+      if (failNext) { failNext = false; throw new Error('fixture stream failed'); }
+      yield { choices: [{ delta: { content: '完成' }, finish_reason: 'stop' }] };
+    } }, toolRegistry: r, cwd: '/fixture', maxTurns: 3,
+  });
+  const request = '写大陆乡村悬疑电影剧本';
+  const expected = buildReferenceCraftTurnContext(request);
+  const harness = await coordinator.buildHarnessTurnContext(request);
+  assert.equal(harness.turnContext, expected);
+  assert.ok(expected.length > 0 && expected.length < 2400);
+  await coordinator.run(request, callbacks());
+  assert.ok(requests[0].some(message => message.content === expected));
+  assert.equal(requests[0].at(-1).content, request);
+  assert.ok(!coordinator.getMessages().some(message => message.content === expected));
+  assert.equal(coordinator.transientCraftContext, null);
+  await coordinator.run('计算 1+1', callbacks());
+  assert.ok(!requests[1].some(message => String(message.content).includes('## 本次可参考的真实文本证据')));
+  assert.equal((await coordinator.buildHarnessTurnContext('计算 1+1')).turnContext, '');
+  failNext = true;
+  const errors = [];
+  await coordinator.run(request, { ...callbacks(), onError: error => errors.push(String(error)) });
+  assert.equal(errors.length, 1);
+  assert.equal(coordinator.transientCraftContext, null);
+  assert.ok(!coordinator.getMessages().some(message => message.content === expected));
+  await coordinator.run('返回 2', callbacks());
+  assert.ok(!requests.at(-1).some(message => String(message.content).includes('## 本次可参考的真实文本证据')));
 });

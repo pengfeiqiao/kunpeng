@@ -1,3 +1,4 @@
+import { captureWritingTurn, learnWritingTurn, bindWritingToolResult } from '@/lib/copywriting/learningRuntime';
 import { memoizeLast } from '@/lib/performance/memoizeLast';
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
@@ -1264,6 +1265,7 @@ export function useAgent(options?: { primary?: boolean }) {
   /** 发送消息 */
   const sendMessage = useCallback(
     async (content: string, filePaths?: string[]) => {
+      const writingTurn = captureWritingTurn(content);
       // Tier 4: pick the coordinator for the CURRENT agent. Lazy-init on first
       // use so non-main agents get their own coordinator only when actually
       // invoked. The factory closes over shared client/registry/skills, so
@@ -1639,6 +1641,7 @@ export function useAgent(options?: { primary?: boolean }) {
 
         onToolEnd: (name, result) => {
           if (!isCurrentRun()) return;
+          bindWritingToolResult(writingTurn, name, result);
           useChatStore.setState({ streamingToolName: null });
           const running = [...toolExecutionsRef.current].reverse().find((te) =>
             te.toolName === name && te.status === 'running'
@@ -1701,6 +1704,7 @@ export function useAgent(options?: { primary?: boolean }) {
           emit('agent-status-change', 'idle');
           useRunStepStore.getState().finishRun('done', runId);
           recordRunTrajectory('done', displayContent, startTime, isOrdinaryChatRun);
+          learnWritingTurn(writingTurn, finalText || accumulatedText, sessionId ?? '', runId);
 
           // Tier 4: OS notification when window is unfocused. Skip very
           // short turns (<5s) — those are clearly already in front of the user.
