@@ -1,3 +1,4 @@
+import { buildAutomotiveContext } from '../automotive/craft.ts';
 import { readWorkspaceMessage } from '../agent/workspaceMessage.ts';
 import { EXTENDED_CRAFT_SOURCES, EXTENDED_CRAFT_LESSONS } from "./referenceCraftCorpus.ts";
 import { MAINLAND_CRAFT_SOURCES, MAINLAND_CRAFT_LESSONS } from "./referenceCraftMainland.ts";
@@ -127,5 +128,5 @@ export function buildReferenceCraftTurnContext(message: string): string {
   const request = envelope.status === 'valid' ? envelope.request : message;
   // The copywriting panel/guide already embeds the same bounded packet.
   if (request.startsWith('[用户正在鲲鹏文案工作室]') || request.includes('## 本次可参考的真实文本证据\n')) return '';
-  return buildReferenceCraftContext(request);
+  return [buildReferenceCraftContext(request), buildAutomotiveContext(request)].filter(Boolean).join('\n\n');
 }

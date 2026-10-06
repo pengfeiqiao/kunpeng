@@ -149,3 +149,31 @@ workshop_update_shot_refs {"shot_no":"<编号>","add_previs_video_paths":["/abs/
 
 脚本在渲染前及完成后保存同名 `.blend`，可用 spec 的 `blend_output` 指定绝对路径。
 交付时附工程及预演视频；另启 Blender 无界面进程重新打开工程，检查相机、对象与动画帧范围后才称保存验证通过。已有工程编辑走 blender-modeling，本脚本清场行为只适用于新建白模。
+
+## 汽车 TVC 预演
+
+汽车题材先读 car-commercial-storyboard 的视觉方法。现已支持 `shape:"vehicle"`，原点为车身中心地面，**X 向前、Y 向左、Z 向上**，尺寸单位米。它是车身/座舱/四轮代理，不是品牌精确模型。轨迹会驱动车身朝向、前轮近似转向和按路程计算的轮转，禁止用平移方块冒充完整车轮运动。
+
+```json
+{
+  "output": "/absolute/workspace/vehicle-follow.mp4",
+  "fps": 24, "duration_sec": 3, "resolution": [640, 360], "engine": "workbench",
+  "ground_size": 100,
+  "objects": [{
+    "id": "hero", "shape": "vehicle", "dimensions": [4.8, 1.9, 1.5],
+    "wheel_radius": 0.34, "wheelbase": 2.8, "track": 1.56,
+    "vehicle_path": [{"time": 0, "position": [0, 0, 0]}, {"time": 3, "position": [15, 0, 0]}]
+  }],
+  "camera": {"lens": 35, "vehicle_rig": {"target_id": "hero", "mode": "follow", "offset": [7,-6,2], "look_offset": [0,0,0.8]}}
+}
+```
+
+这些数值只为预演示例，不是原片实测。车路径时间从 0 到 duration_sec，严格递增。转弯给平滑弧线上的密集位置，不写直角折线；过急转弯会报错，需要修改路径。暂不支持倒车、悬架动力学、轮胎侧滑与坡面自适应；这些需求需专门制作，不能宣称当前代理已解决。
+
+- **同步跟车**：`mode:"follow"`，offset 在车身局部坐标中固定。沿途加路缘或柱体代理才能观察背景视差。
+- **超越/后撤**：提供 `end_offset`，相机在片段内改变相对车的位置。路径穿过车体包络会拒绝，应绕到车侧或提高机位。
+- **环绕**：`mode:"orbit"`，`radius`、`height`、`start_degrees`、`end_degrees`；角度从车头 +X 向车左 +Y 增加。车静止时仍给两个相同位置的时间点。
+- **固定路边**：不给 vehicle_rig，按原 camera.path 写固定机位和视线点，车辆驶过；不要误写同步跟随。
+- **座舱镜头**：现有粗代理不适合内拍；先单独构建内饰包络、座位和系安全带乘员，使用明确机位。不得为了通过碰撞检查静默删除车身。
+
+vehicle_rig 与 camera.path 互斥，target_id 必须命中有 vehicle_path 的 vehicle；vehicle_path 与旧 motion 互斥。镜头构图仍需抽帧验证；包络碰撞检查不等于完整场景无碰撞。

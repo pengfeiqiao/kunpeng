@@ -365,30 +365,30 @@ python scripts/generate_car_storyboard.py \
   --camera-move tracking
 ```
 
-### 示例2: 保时捷911（动感）
+### 示例2: 定版跑车（动感）
 ```bash
 python scripts/generate_car_storyboard.py \
-  "保时捷911在海岸线行驶" \
+  "定版跑车在海岸线行驶" \
   --lens-style cinematic \
   --lens-type 85mm \
   --camera-move chase \
   --camera-model arri-alexa
 ```
 
-### 示例3: 复古保时捷356（怀旧）
+### 示例3: 复古经典跑车（怀旧）
 ```bash
 python scripts/generate_car_storyboard.py \
-  "复古保时捷356在怀旧街道" \
+  "复古经典跑车在怀旧街道" \
   --lens-style cooke-s2-s3 \
   --lens-type 50mm \
   --camera-move tracking \
   --camera-model canon-c300
 ```
 
-### 示例4: 宝马M4（速度感）
+### 示例4: 定版运动轿车（速度感）
 ```bash
 python scripts/generate_car_storyboard.py \
-  "宝马M4在城市穿梭" \
+  "定版运动轿车在城市穿梭" \
   --lens-style sharp \
   --lens-type 135mm \
   --camera-move lead \

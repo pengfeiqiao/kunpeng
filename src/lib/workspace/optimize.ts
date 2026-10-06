@@ -1,3 +1,4 @@
+import { buildAutomotiveContext } from '../automotive/craft.ts';
 import { quickChat } from '@/lib/agent/quickChat';
 import { rewriteVideoPrompt } from '@/lib/videoPrompt/prompt';
 import { referenceMention, workspaceDraftErrors } from './drafts';
@@ -28,6 +29,7 @@ export async function optimizeWorkspacePrompt(draft: WorkspaceDraft, template: '
       ratio: String(draft.params.ratio ?? draft.params.aspectRatio ?? '16:9') }, template, { signal })
     : await quickChat([
       { role: 'system', content: `你是专业图像提示词编辑。只输出单张图像的最终提示词，不生成图片、不解释、不输出代码块。
+${buildAutomotiveContext(draft.prompt + " 提示词")}
 汽车驾驶画面强制规则：凡画面涉及人物驾驶汽车，最终图片或视频提示词必须明确写出“驾驶者全程正确系好安全带，肩带斜跨胸前、腰带贴合髋部并扣紧”；不得仅写在分析或负面提示中。换机位、局部修改、风格改写和连续镜头均须保留此约束，不得出现安全带消失、解开、穿模或置于背后。近景可见部位必须正确呈现；遮挡时保持佩戴事实，不为展示安全带擅自改变构图。纯车辆空镜不新增人物。
 保留原文的剧情事实、主体身份、人物关系、动作目标和关键道具；仅优化构图、镜头、光线、材质与视觉层次，不新增人物、对白或剧情。
 参考素材按提供的 @图片N 编号描述用途，不改编号，不虚构素材，不输出路径或内部ID。

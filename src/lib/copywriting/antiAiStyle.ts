@@ -1,3 +1,4 @@
+import { buildAutomotiveContext } from '../automotive/craft.ts';
 import { buildReferenceCraftContext } from './referenceCraft.ts';
 import { SCREENPLAY_CRAFT_HARNESS, SCRIPT_DOCTOR_FRAMEWORK } from './screenwritingCraft.ts';
 export { SCREENPLAY_CRAFT_HARNESS, SCRIPT_DOCTOR_FRAMEWORK } from './screenwritingCraft.ts';
@@ -91,6 +92,8 @@ export function buildCopywritingTaskHarness(task: string): string {
   if (wantsScreenplay) sections.push(SCREENPLAY_CRAFT_HARNESS);
   if (wantsAdvertising) sections.push(AD_DIRECTOR_FRAMEWORK);
   if (wantsDiagnosis) sections.push(SCRIPT_DOCTOR_FRAMEWORK);
+  const automotive = buildAutomotiveContext(task);
+  if (automotive) sections.push(automotive);
   const references = buildReferenceCraftContext(task);
   if (references) sections.push(references);
 

@@ -1,3 +1,4 @@
+import { buildAutomotiveContext } from '../automotive/craft.ts';
 import { quickChat } from '@/lib/agent/quickChat';
 import { auditUniversalVideoPrompt } from './audit';
 import { AI_DRAMA_BAN, PERFORMANCE_GUIDE } from './performance.ts';
@@ -116,7 +117,7 @@ ${input.prompt.trim()}
   // max_tokens 在该端点与 thinking 共享预算（已实测 output_tokens 内含 thinking_tokens），
   // 6000 易被推理占满导致正文截断失败，给到 16000。
   const result = await quickChat([
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: SYSTEM_PROMPT + "\n" + buildAutomotiveContext(input.prompt + " 提示词") },
     { role: 'user', content: userPrompt },
   ], { maxTokens: 16000, continueOnTruncation: true, ...options });
   const cleaned = result.trim().replace(/^```(?:text|markdown)?\s*/i, '').replace(/\s*```$/, '').trim();
@@ -147,7 +148,7 @@ ${input.prompt.trim()}
 
 请按经典版多镜头结构优化。保留原始剧情事实、人物关系、已有对白、明确动作目标和参考素材编号；只丰富可执行的摄影、表演、光影、材质、物理反馈和剪辑细节。`;
   const result = await quickChat([
-    { role: 'system', content: CLASSIC_SYSTEM_PROMPT },
+    { role: 'system', content: CLASSIC_SYSTEM_PROMPT + "\n" + buildAutomotiveContext(input.prompt + " 提示词") },
     { role: 'user', content: userPrompt },
   ], { maxTokens: 16000, continueOnTruncation: true, ...options });
   const cleaned = result.trim().replace(/^```(?:text|markdown)?\s*/i, '').replace(/\s*```$/, '').trim();

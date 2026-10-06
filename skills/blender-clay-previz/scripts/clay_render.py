@@ -44,7 +44,9 @@ import os
 import sys
 import traceback
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy
+from vehicle_builder import add_vehicle
 from mathutils import Vector
 
 
@@ -305,7 +307,7 @@ def setup_render(spec, engine):
     duration = float(spec.get("duration_sec", 5))
     scene.render.fps = fps
     scene.frame_start = 1
-    scene.frame_end = max(2, int(round(fps * duration)) + 1)
+    scene.frame_end = max(2, int(round(fps * duration)))
     res = spec.get("resolution", [1280, 720])
     scene.render.resolution_x = int(res[0])
     scene.render.resolution_y = int(res[1])
@@ -365,12 +367,15 @@ def main():
     count = 0
     for obj_spec in spec.get("objects", []):
         mat = clay_material("clay_" + obj_spec.get("id", f"obj{count}"), obj_spec.get("color"))
-        obj = build_object(obj_spec, mat)
-        keyframe_motion(obj, obj_spec.get("motion"), interpolation)
+        obj = add_vehicle(obj_spec, mat, spec) if obj_spec.get("shape") == "vehicle" else build_object(obj_spec, mat)
+        keyframe_motion(obj, obj_spec.get("motion"), obj_spec.get("interpolation", interpolation))
         count += 1
     log({"status": "built", "objects": count})
 
-    setup_camera(spec, interpolation)
+    rig = spec.get("camera", {}).get("vehicle_rig")
+    if rig and not spec.get("camera", {}).get("path"):
+        raise ValueError("vehicle_rig target must name a vehicle with vehicle_path")
+    setup_camera(spec, "linear" if rig else interpolation)
     setup_lights(spec)
     setup_world()
 
