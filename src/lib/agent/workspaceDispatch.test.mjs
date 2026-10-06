@@ -130,7 +130,7 @@ function nativeGenerationFixture() {
     '@/lib/videoPrompt/performance': { PERFORMANCE_BRIEF: 'fixture' },
     '@/lib/doubaoSpeech/client': { generateSpeech: async (args) => { submissions.push({ type: 'speech', args }); return { model: 'Seed-Audio', duration: 1 }; },
       fetchSpeechAudioBytes: async () => new Uint8Array([1, 2]) },
-    '@tauri-apps/api/fs': { createDir: async () => {}, writeBinaryFile: async (path) => { files.push(path); } },
+    '@tauri-apps/api/fs': { copyFile: async (source, dest) => { files.push(dest); }, createDir: async () => {}, writeBinaryFile: async (path) => { files.push(path); } },
     '@tauri-apps/api/tauri': { invoke: async () => '/fixture/workspace', convertFileSrc: (path) => path },
     '@/stores/canvasStore': { useCanvasStore: { getState: () => ({ nodes: [], addNode: (...args) => canvasWrites.push(args), updateNode: (...args) => canvasWrites.push(args) }) } },
     '@/lib/artifacts': { appendArtifact: async () => {} },
@@ -156,8 +156,8 @@ test('bound project generation retains native schemas, style/reference/model sem
     }
     const invoke = (name, params) => r.execute(name, { project_id: 'P', ...params }, undefined, { runId: f.runId });
     assert.equal((await invoke('image_generate', { prompt: '镜头草图', aspect_ratio: '9:16', reference_urls: ['/fixture/ref.png'] })).success, true);
-    assert.equal(submissions[0].args.aspectRatio, '9:16');
-    assert.equal(submissions[0].args.referenceImageUrls[0], '/fixture/ref.png');
+    assert.equal(submissions[0].args.params.aspectRatio, '9:16');
+    assert.equal(submissions[0].args.referenceUrls[0], '/fixture/ref.png');
     assert.equal((await invoke('image_generate', { prompt: '风格草图', model: 'midjourney-v82', midjourney_style_id: 'fixture' })).success, true);
     assert.equal(submissions[1].args.prompt, '风格草图 style');
     assert.equal(submissions[1].args.styleReferenceUrls[0], '/fixture/style.png');
@@ -209,7 +209,7 @@ test('real DSH confirmations and paid idempotency still protect each admitted pr
 });
 
 test('native video ambiguity guard survives project admission; ordinary calls remain unbound and local scopes generate with project binding', async () => {
-  const f = fixture('project'); const local = fixture('media'); const { r, submissions } = nativeGenerationFixture();
+  const f = fixture('project'); const local = fixture('media'); const { r, submissions, files } = nativeGenerationFixture();
   try {
     const ambiguous = await r.execute('video_generate', { project_id: 'P', prompt: '延长这段视频', video_urls: ['/fixture/ref.mp4'] }, undefined, { runId: f.runId });
     assert.equal(ambiguous.success, false); assert.match(ambiguous.error, /video_edit/);
@@ -219,7 +219,7 @@ test('native video ambiguity guard survives project admission; ordinary calls re
     }
     assert.equal(submissions.length, 3);
     assert.equal((await r.execute('image_generate', { prompt: 'ordinary', output_path: '/fixture/ordinary.png' }, undefined, { runId: 'ordinary-generation' })).success, true);
-    assert.equal(submissions[3].args.outputPath, '/fixture/ordinary.png');
+    assert.ok(files.includes('/fixture/ordinary.png'));
     const call = { name: 'video_generate', runId: f.runId, instanceId: 'fixture', requestId: 'switch', arguments: { project_id: 'P', prompt: 'fixture' } };
     const switched = await executeDshToolCall(call, r, callbacks(async () => { f.change((state) => { state.activeProjectId = 'other'; }); return true; }), new AbortController().signal);
     assert.equal(switched.success, false); assert.equal(submissions.length, 4);

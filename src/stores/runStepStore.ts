@@ -25,6 +25,7 @@ export interface RunToolCall {
   startedAt: number;
   endedAt?: number;
   resultSummary?: string;
+  generatedImages?: string[];
   display?: ToolActionPresentation;
 }
 
@@ -94,7 +95,7 @@ interface RunStepState {
   syncTodos: (sessionId: string, todos: Array<{ content: string; status: string; activeForm?: string }>) => void;
   ensureSystemStep: (title: string, detail?: string, runId?: string) => string | null;
   startTool: (name: string, params: Record<string, unknown>, runId?: string) => string | null;
-  finishTool: (toolId: string | null, success: boolean, result?: { output?: string; error?: string }, runId?: string) => void;
+  finishTool: (toolId: string | null, success: boolean, result?: { output?: string; error?: string; generatedImages?: string[] }, runId?: string) => void;
   startSubAgent: (args: { taskId?: string; task: string; async?: boolean; kind?: SubTaskKind }, runId?: string) => string | null;
   appendSubAgentProgress: (idOrTaskId: string, text: string, runId?: string) => void;
   finishSubAgent: (idOrTaskId: string, status: Exclude<SubAgentStatus, 'running'>, output?: string, error?: string, runId?: string) => void;
@@ -115,7 +116,7 @@ function summarizeJson(value: unknown, max = 140): string {
   }
 }
 
-function summarizeResult(result?: { output?: string; error?: string }, max = 220): string | undefined {
+function summarizeResult(result?: { output?: string; error?: string; generatedImages?: string[] }, max = 220): string | undefined {
   const text = result?.error || result?.output;
   if (!text) return undefined;
   return text.length > max ? `${text.slice(0, max)}...` : text;
@@ -558,6 +559,7 @@ export const useRunStepStore = create<RunStepState>()(persist((set, get) => ({
                 status: success ? 'done' : 'failed',
                 endedAt: Date.now(),
                 resultSummary: summarizeResult(result),
+                generatedImages: result?.generatedImages,
               }
             : call,
         ),

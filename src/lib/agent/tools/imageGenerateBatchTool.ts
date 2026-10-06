@@ -36,7 +36,7 @@ export const imageGenerateBatchTool: Tool = {
     const output = results.map((r, i) => `任务 ${i + 1}：${r.success ? r.output : r.error || '失败'}\n${JSON.stringify({ job_index: i + 1, output_path: jobs[i].output_path ?? null, state: r.paidSubmissionState ?? (r.success ? 'completed' : 'unknown'), receipt: r.output, reference_order: jobs[i].reference_urls ?? [], automatic_retry: false })}`).join('\n');
     const success = results.every(r => r.success);
     return {
-      success, output, media: results.flatMap(r => r.media ?? []),
+      success, output, generatedImages: results.flatMap(r => r.generatedImages ?? []), media: results.flatMap(r => r.media ?? []),
       ...(!success ? { paidSubmissionState: 'unknown' as const, error: '部分任务未完成或状态不明；请核对逐项结果，禁止重放整批以免重复扣费。', terminal: true, terminalMessage: output } : {}),
     };
   },

@@ -1,8 +1,8 @@
 import type { Tool } from '../types';
-import { generateImage } from '@/lib/imageGen/client';
+import { copyFile } from '@tauri-apps/api/fs';
 import { loadMediaInput } from '@/lib/agent/mediaInput';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { runGeneration } from '@/lib/canvasGen';
+import { runGeneration, abortCanvasTask, type CoreGenRequest } from '@/lib/canvasGen';
 import { findCustomMediaApi } from '@/lib/customMedia/runner';
 import {
   applyMidjourneyStylePrompt,
@@ -78,6 +78,7 @@ export const imageGenerateTool: Tool = {
         weird: { type: 'number', description: '可选 MJ 怪诞度 0-3000；默认 0，仅在用户明确要实验、怪诞或超现实时使用 100-300。' },
         style_weight: { type: 'number', description: '可选 MJ 风格参考权重 0-1000。通常由风格预设自动决定。' },
         image_weight: { type: 'number', description: '可选 MJ 主体参考图权重 0-3。主体必须保持时可提高，纯风格母图时由预设控制。' },
+        inspect_result: { type: 'boolean', description: '仅在需要核验画面或继续视觉编辑时设为 true；默认直接返回本地成品，避免重复上传成品给语言模型。' },
         output_path: { type: 'string', description: '可选的绝对输出路径' },
       },
       required: ['prompt'],
@@ -89,7 +90,33 @@ export const imageGenerateTool: Tool = {
     const prompt = String(params.prompt || '').trim();
     return `chat-image:${outputPath || prompt.slice(0, 80)}`;
   },
-  async execute(params) {
+  async execute(params, signal) {
+    if (signal?.aborted) return { success: false, output: '', error: '已中止，未提交。', paidSubmissionState: 'not_submitted' };
+    const generate = async (request: CoreGenRequest) => {
+      let taskId = '';
+      const abort = () => { if (taskId) abortCanvasTask(taskId); };
+      signal?.addEventListener('abort', abort, { once: true });
+      try {
+        return await runGeneration({ ...request, onTaskCreated: (id) => {
+          taskId = id;
+          if (signal?.aborted) abort();
+        } });
+      } finally { signal?.removeEventListener('abort', abort); }
+    };
+    // Only explicit visual inspection needs a second image upload to the LLM.
+    // Preview failure must not turn a successful paid generation into a retry.
+    const resultMedia = async (paths: string[]) => {
+      if (params.inspect_result !== true) return [];
+      const media = await Promise.all(paths.map(async (path) => {
+        try {
+          const native = await loadMediaInput(path);
+          return { type: 'image' as const, source: native.dataUrl.startsWith('data:')
+            ? { type: 'base64' as const, media_type: native.mediaType || 'image/png', data: native.dataUrl.slice(native.dataUrl.indexOf(',') + 1) }
+            : { type: 'url' as const, url: native.dataUrl } };
+        } catch { return null; }
+      }));
+      return media.filter((item): item is NonNullable<typeof item> => item !== null);
+    };
     const suppliedReferences = Array.isArray(params.reference_urls) ? params.reference_urls : [];
     if ((params.reference_urls !== undefined && !Array.isArray(params.reference_urls)) || suppliedReferences.length > 10 || suppliedReferences.some(path => typeof path !== 'string' || !path.trim())) {
       return { success: false, output: '', error: '提交前参考图校验失败：最多10张，路径不得为空；不会静默截断或重排。', paidSubmissionState: 'not_submitted' };
@@ -112,7 +139,7 @@ export const imageGenerateTool: Tool = {
       const referenceUrls = Array.isArray(params.reference_urls)
         ? params.reference_urls.map(String).filter(Boolean).slice(0, 10)
         : [];
-      const result = await runGeneration({
+      const result = await generate({
         engineId: requestedModel,
         prompt: String(params.prompt || ''),
         referenceUrls,
@@ -125,7 +152,6 @@ export const imageGenerateTool: Tool = {
         return { success: false, output: '', error: result.error || '自定义插件图片生成失败' };
       }
       const path = result.resultPaths[0];
-      const native = await loadMediaInput(path);
       const api = findCustomMediaApi(requestedModel);
       return {
         success: true,
@@ -135,12 +161,8 @@ export const imageGenerateTool: Tool = {
           `模型：${api?.label ?? requestedModel}（自定义插件）`,
           `文件：${path}`,
         ].join('\n'),
-        media: [{
-          type: 'image',
-          source: native.dataUrl.startsWith('data:')
-            ? { type: 'base64', media_type: native.mediaType || 'image/png', data: native.dataUrl.slice(native.dataUrl.indexOf(',') + 1) }
-            : { type: 'url', url: native.dataUrl },
-        }],
+        generatedImages: result.resultPaths,
+        media: await resultMedia(result.resultPaths),
       };
     }
 
@@ -180,7 +202,7 @@ export const imageGenerateTool: Tool = {
       const styleReference = await ensureMidjourneyStyleReference(style);
       const basePrompt = String(params.prompt || '').trim();
       const prompt = applyMidjourneyStylePrompt(basePrompt, style);
-      const result = await runGeneration({
+      const result = await generate({
         engineId: `midjourney-${version.replace('.', '')}`,
         prompt,
         referenceUrls,
@@ -200,15 +222,6 @@ export const imageGenerateTool: Tool = {
       if (!result.success || result.resultPaths.length === 0) {
         return { success: false, output: '', error: result.error || 'Midjourney 图片生成失败' };
       }
-      const media = await Promise.all(result.resultPaths.map(async (path) => {
-        const native = await loadMediaInput(path);
-        return {
-          type: 'image' as const,
-          source: native.dataUrl.startsWith('data:')
-            ? { type: 'base64' as const, media_type: native.mediaType || 'image/png', data: native.dataUrl.slice(native.dataUrl.indexOf(',') + 1) }
-            : { type: 'url' as const, url: native.dataUrl },
-        };
-      }));
       return {
         success: true,
         output: [
@@ -220,40 +233,43 @@ export const imageGenerateTool: Tool = {
           `通道：APIMart`,
           ...result.resultPaths.map((path, index) => `候选 ${index + 1}：${path}`),
         ].join('\n'),
-        media,
+        generatedImages: result.resultPaths,
+        media: await resultMedia(result.resultPaths),
       };
     }
 
-    const result = await generateImage({
+    const result = await generate({
+      engineId: model,
       prompt: String(params.prompt || ''),
-      model,
-      size: 'auto',
-      aspectRatio,
-      resolution,
-      referenceImageUrls: referenceUrls,
-      outputPath: params.output_path ? String(params.output_path) : undefined,
+      referenceUrls,
+      params: { aspectRatio, resolution, quality: 'high' },
     });
-    if (!result.success || !result.imagePath) {
+    if (!result.success || !result.resultPaths.length) {
       return { success: false, output: '', error: result.error || '图片生成失败' };
     }
-
-    const native = await loadMediaInput(result.imagePath);
+    let path = result.resultPaths[0];
+    let saveNote = '';
+    if (params.output_path && String(params.output_path) !== path) {
+      try {
+        await copyFile(path, String(params.output_path));
+        path = String(params.output_path);
+      } catch {
+        saveNote = '指定路径复制失败，原始成品已保留在下方路径；不要重新生成。';
+      }
+    }
     return {
       success: true,
       output: [
-        '图片生成完成。',
+        '图片生成完成。使用下方本地路径展示图片；无需为了展示再次识图。',
         referenceReceipt,
-        `模型：${result.modelUsed || model}`,
+        `模型：${model}`,
         `画幅：${aspectRatio}`,
-        `通道：${result.apiUsed}`,
-        `文件：${result.imagePath}`,
-      ].join('\n'),
-      media: [{
-        type: 'image',
-        source: native.dataUrl.startsWith('data:')
-          ? { type: 'base64', media_type: native.mediaType || 'image/png', data: native.dataUrl.slice(native.dataUrl.indexOf(',') + 1) }
-          : { type: 'url', url: native.dataUrl },
-      }],
+        `任务：${result.taskId}`,
+        `文件：${path}`,
+        saveNote,
+      ].filter(Boolean).join('\n'),
+      generatedImages: [path],
+      media: await resultMedia([path]),
     };
   },
 };

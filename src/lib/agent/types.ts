@@ -27,6 +27,8 @@ export interface ToolResult {
   error?: string;
   /** Native multimodal evidence returned by capture/generation tools. */
   media?: AgentUserContentBlock[];
+  /** Local UI previews; never automatically sent to a model. */
+  generatedImages?: string[];
   /**
    * A long-running action may already be the final outcome, including a paid
    * submission whose state is unknown and must not be replayed automatically.

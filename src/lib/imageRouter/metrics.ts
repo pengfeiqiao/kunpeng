@@ -49,7 +49,6 @@ interface RouteStats {
 }
 
 const STORAGE_KEY = 'kunpeng.imageRouteMetrics.v1';
-const DAILY_KEY = 'kunpeng.imageRouteExplore.v1';
 const ORDER_KEY = 'kunpeng.imageRouteOrder.v1';
 const SORT_MODE_KEY = 'kunpeng.imageRouteSortMode.v1';
 const SELECTED_AT_KEY = 'kunpeng.imageRouteSelectedAt.v1';
@@ -76,10 +75,6 @@ function defaultRouteRank(route: ImageRouteDefinition): number {
   // last Seedream fallback so a missing session cannot mask healthy API routes.
   if (route.provider === 'dreamina') return modeOffset + 80;
   return modeOffset + 90;
-}
-
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -337,17 +332,6 @@ function routeHealthy(routeId: string): boolean {
   return consecutiveFailures < 0 ? recent.length < 2 : consecutiveFailures < 2;
 }
 
-function dailyExploreCount(): number {
-  const data = readJson<Record<string, number>>(DAILY_KEY, {});
-  return data[todayKey()] ?? 0;
-}
-
-function bumpDailyExplore(): void {
-  const day = todayKey();
-  const data = readJson<Record<string, number>>(DAILY_KEY, {});
-  writeJson(DAILY_KEY, { ...data, [day]: (data[day] ?? 0) + 1 });
-}
-
 function orderedRoutes(routes: string[]): string[] {
   const order = getImageRouteOrder();
   return [...routes].sort((a, b) => {
@@ -416,14 +400,8 @@ export function chooseGptImageChannel(requestedEngineId: string, hasReference: b
 
   // startsWith 兼容存量数据里的旧引擎 id（gpt-image-2 / gpt-image-2-i2i）。
   if (requestedEngineId.startsWith('gpt-image-2')) {
-    const explore = dailyExploreCount() < 5 && Math.random() < 0.35;
-    if (explore) {
-      const healthyCandidates = apiRoutes.filter(routeHealthy);
-      if (healthyCandidates.length > 0) {
-        bumpDailyExplore();
-        return healthyCandidates[Math.floor(Math.random() * healthyCandidates.length)];
-      }
-    }
+    // Production requests follow the user's route policy; do not spend a paid
+    // request randomly exploring a slower channel. Similar routes still rotate.
     return weightedPick(apiRoutes);
   }
 

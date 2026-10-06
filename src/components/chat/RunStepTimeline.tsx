@@ -1,3 +1,4 @@
+import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { Fragment, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { BookOpen, Check, ChevronDown, Circle, FilePenLine, Globe2, Loader2, Search, Sparkles, Terminal, Video, Wrench, X } from 'lucide-react';
 import { useChatStore } from '@/stores/chatStore';
@@ -239,6 +240,10 @@ export default function RunStepTimeline({ compact = false, showHeader = true, cl
   const events = useMemo(() => run ? buildTimelinePresentationItems(run) : [], [run]);
   if (!run || (!embedded && events.length === 0)) return null;
 
+  const imagePaths = [...new Set(run.steps.flatMap(step => step.toolCalls.flatMap(tool => tool.generatedImages ?? [])))];
+  const imagePreviews = imagePaths.length > 0 ? <div className="mt-2 grid grid-cols-2 gap-2" aria-label="生成图片">
+    {imagePaths.map(path => <img key={path} src={convertFileSrc(path)} alt="生成图片" loading="lazy" decoding="async" className="max-h-80 w-full rounded-lg object-contain" />)}
+  </div> : null;
   const done = run.steps.filter((step) => step.status === 'done').length;
   const toneStyle = {
     '--run-text': tone === 'dark' ? '#d2d2d2' : tone === 'light' ? '#1A1A1A' : 'rgb(var(--c-text))',
@@ -268,6 +273,7 @@ export default function RunStepTimeline({ compact = false, showHeader = true, cl
           </li>)}</ol>
         {events.length === 0 && <p className="workspace-assistant-no-events">暂无步骤回执</p>}
       </details>
+      {imagePreviews}
     </div>;
   }
 
@@ -281,6 +287,7 @@ export default function RunStepTimeline({ compact = false, showHeader = true, cl
           {run.modelProvider && <span className="ml-auto max-w-[45%] truncate text-[11px]">{run.modelProvider}</span>}
         </div>
       )}
+      {imagePreviews}
       <div className="min-w-0 space-y-0">
         {events.map((event) => (
           <Fragment key={`${event.kind}-${event.id}`}>
