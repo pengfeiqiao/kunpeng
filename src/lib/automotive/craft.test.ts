@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAutomotiveContext } from './craft.ts';
+import { buildAutomotiveContext, AUTOMOTIVE_SHOT_POLICY } from './craft.ts';
 import { buildCopywritingTaskHarness } from '../copywriting/antiAiStyle.ts';
 import { buildReferenceCraftTurnContext } from '../copywriting/referenceCraft.ts';
 import { wrapWorkspaceContext } from '../agent/workspaceMessage.ts';
@@ -40,4 +40,21 @@ test('road-running and storyboard guidance is task-scoped and reaches workspace 
   }
   assert.doesNotMatch(buildAutomotiveContext('写汽车家庭故事'), /road-running-shots/);
   assert.equal(buildAutomotiveContext('人物跟拍分镜'), '');
+});
+
+
+test('whole TVC scripts receive sequence decisions across writing and workspace adapters without requiring the word storyboard', () => {
+  for (const request of ['写汽车TVC脚本', '汽车广告剧本，太常规，重写', 'car commercial']) {
+    const packet = buildAutomotiveContext(request);
+    assert.ok(packet.includes(AUTOMOTIVE_SHOT_POLICY));
+    assert.ok(packet.length < 1800, `${request}: ${packet.length}`);
+    assert.ok(buildCopywritingTaskHarness(request).includes(packet));
+    assert.ok(buildReferenceCraftTurnContext(request).includes(packet));
+    for (const scope of ['canvas', 'workshop', 'editor'] as const) {
+      assert.ok(buildReferenceCraftTurnContext(wrapWorkspaceContext(scope, '') + request).includes(packet));
+    }
+  }
+  for (const request of ['车辆三视图资产', '汽车维修手册', '修改购物车接口', '今天的天气']) {
+    assert.ok(!buildAutomotiveContext(request).includes(AUTOMOTIVE_SHOT_POLICY));
+  }
 });
