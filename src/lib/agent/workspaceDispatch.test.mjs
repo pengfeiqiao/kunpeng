@@ -1,3 +1,4 @@
+import * as softwareLease from './softwareLease.ts';
 import { buildReferenceCraftTurnContext } from '../copywriting/referenceCraft.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,7 +30,7 @@ const { ToolRegistry } = load('./toolRegistry.ts', {
   '@/stores/chatStore': { useChatStore: { getState: () => ({ activeView: 'workshop' }) } },
   './evolutionPolicy': { summarizeTrajectoryValue: (value) => String(value) }, './workspaceToolScope': scope,
   './workspaceProjectGeneration': projectGeneration,
-  './paidToolIdempotency': { PaidToolIdempotencyGate },
+  './paidToolIdempotency': { PaidToolIdempotencyGate }, './softwareLease': softwareLease,
 });
 
 function registry() {
@@ -609,3 +610,69 @@ test('ordinary requests and DSH share bounded craft evidence without persisting 
   await coordinator.run('返回 2', callbacks());
   assert.ok(!requests.at(-1).some(message => String(message.content).includes('## 本次可参考的真实文本证据')));
 });
+
+test('loop rejects malformed and non-object arguments without executing default mutations', async () => {
+  const { r, writes } = registry();
+  const coordinator = new AgentCoordinator({ glmClient: {}, toolRegistry: r, cwd: '/fixture', maxTurns: 3 });
+  let turns = 0;
+  coordinator.streamToCompletion = async () => (++turns === 1 ? {
+    text: '', finishReason: 'tool_calls', thinkingBlocks: [],
+    toolCalls: ['{broken', 'null', '[]', '"secret"'].map((arguments_, i) => ({ id: `bad-${i}`, function: { name: 'write_file', arguments: arguments_ } })),
+  } : { text: 'done', finishReason: 'stop', thinkingBlocks: [], toolCalls: [] });
+  await coordinator.run('test', callbacks());
+  assert.equal(writes.length, 0);
+  const results = coordinator.getMessages().filter(m => m.role === 'tool');
+  assert.equal(results.length, 4);
+  for (const result of results) assert.match(result.content, /invalid_arguments/);
+});
+
+test('both harnesses fail closed when approval UI is unavailable', async () => {
+  const { r, executions } = nativeBashFixture();
+  const cb = { ...callbacks(), onToolConfirm: undefined };
+  const params = { command: 'rm -r /fixture/cache' };
+  const result = await executeDshToolCall({ name: 'bash', arguments: params }, r, cb, new AbortController().signal);
+  assert.equal(result.success, false);
+  const coordinator = new AgentCoordinator({ glmClient: {}, toolRegistry: r, cwd: '/fixture', maxTurns: 3 });
+  let turns = 0;
+  coordinator.streamToCompletion = async () => (++turns === 1 ? {
+    text: '', finishReason: 'tool_calls', thinkingBlocks: [], toolCalls: [{ id: 'ask', function: { name: 'bash', arguments: JSON.stringify(params) } }],
+  } : { text: 'done', finishReason: 'stop', thinkingBlocks: [], toolCalls: [] });
+  await coordinator.run('test', cb);
+  assert.equal(executions.length, 0);
+  assert.match(coordinator.getMessages().find(m => m.role === 'tool').content, /confirmation_unavailable/);
+});
+
+test('registry rejects cancelled dispatch before reserving a paid operation', async () => {
+  const { r, writes, reserves } = registry();
+  const controller = new AbortController(); controller.abort();
+  assert.equal((await r.execute('workshop_generate', {}, controller.signal)).success, false);
+  assert.equal(writes.length, 0); assert.equal(reserves.length, 0);
+  for (const params of [null, [], 'bad']) assert.equal((await r.execute('write_file', params)).success, false);
+  assert.equal(writes.length, 0);
+});
+
+
+test('separate real registries serialize shared software but permit independent generation', async () => {
+  const a = new ToolRegistry(), b = new ToolRegistry(); const order = [];
+  for (const [r, sid] of [[a, 'lease-a'], [b, 'lease-b']]) {
+    for (const name of ['browser_control', 'image_generate']) r.register({definition:{name,description:'test',parameters:{type:'object'}},risk:'safe',execute:async()=>{order.push(`${sid}:${name}`);return {success:true,output:'ok'};}});
+  }
+  await a.execute('browser_control', {}, undefined, {runId:'lease-a'});
+  const pending = b.execute('browser_control', {}, undefined, {runId:'lease-b'});
+  await b.execute('image_generate', {}, undefined, {runId:'lease-b'});
+  assert.deepEqual(order, ['lease-a:browser_control','lease-b:image_generate']);
+  a.releaseSoftware('lease-a'); await pending; b.releaseSoftware('lease-b');
+  assert.equal(order.at(-1), 'lease-b:browser_control');
+});
+
+for (const finishReason of ['max_tokens', 'length']) {
+  test(`loop refuses even valid tool JSON when output ends with ${finishReason}`, async () => {
+    const { r, writes } = registry();
+    const coordinator = new AgentCoordinator({ glmClient: {}, toolRegistry: r, cwd: '/fixture', maxTurns: 3 });
+    coordinator.streamToCompletion = async () => ({ text: '', finishReason, thinkingBlocks: [],
+      toolCalls: [{ id: 'truncated', function: { name: 'write_file', arguments: '{"path":"file"}' } }] });
+    await assert.rejects(coordinator.run('test', callbacks()), /工具请求未完整完成/);
+    assert.equal(writes.length, 0);
+    assert.equal(coordinator.getMessages().filter(m => m.tool_calls?.length).length, 0);
+  });
+}

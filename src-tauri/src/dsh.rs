@@ -12,8 +12,8 @@ use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{oneshot, Mutex, RwLock};
 use tokio::time::{timeout, Duration};
 
-const DSH_VERSION: &str = "0.1.5-rc.1";
-const DSH_RUNTIME_REVISION: &str = "0.1.5-rc.1-kunpeng.1";
+const DSH_VERSION: &str = "0.2.0-rc.2";
+const DSH_RUNTIME_REVISION: &str = "0.2.0-rc.2-kunpeng.1";
 const DSH_EVENT_PREFIX: &str = "__KUNPENG_DSH_EVENT__";
 
 #[derive(Clone)]
@@ -224,7 +224,7 @@ fn ensure_runtime(app: &tauri::AppHandle) -> Result<PathBuf, String> {
             .join("package.json"),
         root.join("node_modules")
             .join("@deepseek-ai")
-            .join("dsh-llm-deepseek")
+            .join("dsh-llm-deepseek-api-key")
             .join("lib")
             .join("index.js"),
         root.join("node_modules")
@@ -486,11 +486,13 @@ async fn handle_bridge_connection(
 
 fn normalized_base_url(input: &str) -> String {
     let trimmed = input.trim().trim_end_matches('/');
-    trimmed
-        .strip_suffix("/anthropic")
-        .unwrap_or(trimmed)
-        .trim_end_matches('/')
-        .to_string()
+    // DSH 0.2 uses Messages endpoints. Preserve gateway paths verbatim;
+    // only normalize the official API's former root/v1 configuration.
+    match trimmed {
+        "" | "https://api.deepseek.com" | "https://api.deepseek.com/v1" =>
+            "https://api.deepseek.com/anthropic".to_string(),
+        _ => trimmed.to_string(),
+    }
 }
 
 #[tauri::command]
@@ -615,7 +617,7 @@ async fn dsh_start_inner(
     // The Cordis loader resolves bare package names relative to the CONFIG
     // file's directory (dsh-app-boot sets ctx.baseUrl to it). The run config
     // lives in ~/.kunpeng/dsh/runs/<id>/, outside the deployed runtime root,
-    // so a bare "@deepseek-ai/dsh-llm-deepseek" specifier cannot resolve there:
+    // so a bare "@deepseek-ai/dsh-llm-deepseek-api-key" specifier cannot resolve there:
     // boot fails and disposes the half-mounted tree (ACP already mounted),
     // which surfaces as "the ACP bridge has been disposed" on session/new.
     // Reference the adapter by absolute entry path, exactly like the ACP host.
@@ -624,7 +626,7 @@ async fn dsh_start_inner(
     let llm_deepseek = runtime
         .join("node_modules")
         .join("@deepseek-ai")
-        .join("dsh-llm-deepseek")
+        .join("dsh-llm-deepseek-api-key")
         .join("lib")
         .join("index.js");
     let kunpeng_acp = runtime.join("kunpeng-acp.mjs");
@@ -1064,15 +1066,17 @@ mod tests {
     }
 
     #[test]
-    fn normalized_base_url_strips_anthropic_suffix_and_trailing_slashes() {
+    fn normalized_base_url_preserves_messages_route_and_gateway_paths() {
         assert_eq!(
             normalized_base_url("https://api.deepseek.com/anthropic/"),
-            "https://api.deepseek.com"
+            "https://api.deepseek.com/anthropic"
         );
         assert_eq!(
             normalized_base_url("https://api.deepseek.com/"),
-            "https://api.deepseek.com"
+            "https://api.deepseek.com/anthropic"
         );
+        assert_eq!(normalized_base_url("https://api.deepseek.com/v1"), "https://api.deepseek.com/anthropic");
+        assert_eq!(normalized_base_url("https://gateway.example/anthropic/"), "https://gateway.example/anthropic");
         assert_eq!(normalized_base_url("http://127.0.0.1:8317"), "http://127.0.0.1:8317");
     }
 }

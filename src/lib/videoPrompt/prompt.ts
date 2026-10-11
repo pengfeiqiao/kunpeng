@@ -7,21 +7,9 @@ import { HIDDEN_DIRECTOR_REASONING } from '@/lib/workshop/directorReasoning';
 export { auditUniversalVideoPrompt } from './audit';
 export type { VideoPromptAuditResult } from './audit';
 
-export type VideoPromptTemplate = 'legacy' | 'universal';
-
-export const VIDEO_PROMPT_TEMPLATE_STORAGE_KEY = 'kunpeng.videoPromptTemplate';
-
-export function readGlobalVideoPromptTemplate(): VideoPromptTemplate {
-  if (typeof window === 'undefined') return 'legacy';
-  return window.localStorage.getItem(VIDEO_PROMPT_TEMPLATE_STORAGE_KEY) === 'universal'
-    ? 'universal'
-    : 'legacy';
-}
-
-export function writeGlobalVideoPromptTemplate(template: VideoPromptTemplate): void {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(VIDEO_PROMPT_TEMPLATE_STORAGE_KEY, template);
-}
+import type { VideoPromptTemplate } from './template.ts';
+export { readGlobalVideoPromptTemplate, writeGlobalVideoPromptTemplate, VIDEO_PROMPT_TEMPLATE_STORAGE_KEY } from './template.ts';
+export type { VideoPromptTemplate } from './template.ts';
 
 export interface VideoPromptReference {
   label: string;

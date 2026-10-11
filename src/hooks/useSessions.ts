@@ -47,7 +47,7 @@ function saveSessionsToStorage(sessions: import('@/types').Session[]) {
 }
 
 function loadMessagesFromStorage(sessionId: string): Message[] | null {
-  return readMessagesFromLocalStorage(sessionId);
+  return useChatStore.getState().getSessionMessages(sessionId) ?? readMessagesFromLocalStorage(sessionId);
 }
 
 function saveMessagesToStorage(sessionId: string, messages: Message[]) {
@@ -100,21 +100,16 @@ export function ensureSessionTitleRaw(sessionId: string, firstRequest: string): 
 
 // ── Coordinator 恢复回调（由 useAgent 注册，避免循环依赖）─────────────────
 let sessionNavigationRevision = 0;
-let _coordinatorRestoreCallback: ((sessionId: string) => Promise<void>) | null = null;
 
 export function setCoordinatorRestoreCallback(fn: (sessionId: string) => Promise<void>) {
-  _coordinatorRestoreCallback = fn;
+  void fn; // Compatibility hook: restoration is now owned by sendMessage, never navigation.
 }
 
 // ── 非 hook 版本（供 store / 非 React 上下文调用，如项目会话切换）────────────
 
-/** 创建会话（可带 projectId 绑定 AIGC 项目）并切为当前会话。流式任务进行中拒绝创建（返回 null），与 loadSessionRaw 一致——否则 deferred restore 不会补偿，新旧会话会互相串台。 */
+/** 创建并切换会话；已有任务在其所属会话继续运行。 */
 export async function createSessionRaw(title?: string, projectId?: string): Promise<import('@/types').Session | null> {
   const store = useChatStore.getState();
-  if (store.isStreaming) {
-    console.warn('[useSessions] refusing to create a session while streaming');
-    return null;
-  }
   const navigationRevision = ++sessionNavigationRevision;
   const agentId = 'main';
   const sessionId = `agent:${agentId}:${uuidv4()}`;
@@ -140,15 +135,12 @@ export async function createSessionRaw(title?: string, projectId?: string): Prom
   void writeSessionIndex(useChatStore.getState().sessions);
   await initialWrite;
   if (navigationRevision !== sessionNavigationRevision) return null;
-  await _coordinatorRestoreCallback?.(sessionId);
-  if (navigationRevision !== sessionNavigationRevision) return null;
   return session;
 }
 
-/** 加载并切换会话（先恢复 coordinator 再切 UI）。流式中拒绝切换返回 false。 */
+/** 加载并切换会话（只恢复展示，模型上下文在发送时按会话加载）。后台运行不阻塞切换。 */
 export async function loadSessionRaw(sessionId: string): Promise<boolean> {
   const store = useChatStore.getState();
-  if (store.isStreaming) return false;
   const navigationRevision = ++sessionNavigationRevision;
   if (store.currentSessionId === sessionId) {
     rememberActiveSession(sessionId);
@@ -166,8 +158,6 @@ export async function loadSessionRaw(sessionId: string): Promise<boolean> {
       return false;
     }
   }
-  if (navigationRevision !== sessionNavigationRevision) return false;
-  await _coordinatorRestoreCallback?.(sessionId);
   if (navigationRevision !== sessionNavigationRevision) return false;
   store.setCurrentSession(sessionId);
   rememberActiveSession(sessionId);
@@ -234,7 +224,6 @@ export async function ensureActiveConversationSessionRaw(): Promise<Session | nu
     : undefined;
   if (remembered) {
     if (store.messages.length > 0) {
-      await _coordinatorRestoreCallback?.(remembered.id);
       store.setCurrentSession(remembered.id);
       rememberActiveSession(remembered.id);
       const firstRequest = firstMeaningfulUserRequest(store.messages);
@@ -350,6 +339,10 @@ export function useSessions() {
   // Delete session
   const deleteSession = useCallback(
     async (sessionId: string) => {
+      if (useChatStore.getState().streamingSessions[sessionId]) {
+        useChatStore.getState().setError('请先停止该对话的运行，再删除对话。');
+        return;
+      }
       const bareUuid = sessionId.split(':').pop() || '';
       useSettingsStore.getState().addDeletedSessionId(sessionId);
       if (bareUuid !== sessionId) {
@@ -380,9 +373,6 @@ export function useSessions() {
       if (canActivate && !canActivate()) return { messages: [], loaded: false };
       const navigationRevision = ++sessionNavigationRevision;
       const currentState = useChatStore.getState();
-      if (currentState.isStreaming && currentState.currentSessionId !== sessionId) {
-        return { messages: [], loaded: false };
-      }
 
       // Project drawers and the main chat are two views of the same live
       // conversation. Do not reload the active conversation from disk: a
@@ -391,12 +381,6 @@ export function useSessions() {
       if (currentState.currentSessionId === sessionId) {
         rememberActiveSession(sessionId);
         const currentMessages = currentState.messages;
-        const agentMessages = readAgentMessagesFromLocalStorage(sessionId) ?? [];
-        await writeSessionToFile(sessionId, {
-          messages: compactMessagesForStorage(currentMessages),
-          agentMessages,
-        });
-        if (navigationRevision !== sessionNavigationRevision) return { messages: [], loaded: false };
         const firstUserMessage = firstMeaningfulUserRequest(currentMessages);
         if (firstUserMessage) ensureSessionTitleRaw(sessionId, firstUserMessage.content);
         currentState.clearSessionUnread(sessionId);
@@ -420,8 +404,7 @@ export function useSessions() {
         return { messages: [], loaded: false };
       }
       if (navigationRevision !== sessionNavigationRevision || (canActivate && !canActivate())) return { messages: [], loaded: false };
-      // Restore coordinator BEFORE setting UI state
-      await _coordinatorRestoreCallback?.(sessionId);
+      // Navigation restores presentation only; agent history loads lazily on send.
 
       if (navigationRevision !== sessionNavigationRevision || (canActivate && !canActivate())) return { messages: [], loaded: false };
       setCurrentSession(sessionId);
@@ -443,7 +426,6 @@ export function useSessions() {
 
   // Switch to agent
   const switchToAgent = useCallback(async (agent: Agent) => {
-    if (useChatStore.getState().isStreaming) return;
     const store = useChatStore.getState();
     const navigationRevision = ++sessionNavigationRevision;
     store.setCurrentAgent(agent);
@@ -475,10 +457,9 @@ export function useSessions() {
           hasRecoveryData = false;
         }
       }
-      // Restore coordinator BEFORE setting UI state, so the coordinator is
-      // ready before any code reads currentSessionId.
+      // Do not wait for agent restoration on the navigation path.
       if (navigationRevision !== sessionNavigationRevision) return;
-      await _coordinatorRestoreCallback?.(sessionId);
+
       if (navigationRevision !== sessionNavigationRevision) return;
 
       store.setCurrentSession(sessionId);
@@ -536,10 +517,10 @@ export function useSessions() {
   const persistMessages = useCallback((targetSessionId?: string, targetMessages?: Message[]) => {
     const state = useChatStore.getState();
     const sid = targetSessionId ?? state.currentSessionId;
-    const msgs = compactMessagesForStorage(targetMessages ?? state.messages);
+    const msgs = compactMessagesForStorage(targetMessages ?? (sid ? state.getSessionMessages(sid) : state.messages) ?? []);
     if (sid && msgs.length > 0) {
       saveMessagesToStorage(sid, msgs);
-      rememberActiveSession(sid);
+      if (state.currentSessionId === sid) rememberActiveSession(sid);
       const firstRequest = firstMeaningfulUserRequest(msgs);
       if (firstRequest) ensureSessionTitleRaw(sid, firstRequest.content);
       // Update session in storage

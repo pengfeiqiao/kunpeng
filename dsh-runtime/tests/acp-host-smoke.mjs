@@ -21,10 +21,12 @@ const apiKey = startupOnly ? 'startup-smoke-no-provider-call' : process.env.DEEP
 if (!apiKey) throw new Error('DEEPSEEK_API_KEY is required');
 
 const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
-const baseURL = startupOnly ? 'http://127.0.0.1:1' : (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
+const baseURL = startupOnly ? 'http://127.0.0.1:1' : (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/anthropic').replace(/\/$/, '');
 
 // ---- fake Kunpeng tool bridge ----
 const bridgeToken = 'smoke-token';
+let toolCalls = 0;
+let replyText = '';
 const bridge = net.createServer((socket) => {
   // Windows 被子进程强杀时 socket 收 RST 而非优雅 FIN，假桥必须吞掉
   // error 事件，否则进程在打印结果前就崩溃（同 PR #2 对生命周期测试的修法）。
@@ -62,6 +64,7 @@ const bridge = net.createServer((socket) => {
         continue;
       }
       if (message.type === 'call_tool') {
+        toolCalls++;
         socket.write(`${JSON.stringify({
           type: 'call_tool',
           requestId: message.requestId,
@@ -90,7 +93,7 @@ const config = [
     // cannot be resolved there; the desktop config must use the absolute
     // entry path, exactly like the ACP host above.
     name: process.env.LLM_ENTRY
-      || fileUrl(join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-deepseek', 'lib', 'index.js')),
+      || fileUrl(join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-deepseek-api-key', 'lib', 'index.js')),
     config: {
       apiKeyEnv: 'DEEPSEEK_API_KEY',
       baseURL,
@@ -181,6 +184,10 @@ child.stdout.on('data', (chunk) => {
     buffer = buffer.slice(newline + 1);
     if (!line.trim()) continue;
     const message = JSON.parse(line);
+    if (message.method === 'session/update' && message.params?.update?.sessionUpdate === 'agent_message_chunk') {
+      const content = message.params.update.content;
+      if (content?.type === 'text') replyText += content.text;
+    }
     if (typeof message.id !== 'number' || message.method) continue;
     const waiter = pending.get(message.id);
     if (!waiter) continue;
@@ -227,8 +234,12 @@ try {
     sessionId: session.sessionId,
     prompt: [{ type: 'text', text: promptText }],
   });
+  if (!startupOnly && !process.env.SMOKE_PROMPT && (toolCalls < 1 || !replyText.includes("ECHO:hello"))) {
+    throw new Error("ACP completed without the required tool execution and echoed result");
+  }
   process.stdout.write(`${JSON.stringify({
     ok: true,
+    toolCalls,
     startupOnly,
     agent: initialized?.agentInfo?.name,
     session: Boolean(session?.sessionId),

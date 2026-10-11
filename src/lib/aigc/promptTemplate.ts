@@ -1,3 +1,4 @@
+import { VIDEO_PROMPT_DRAFTING_POLICY } from '../videoPrompt/template.ts';
 export interface TemplateContext {
   director?: string;
   shotType?: string;
@@ -58,8 +59,8 @@ export function getEngineFormula(engine: 'gpt-image-2.5' | 'seedream-v5-pro' | '
 - 结构化段落式写法`;
     case 'seedance':
       return `Seedance 提示词以 ~/.kunpeng/aigc-memory/prompt-templates/seedance/README.md 为唯一权威入口。
-- 单镜头读取 single-shot.md
-- 多镜头合并/VO 读取 multi-shot.md
+${VIDEO_PROMPT_DRAFTING_POLICY}
+- 默认读取 universal.md；只有明确经典版时才读 single-shot.md / multi-shot.md
 - @图片按实际参考图顺序用中文数字引用
 - 提交 API 前必须通过 Seedance 质量检查`;
     case 'midjourney':

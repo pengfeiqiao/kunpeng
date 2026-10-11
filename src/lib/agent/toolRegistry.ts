@@ -1,3 +1,4 @@
+import { softwareLease, usesSharedSoftware } from './softwareLease';
 import type { Tool, ToolDefinition, ToolExecutionContext, ToolResult } from './types';
 import { agentLog } from './logger';
 import { isToolEnabled } from './toolGating';
@@ -29,6 +30,10 @@ function viewHintForTool(name: string): string | null {
  * 工具注册表 — 管理所有可用工具
  */
 export class ToolRegistry {
+  private originView?: Parameters<typeof isToolEnabled>[1];
+
+  setOriginView(view: Parameters<typeof isToolEnabled>[1]): void { this.originView = view; }
+
   private tools: Map<string, Tool> = new Map();
   private paidGate: PaidToolIdempotencyGate;
   private readonly runContexts = new Map<string, Omit<ToolExecutionContext, 'runId'>>();
@@ -67,6 +72,7 @@ export class ToolRegistry {
    */
   clone(): ToolRegistry {
     const registry = new ToolRegistry();
+    registry.originView = this.originView;
     for (const tool of this.tools.values()) registry.register(tool);
     return registry;
   }
@@ -74,6 +80,7 @@ export class ToolRegistry {
   /** Project a child registry while sharing the parent's paid-call ledger. */
   project(predicate: (tool: Tool) => boolean): ToolRegistry {
     const registry = new ToolRegistry(this.paidGate);
+    registry.originView = this.originView;
     for (const tool of this.tools.values()) {
       if (predicate(tool)) registry.register(tool);
     }
@@ -85,6 +92,7 @@ export class ToolRegistry {
   }
 
   clearRunContext(runId: string): void {
+    softwareLease.endRun(runId);
     this.runContexts.delete(runId);
   }
 
@@ -94,7 +102,7 @@ export class ToolRegistry {
 
   /** 运行期对模型可见的工具（应用 toolGating 门控） */
   getEnabled(): Tool[] {
-    return this.getAll().filter((t) => isToolEnabled(t.definition.name));
+    return this.getAll().filter((t) => isToolEnabled(t.definition.name, this.originView));
   }
 
   /** 获取所有工具定义 (用于传给 GLM API) */
@@ -121,12 +129,21 @@ export class ToolRegistry {
     }
 
     const bound = context.runId ? this.runContexts.get(context.runId) : undefined;
+    if (signal?.aborted) return { success: false, output: '', error: '操作已中止，未执行工具。' };
+    if (!params || typeof params !== 'object' || Array.isArray(params)) return { success: false, output: '', error: '工具参数必须是 JSON 对象。' };
     const executionContext: ToolExecutionContext = { ...bound, ...context };
+    const owner = executionContext.idempotencyRunId ?? executionContext.runId;
+    let releaseSoftware: (() => void) | undefined;
+    if (owner && usesSharedSoftware(name)) {
+      try { releaseSoftware = await softwareLease.acquire(owner, signal); }
+      catch { return { success: false, output: '', error: '操作已中止，未执行工具。' }; }
+    }
+    if (signal?.aborted) { releaseSoftware?.(); return { success: false, output: '', error: '操作已中止，未执行工具。' }; }
     const scopeError = checkWorkspaceDispatch(name, params, executionContext);
-    if (scopeError) return { success: false, output: '', error: scopeError };
+    if (scopeError) { releaseSoftware?.(); return { success: false, output: '', error: scopeError }; }
     const paidRunId = executionContext.idempotencyRunId ?? executionContext.runId;
     const blocked = this.paidGate.reserve(paidRunId, name, params);
-    if (blocked) return { success: false, output: '', error: blocked };
+    if (blocked) { releaseSoftware?.(); return { success: false, output: '', error: blocked }; }
 
     const start = Date.now();
     agentLog.info('Tool', `→ ${name}`);
@@ -135,6 +152,7 @@ export class ToolRegistry {
       const result = await tool.execute(params, signal, executionContext);
       const ms = Date.now() - start;
       if (result.success) {
+        if (name === 'switch_view' && typeof params.view === 'string') this.originView = params.view as Parameters<typeof isToolEnabled>[1];
         agentLog.info('Tool', `← ${name} OK (${ms}ms, ${result.output.length} chars)`);
       } else {
         agentLog.error('Tool', `← ${name} FAIL (${ms}ms): ${summarizeTrajectoryValue(result.error ?? 'unknown error')}`);
@@ -152,10 +170,13 @@ export class ToolRegistry {
       };
       this.paidGate.record(paidRunId, name, params, result);
       return result;
-    }
+    } finally { releaseSoftware?.(); }
   }
 
+  releaseSoftware(runId: string): void { softwareLease.endRun(runId); }
+
   clearRunIdempotency(runId: string): void {
+    softwareLease.endRun(runId);
     this.paidGate.clearRun(runId);
   }
 

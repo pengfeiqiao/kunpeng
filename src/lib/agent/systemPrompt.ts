@@ -1,3 +1,5 @@
+import { VIDEO_PROMPT_DRAFTING_POLICY } from '../videoPrompt/template.ts';
+import { DIALOGUE_DIRECTION_GUIDE } from '../videoPrompt/performance.ts';
 import { SCREENPLAY_CRAFT_HARNESS } from '../copywriting/screenwritingCraft.ts';
 
 
@@ -229,6 +231,8 @@ export function buildDynamicPrompt(ctx: SystemPromptContext): string {
   // could drift from the schema (Claude Code / Kimi Code ship no such
   // catalog — schema IS the tool list). Tool-usage policy stays in the
   // static prompt.
+
+  sections.push(`## 视频提示词写作\n${VIDEO_PROMPT_DRAFTING_POLICY}\n涉及人物对话的视频提示词时应用以下规则；非视频任务不套用。\n${DIALOGUE_DIRECTION_GUIDE}`);
 
   // Skills
   if (ctx.skillDescriptions) {

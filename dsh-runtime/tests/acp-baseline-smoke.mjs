@@ -22,12 +22,12 @@ if (!apiKey) {
 const work = await mkdtemp(join(root, '.baseline-'));
 const configPath = join(work, 'cordis.json');
 const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
-const baseURL = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
+const baseURL = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/anthropic').replace(/\/$/, '');
 
 await writeFile(configPath, JSON.stringify([
   {
     id: 'llm-deepseek',
-    name: '@deepseek-ai/dsh-llm-deepseek',
+    name: '@deepseek-ai/dsh-llm-deepseek-api-key',
     config: {
       apiKeyEnv: 'DEEPSEEK_API_KEY',
       baseURL,

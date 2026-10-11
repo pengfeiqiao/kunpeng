@@ -36,11 +36,11 @@ test('atomically blocks a concurrent duplicate before the first call returns', (
   assert.equal(gate.reserve('run-a', 'timeline_mg_generate', { prompt: 'x' }), null);
 });
 
-test('changed params, force and another run pass', () => {
+test('changed params and another run pass but model supplied force cannot bypass the ledger', () => {
   const gate = new PaidToolIdempotencyGate();
   gate.record('run-a', 'video_generate', { prompt: 'x' }, { success: true, output: 'submitted task_id=1' });
   assert.equal(gate.check('run-a', 'video_generate', { prompt: 'y' }), null);
-  assert.equal(gate.check('run-a', 'video_generate', { prompt: 'x', force: true }), null);
+  assert.match(gate.check('run-a', 'video_generate', { prompt: 'x', force: true }) ?? '', /阻止重复执行/);
   assert.equal(gate.check('run-b', 'video_generate', { prompt: 'x' }), null);
 });
 
@@ -90,4 +90,20 @@ test('blocked repeated batches return the original per-job receipt', () => {
  assert.match(gate.check('receipt-run','image_generate_batch',params) ?? '',/remote-1/);
  gate.clearRun('receipt-run');
  assert.equal(gate.reserve('receipt-run','image_generate_batch',params),null);
+});
+
+ test('force calls still reserve and record paid submission state', () => {
+  const gate = new PaidToolIdempotencyGate();
+  const params = { prompt: 'x', force: true };
+  assert.equal(gate.reserve('run', 'video_generate', params), null);
+  assert.match(gate.reserve('run', 'video_generate', params) ?? '', /正在执行/);
+  gate.record('run', 'video_generate', params, { success: false, output: '', paidSubmissionState: 'unknown' });
+  assert.match(gate.reserve('run', 'video_generate', { prompt: 'x' }) ?? '', /状态不明/);
+});
+
+test('ambiguous tool failure cannot unlock a paid retry', () => {
+ const gate = new PaidToolIdempotencyGate();
+ gate.reserve('run', 'video_generate', { prompt: 'x' });
+ gate.record('run', 'video_generate', { prompt: 'x' }, { success: false, output: '', error: 'invalid JSON response after remote processing' });
+ assert.match(gate.reserve('run', 'video_generate', { prompt: 'x' }) ?? '', /状态不明/);
 });

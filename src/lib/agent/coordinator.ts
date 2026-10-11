@@ -474,6 +474,12 @@ export class AgentCoordinator {
     this.refreshSystemPrompt();
   }
 
+  /** Freeze workspace and skill scope for this turn; navigation cannot rewrite it. */
+  setTurnEnvironment(environment: Pick<CoordinatorConfig, 'aigcMemoryContext' | 'skillDescriptions' | 'skillDescriptionResolver' | 'skillNoticeResolver'>): void {
+    Object.assign(this.config, environment);
+    this.refreshSystemPrompt();
+  }
+
   /** Switch the LLM route for the next turn without losing conversation state. */
   setRouteStrategy(strategy: RouteStrategy | undefined): void {
     if (this.isRunning) {
@@ -603,9 +609,15 @@ export class AgentCoordinator {
 
         agentLog.info('Coordinator', `Turn ${turn + 1} finished: finish_reason=${response.finishReason}, toolCalls=${response.toolCalls.length}, textLen=${response.text.length}`);
 
+        // A syntactically valid JSON object can still omit intended fields when
+        // the model hits its output limit. Do not dispatch any of this batch.
+        if (response.toolCalls.length && ['max_tokens', 'length'].includes(response.finishReason ?? '')) {
+          throw new Error('模型输出达到上限，工具请求未完整完成；本批工具未执行，请缩小任务后重试。');
+        }
+
         // Handle max_tokens truncation — model was cut off mid-output
         // Save what we have and ask the model to continue
-        if (response.finishReason === 'max_tokens' && !response.toolCalls.length) {
+        if (['max_tokens', 'length'].includes(response.finishReason ?? '') && !response.toolCalls.length) {
           agentLog.warn('Coordinator', 'Response truncated by max_tokens, requesting continuation');
           continuationText += response.text || '';
           this.messages.push({
@@ -725,9 +737,10 @@ export class AgentCoordinator {
           let params: Record<string, unknown>;
           try {
             params = JSON.parse(call.function.arguments);
+            if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('Expected object');
           } catch {
-            agentLog.warn('Coordinator', `Failed to parse tool args for ${call.function.name}`, call.function.arguments);
-            params = {};
+            prepared.push({ call, params: {}, skip: '[invalid_arguments] 工具参数必须是合法 JSON 对象，请修正后重新调用。' });
+            continue;
           }
 
           if (requireSpeechToolCall && isConflictingDoubaoSpeechGenerationTool(call.function.name)) {
@@ -758,7 +771,11 @@ export class AgentCoordinator {
             continue;
           }
 
-          if (shouldOfferToolConfirmation(call.function.name, risk) && callbacks.onToolConfirm) {
+          if (shouldOfferToolConfirmation(call.function.name, risk)) {
+            if (!callbacks.onToolConfirm) {
+              prepared.push({ call, params, skip: '[confirmation_unavailable] 确认通道不可用，未执行工具。' });
+              continue;
+            }
             const allowed = await callbacks.onToolConfirm(
               call.function.name,
               params,
@@ -972,6 +989,7 @@ export class AgentCoordinator {
         );
       }
     } finally {
+      if (runId && !this.config.idempotencyRunId) this.config.toolRegistry.releaseSoftware?.(runId);
       // Local media is sent inline only for the active run. Keeping Base64 in
       // durable history would balloon session files and settings exports.
       this.stripInlineMediaFromHistory();
@@ -1293,16 +1311,8 @@ export class AgentCoordinator {
     // 恢复历史时先静默清掉可重建的大型工具结果，再按当前模型真实窗口判断。
     const restored = this.contextManager.microcompact(this.messages);
     this.messages = restored;
-    const { modelId } = this.resolveModelAndWindow();
-    if (shouldAutoCompact(this.contextManager.estimateMessages(restored), modelId).compact) {
-      agentLog.info('Coordinator', `Post-restore compact triggered`);
-      const compacted = await this.contextManager.compact(restored, this.getCompactChatClient(), true);
-      if (revision !== this.historyRevision || this.isRunning) {
-        agentLog.info('Coordinator', 'Discarded stale post-restore compaction');
-        return;
-      }
-      this.messages = compacted;
-    }
+    // Network compaction belongs to the next run, never navigation/restore.
+
   }
 
   /** 获取消息历史 */

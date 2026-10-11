@@ -6,6 +6,7 @@ import { confirmToolItems } from '@/lib/agent/confirmBatch';
 import type { ToolRisk } from '@/lib/agent/types';
 
 interface ToolConfirmRequest {
+  sourceLabel?: string;
   toolName: string;
   params: Record<string, unknown>;
   reason?: string;
@@ -20,7 +21,7 @@ interface ToolConfirmState {
     toolName: string,
     params: Record<string, unknown>,
     reason?: string,
-    options?: { scope?: string; signal?: AbortSignal; risk?: ToolRisk },
+    options?: { scope?: string; signal?: AbortSignal; risk?: ToolRisk; sourceLabel?: string },
   ) => Promise<boolean>;
   /** Called by UI to approve */
   approve: (id: number) => void;
@@ -40,6 +41,7 @@ export const useToolConfirmStore = create<ToolConfirmState>((set) => {
         toolName: item.toolName,
         params: frozenParams,
         reason,
+        sourceLabel: options?.sourceLabel,
         generationDraft: structuredClone((item.toolName === 'canvas_generate'
           ? buildCanvasGenerationDraft(item.toolName, frozenParams, options?.risk)
           : buildGenerationDraft(item.toolName, frozenParams, options?.risk)) ?? undefined),

@@ -17,12 +17,13 @@ export const switchViewTool: Tool = {
     },
   },
   risk: 'safe',
-  async execute(params) {
+  async execute(params, _signal, context) {
     const view = String(params.view ?? '') as ActiveView;
     if (!VIEWS.includes(view)) {
       return { success: false, output: '', error: `未知视图 ${params.view}。可用：${VIEWS.join(', ')}` };
     }
-    useChatStore.getState().setActiveView(view);
+    const source = context?.decisionSource?.sourceSessionId;
+    if (!source || source === useChatStore.getState().currentSessionId) useChatStore.getState().setActiveView(view);
     const sampleTools = [
       'timeline_get_state',
       'timeline_add_clip',
@@ -33,7 +34,7 @@ export const switchViewTool: Tool = {
       'canvas_get_state',
       'copywriting_get_state',
       'project_get_paths',
-    ].filter(isToolEnabled);
+    ].filter(name => isToolEnabled(name, view));
     return {
       success: true,
       output: JSON.stringify({

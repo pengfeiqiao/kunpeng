@@ -1,6 +1,6 @@
 import { SESSION_SAVE_STATUS_EVENT, sessionSaveFailed, retryFailedSessionWrites } from '@/lib/historyPersistence';
 import './chat/conversation.css';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, PanelRight } from 'lucide-react';
 import MessageList from './MessageList';
@@ -50,7 +50,8 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
   const decisionHistoryLength = useAskUserStore((state) => state.history.length);
 
   const currentSession = useChatStore((s) => s.sessions.find(ss => ss.id === s.currentSessionId));
-  const { sidebarCollapsed, sessionTitles } = useSettingsStore();
+  const sidebarCollapsed = useSettingsStore(state => state.sidebarCollapsed);
+  const sessionTitles = useSettingsStore(state => state.sessionTitles);
   const { playNotification } = useSound();
   const listRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -148,7 +149,7 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
     };
   }, []);
 
-  const handleSend = async (content: string, filePaths?: string[]) => {
+  const handleSend = useCallback(async (content: string, filePaths?: string[]) => {
     if (!content.trim() && !filePaths?.length) return;
 
     if (!isConnected) {
@@ -156,15 +157,17 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
       return;
     }
 
+    const sourceSessionId = useChatStore.getState().currentSessionId;
     try {
       followOutputRef.current = true;
       await onSendMessage(content, filePaths);
     } catch (err) {
       console.error('[ChatArea] Failed to send message:', err);
       const errorMsg = err instanceof Error ? err.message : '发送消息失败';
-      useChatStore.getState().setError(errorMsg);
+      if (sourceSessionId) useChatStore.getState().patchSessionView(sourceSessionId, { error: errorMsg });
+      else useChatStore.getState().setError(errorMsg);
     }
-  };
+  }, [isConnected, onSendMessage]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -256,7 +259,7 @@ export default function ChatArea({ isConnected, onSendMessage, onAbort }: ChatAr
                 isStreaming={isCurrentStreaming}
                 streamingPhase={isCurrentStreaming ? streamingPhase : 'idle'}
                 streamingSentAt={isCurrentStreaming ? streamingSentAt : null}
-                onOptionClick={(opt) => handleSend(opt)}
+                onOptionClick={handleSend}
               />
             )}
           </div>

@@ -1,3 +1,4 @@
+import { VIDEO_PROMPT_DRAFTING_POLICY } from '@/lib/videoPrompt/template';
 import type { Tool } from '../types';
 import { runGeneration } from '@/lib/canvasGen';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -70,7 +71,7 @@ export const videoGenerateTool: Tool = {
     parameters: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', description: `视频提示词。只能引用本次实际传入的素材，图片/视频/音频编号按数组顺序排列。${PERFORMANCE_BRIEF}` },
+        prompt: { type: 'string', description: `视频提示词。${VIDEO_PROMPT_DRAFTING_POLICY}只能引用本次实际传入的素材，图片/视频/音频编号按数组顺序排列。${PERFORMANCE_BRIEF}` },
         engine: {
           type: 'string',
           description: '可选。省略时沿用普通对话底部选择的生视频模型。内置值：minimax-h3、seedance-2.0、seedance-2.0-fast、seedance-2.0-mini、seedance-2.5、wan-3.0；自定义视频插件用 custom-media:{插件id}（先 media_api_plugin list 查看）',

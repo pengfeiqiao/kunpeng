@@ -65,6 +65,9 @@ export function useCronScheduler(
 
       // Fire sequentially so the coordinator doesn't get clobbered.
       for (const entry of toFire) {
+        const current = useChatStore.getState();
+        if (current.isStreaming || current.currentSessionId !== chat.currentSessionId
+          || (entry.sessionId && entry.sessionId !== current.currentSessionId)) continue;
         try {
           await sendMessage(entry.prompt);
         } catch (err) {

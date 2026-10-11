@@ -18,7 +18,7 @@ const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
 if (!apiKey) throw new Error('DEEPSEEK_API_KEY is required');
 
 const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
-const baseURL = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
+const baseURL = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/anthropic').replace(/\/$/, '');
 
 // ---- fake Kunpeng tool bridge ----
 const bridgeToken = 'smoke-token';
@@ -90,7 +90,7 @@ const config = [
     // cannot be resolved there; the desktop config must use the absolute
     // entry path, exactly like the ACP host above.
     name: process.env.LLM_ENTRY
-      || fileUrl(join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-deepseek', 'lib', 'index.js')),
+      || fileUrl(join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-deepseek-api-key', 'lib', 'index.js')),
     config: {
       apiKeyEnv: 'DEEPSEEK_API_KEY',
       baseURL,

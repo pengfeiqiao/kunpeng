@@ -43,10 +43,10 @@ const GLOBAL_TIMELINE_TOOLS = new Set([
   'timeline_kimi_review',
 ]);
 
-export function isToolEnabled(name: string): boolean {
-  const activeView = effectiveToolView(useChatStore.getState().activeView);
+export function isToolEnabled(name: string, view = useChatStore.getState().activeView): boolean {
+  const activeView = effectiveToolView(view);
   if (name === 'agent_delegate') {
-    return isSubagentEntryView(useChatStore.getState().activeView);
+    return isSubagentEntryView(view);
   }
   if (GLOBAL_TIMELINE_TOOLS.has(name)) {
     return true;
@@ -61,7 +61,7 @@ export function isToolEnabled(name: string): boolean {
   }
   // copywriting_* 工具仅在文案工作室可见，避免其它模块误写文案编辑器
   if (name.startsWith('copywriting_')) {
-    return useChatStore.getState().activeView === 'copywriting';
+    return view === 'copywriting';
   }
   if (name.startsWith('director_')) {
     return useDirectorStore.getState().isOpen;

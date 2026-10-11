@@ -377,8 +377,13 @@ export default function AgentDrawer({
   const drawerOpen = embedded || effectiveDrawerState === 'expanded';
   const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
   const [editingQueuePrompt, setEditingQueuePrompt] = useState('');
-  const [localInput, setLocalInput] = useState('');
+  const localInput = useChatStore(state => state.draftMessage) ?? '';
   const fileDraftKey = useChatStore(state => state.currentSessionId ?? `new:${state.currentAgent?.id ?? 'main'}`);
+  const setLocalInput = (value: string) => {
+    const state = useChatStore.getState();
+    if (fileDraftKey.startsWith('new:')) state.setDraftMessage(value);
+    else state.patchSessionView(fileDraftKey, { draftMessage: value });
+  };
   const localFiles = useChatStore(state => state.draftFiles?.[fileDraftKey]) ?? EMPTY_FILES;
   const setLocalFiles = (value: string[] | ((previous: string[]) => string[])) => useChatStore.getState().setDraftFiles(fileDraftKey, value);
   const composer = embedded ? workspaceComposer : undefined;

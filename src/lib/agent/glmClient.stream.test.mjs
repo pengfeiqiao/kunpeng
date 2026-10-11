@@ -30,10 +30,10 @@ function fixture(emit) {
   const code = ts.transpileModule(readFileSync(new URL('./glmClient.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  runInNewContext(code, { exports, require: id => { assert.ok(id in modules, id); return modules[id]; },
+  runInNewContext(code + '\nexports.testSleep = sleep;', { exports, require: id => { assert.ok(id in modules, id); return modules[id]; },
     setTimeout, clearTimeout, DOMException, crypto });
   const client = new exports.GLMClient({ apiKey: 'test-only', model: 'test' });
-  return { client, handlers, get removed() { return removed; }, get aborted() { return aborted; } };
+  return { client, sleep: exports.testSleep, handlers, get removed() { return removed; }, get aborted() { return aborted; } };
 }
 const sse = event => `data: ${JSON.stringify(event)}\n\n`;
 const text = value => sse({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: value } });
@@ -82,4 +82,47 @@ test('consumer stopping early tears down transport and listeners', async () => {
   const f = fixture(fire => { fire('chunk', { chunk: text('one') }); fire('chunk', { chunk: text('two') }); });
   for await (const _ of f.client.streamChat([{ role: 'user', content: 'test' }])) break;
   assert.equal(f.handlers.size, 0); assert.equal(f.removed, 3); assert.ok(f.aborted);
+});
+
+for (const kind of ['text', 'tool']) {
+  test(`premature EOF rejects ${kind} output without replaying partial chunks`, async () => {
+    let requests = 0;
+    const f = fixture(fire => {
+      requests++;
+      fire('chunk', { chunk: kind === 'text' ? text('partial') : sse({ type: 'content_block_start', index: 0,
+        content_block: { type: 'tool_use', id: 'call', name: 'write_file', input: {} } }) });
+      fire('done', {});
+    });
+    await assert.rejects(async () => { for await (const _ of f.client.streamChat([{ role: 'user', content: 'test' }])) {} }, /未收到完成标记/);
+    assert.equal(requests, 1); assert.equal(f.handlers.size, 0);
+  });
+}
+
+test('malformed event cannot be silently skipped even when a later terminal event exists', async () => {
+  const f = fixture(fire => {
+    fire('chunk', { chunk: text('partial') + 'data: {broken}\n\n' + sse({ type: 'message_stop' }) });
+    fire('done', {});
+  });
+  await assert.rejects(async () => { for await (const _ of f.client.streamChat([{ role: 'user', content: 'test' }])) {} }, /无效事件/);
+  assert.equal(f.handlers.size, 0);
+});
+
+test('message_stop alone remains compatible with Anthropic gateways', async () => {
+  const f = fixture(fire => { fire('chunk', { chunk: text('done') + sse({ type: 'message_stop' }) }); fire('done', {}); });
+  const out = []; for await (const d of f.client.streamChat([{ role: 'user', content: 'test' }])) out.push(d);
+  assert.equal(out.at(-1).choices[0].finish_reason, 'stop');
+});
+
+
+test('retry wait removes its listener after success and rejects already-aborted signals', async () => {
+  const f = fixture(() => {});
+  const listeners = new Set();
+  const signal = { aborted: false,
+    addEventListener: (_name, fn) => listeners.add(fn),
+    removeEventListener: (_name, fn) => listeners.delete(fn) };
+  for (let i = 0; i < 10; i++) await f.sleep(1, signal);
+  assert.equal(listeners.size, 0);
+  signal.aborted = true;
+  await assert.rejects(f.sleep(60_000, signal), error => error.name === 'AbortError');
+  assert.equal(listeners.size, 0);
 });

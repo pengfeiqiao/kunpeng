@@ -51,9 +51,10 @@ const STEP_IDS = ['script', 'breakdown', 'assets', 'prompts', 'generate', 'hando
 
 const NUM_TO_CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五'];
 
-function currentWorkshopEditScope(): { scope: WorkshopEditScope; request: string } {
+function currentWorkshopEditScope(runId?: string): { scope: WorkshopEditScope; request: string } {
   const runState = useRunStepStore.getState();
-  const run = runState.currentRunId ? runState.runsById[runState.currentRunId] : undefined;
+  const id = runId ?? runState.currentRunId;
+  const run = id ? runState.runsById[id] : undefined;
   const request = run?.userRequest?.trim() ?? '';
   return { scope: classifyWorkshopEditScope(request), request };
 }
@@ -814,12 +815,12 @@ const setBreakdownTool: Tool = {
     },
   },
   risk: 'safe',
-  async execute(params) {
+  async execute(params, _signal, context) {
     const check = requireOpen();
     if (!check.ok) return { success: false, output: '', error: check.error };
     const s = useWorkshopStore.getState();
     const { data } = s;
-    const { scope, request } = currentWorkshopEditScope();
+    const { scope, request } = currentWorkshopEditScope(context?.runId);
     const hasExistingBreakdown = Boolean(
       data?.synopsis?.trim()
       || data?.episodes?.length
@@ -1025,13 +1026,13 @@ description 字段要有电影感：
     },
   },
   risk: 'safe',
-  async execute(params) {
+  async execute(params, _signal, context) {
     const check = requireOpen();
     if (!check.ok) return { success: false, output: '', error: check.error };
     const s = useWorkshopStore.getState();
     const mode = (params.mode as 'replace' | 'merge') ?? 'merge';
     const incoming = params.shots as Partial<WsShot>[];
-    const { scope, request } = currentWorkshopEditScope();
+    const { scope, request } = currentWorkshopEditScope(context?.runId);
     const existingShots = s.data!.shots;
 
     if (existingShots.length > 0) {
@@ -1256,7 +1257,7 @@ patch 可用的字段名（必须严格一致）：description（画面描述）
     },
   },
   risk: 'safe',
-  async execute(params) {
+  async execute(params, _signal, context) {
     const check = requireOpen();
     if (!check.ok) return { success: false, output: '', error: check.error };
     const s = useWorkshopStore.getState();
@@ -1340,7 +1341,7 @@ patch 可用的字段名（必须严格一致）：description（画面描述）
 
     // Protection: warn when modifying shots that already have generated output
     const existingShot = s.data!.shots.find((x) => x.shotNo === shotNo)!;
-    const { scope, request } = currentWorkshopEditScope();
+    const { scope, request } = currentWorkshopEditScope(context?.runId);
     const structuralFields: Array<keyof WsShot> = ['description', 'sourceExcerpt', 'sourceFactIds', 'narrativeFunction', 'emptyShotPurpose', 'episode', 'sceneId', 'characterIds', 'propIds'];
     const changedStructural = structuralFields.filter((field) =>
       patch[field] !== undefined && !valuesEqual(patch[field], existingShot[field]));

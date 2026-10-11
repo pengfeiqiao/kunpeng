@@ -174,9 +174,9 @@ test('a slower earlier navigation cannot replace the latest conversation', async
   pendingReads.get('second')({ messages: [] }); assert.equal((await second).loaded, true);
   pendingReads.get('first')({ messages: [] }); assert.equal((await first).loaded, false);
   assert.equal(store.getState().currentSessionId, 'second');
-  assert.deepEqual(restored, ['second']);
+  assert.deepEqual(restored, [], 'navigation must not restore or compact the agent');
 });
-test('new session publishes index and initializes body before coordinator restoration', async () => {
+test('new session publishes index and initializes body without coordinator restoration', async () => {
   const store = fixture(); const events = [];
   const hooks = sessionHooksFixture(store, {
     writeSessionToFile: async () => { events.push('body'); },
@@ -184,7 +184,7 @@ test('new session publishes index and initializes body before coordinator restor
   });
   hooks.setCoordinatorRestoreCallback(async () => { events.push('restore'); });
   await hooks.createSessionRaw();
-  assert.deepEqual(events, ['body', 'index', 'restore']);
+  assert.deepEqual(events, ['body', 'index']);
   store.getState().setActiveView('library'); store.getState().setActiveView('chat');
   assert.equal(store.getState().currentSessionId, 'agent:main:created');
   assert.ok(store.getState().sessions.some(s => s.id === 'agent:main:created'));
@@ -197,4 +197,47 @@ test('background refresh does not resurrect a conversation deleted during the re
   store.getState().removeSession('removed');
   finishRead([sessionEntry('removed')]); await pending;
   assert.equal(store.getState().sessions.some(s => s.id === 'removed'), false);
+});
+
+test('parallel session projections isolate messages, drafts, streams and completion', () => {
+  const store = fixture();
+  const s = () => store.getState();
+  s().setCurrentSession('a'); s().setDraftMessage('draft A');
+  s().appendSessionMessage('a', { id:'a1', role:'user', content:'request A', timestamp:1 });
+  s().patchSessionView('a', { isStreaming:true, streamingSessionId:'a', streamingContent:'A partial' });
+  s().setCurrentSession('b');
+  assert.equal(s().streamingContent, ''); assert.equal(s().isStreaming, false);
+  s().setDraftMessage('draft B');
+  s().patchSessionView('b', { isStreaming:true, streamingSessionId:'b', streamingContent:'B partial' });
+  s().patchSessionView('a', { streamingContent:'A continued' });
+  s().appendSessionMessage('a', { id:'a2', role:'assistant', content:'A done', timestamp:2 });
+  s().patchSessionView('a', { isStreaming:false, streamingSessionId:null, streamingContent:'' });
+  assert.equal(s().streamingContent, 'B partial'); assert.equal(s().isStreaming, true);
+  assert.equal(s().messages.length, 0); assert.equal(s().draftMessage, 'draft B');
+  assert.equal(s().unreadSessionIds.has('a'), true);
+  s().setCurrentSession('a');
+  assert.equal(s().messages[1].content, 'A done'); assert.equal(s().draftMessage,'draft A');
+  assert.equal(s().isStreaming,false);
+  s().setCurrentSession('b'); assert.equal(s().streamingContent,'B partial');
+});
+
+test('creating a new session preserves a running session snapshot', () => {
+  const store = fixture(); const s=()=>store.getState();
+  s().setCurrentSession('a'); s().addMessage({id:'a',role:'user',content:'A',timestamp:1});
+  s().patchSessionView('a',{isStreaming:true,streamingSessionId:'a',streamingContent:'pending'});
+  s().addSession({id:'b',title:'B',agentId:'main',createdAt:2,updatedAt:2,messageCount:0});
+  assert.equal(s().messages.length,0); assert.equal(s().isStreaming,false);
+  s().setCurrentSession('a'); assert.equal(s().messages[0].content,'A'); assert.equal(s().streamingContent,'pending');
+});
+
+
+test('background token updates preserve sidebar identity and never replace the visible projection', () => {
+  const store=fixture();store.getState().setCurrentSession('a');store.getState().patchSessionView('a',{isStreaming:true});
+  store.getState().setCurrentSession('b');store.getState().patchSessionView('b',{messages:[{id:'b',content:'keep'}]});
+  const before=store.getState();
+  for(let i=0;i<1000;i++)store.getState().patchSessionView('a',{streamingContent:`token ${i}`});
+  assert.equal(store.getState().streamingSessions,before.streamingSessions);
+  assert.equal(store.getState().messages,before.messages);
+  assert.equal(store.getState().streamingContent,'');
+  store.getState().setCurrentSession('a');assert.equal(store.getState().streamingContent,'token 999');
 });

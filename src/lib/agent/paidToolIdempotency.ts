@@ -49,13 +49,14 @@ export function classifyPaidSubmission(result: ToolResult): PaidSubmissionState 
       : 'success';
   }
   if (hasConcreteTaskId || hasSubmittedStatus) return 'submitted';
-  if (/validation|invalid|unauthorized|forbidden|余额不足|insufficient|before submission|提交前|missing required|required parameter/i.test(text)) {
+  if (/validation failed|invalid (?:argument|parameter|input)|unauthorized|forbidden|余额不足|insufficient (?:balance|credits|funds)|before submission|提交前|missing required|required parameter/i.test(text)) {
     return 'not_submitted';
   }
   if (/timeout|timed out|network|connection reset|econnreset|状态不明|unknown|响应缺少.*(?:id|任务)/i.test(text)) {
     return 'unknown';
   }
-  return 'not_submitted';
+  // Without an explicit pre-submission receipt, failure does not prove no charge.
+  return 'unknown';
 }
 
 export class PaidToolIdempotencyGate {
@@ -68,7 +69,7 @@ export class PaidToolIdempotencyGate {
    * the check-then-execute race between concurrent tool batches.
    */
   reserve(runId: string | undefined, name: string, params: Record<string, unknown>): string | null {
-    if (!runId || !isPaidTool(name) || params.force === true) return null;
+    if (!runId || !isPaidTool(name)) return null;
     const key = normalizedPaidCallKey(runId, name, params);
     const state = this.records.get(key);
     if (state && state !== 'not_submitted') return this.blockedMessage(name, state) + (this.receipts.get(key) ? `\n上次执行回执（不是新提交）：\n${this.receipts.get(key)}` : '');
@@ -77,7 +78,7 @@ export class PaidToolIdempotencyGate {
   }
 
   check(runId: string | undefined, name: string, params: Record<string, unknown>): string | null {
-    if (!runId || !isPaidTool(name) || params.force === true) return null;
+    if (!runId || !isPaidTool(name)) return null;
     const state = this.records.get(normalizedPaidCallKey(runId, name, params));
     if (!state || state === 'not_submitted') return null;
     return this.blockedMessage(name, state) + (this.receipts.get(normalizedPaidCallKey(runId, name, params)) ?? '');
@@ -89,11 +90,11 @@ export class PaidToolIdempotencyGate {
       : state === 'unknown'
         ? '提交过但状态不明'
         : '提交成功';
-    return `同参数的付费工具 ${name} 在本次任务中已经${status}，已阻止重复执行以避免重复扣费。如需重做，请说明修改点、改变参数，或显式传入 force:true。`;
+    return `同参数的付费工具 ${name} 在本次任务中已经${status}，已阻止重复执行以避免重复扣费。如需重做，请说明修改点、改变参数，或由用户在新一轮对话中明确要求重做。`;
   }
 
   record(runId: string | undefined, name: string, params: Record<string, unknown>, result: ToolResult): void {
-    if (!runId || !isPaidTool(name) || params.force === true) return;
+    if (!runId || !isPaidTool(name)) return;
     const state = classifyPaidSubmission(result);
     const key = normalizedPaidCallKey(runId, name, params);
     if (state === 'not_submitted') { this.records.delete(key); this.receipts.delete(key); }

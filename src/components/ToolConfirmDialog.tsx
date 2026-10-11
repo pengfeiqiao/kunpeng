@@ -105,6 +105,7 @@ export function ToolConfirmDialog() {
                     鲲鹏想要{meta.label}
                   </h3>
                   <p className="mt-1 text-[12px] text-gray-400" aria-live="polite">第 {current.position}/{total} 条 · 待确认 {queue.length} 条</p>
+                  {pending.sourceLabel && <p className="mt-1 truncate text-[12px] text-gray-400" title={pending.sourceLabel}>来自对话：{pending.sourceLabel}</p>}
                   {pending.reason && (
                     <p className="text-[12px] text-gray-400 mt-0.5">{pending.reason}</p>
                   )}

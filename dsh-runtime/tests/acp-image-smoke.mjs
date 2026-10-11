@@ -18,8 +18,8 @@ const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
 if (!apiKey) throw new Error('DEEPSEEK_API_KEY is required');
 
 const model = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
-const baseURL = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
-const imagePath = process.env.SMOKE_IMAGE || '/tmp/smoke-red.png';
+const baseURL = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/anthropic').replace(/\/$/, '');
+const imagePath = process.env.SMOKE_IMAGE || join(import.meta.dirname, 'fixtures', 'native-vision.png');
 
 const imageData = (await readFile(imagePath)).toString('base64');
 const toolImage = process.env.SMOKE_TOOL_IMAGE === '1';
@@ -62,7 +62,7 @@ const persistenceRoot = join(work, 'sessions');
 const config = [
   {
     id: 'llm-deepseek',
-    name: fileUrl(join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-deepseek', 'lib', 'index.js')),
+    name: fileUrl(join(root, 'node_modules', '@deepseek-ai', 'dsh-llm-deepseek-api-key', 'lib', 'index.js')),
     config: { apiKeyEnv: 'DEEPSEEK_API_KEY', baseURL, maxTokens: 4096,
       models: [{ id: model, name: model, contextWindow: 1_000_000, maxTokens: 4096, inputModalities: ['text', 'image'], systemPromptUpdate: 'in-history' }] },
   },
@@ -211,7 +211,7 @@ try {
       { type: 'text', text: '请直接描述这张图片里有什么（颜色、形状、内容）。' },
     ],
   });
-  // 判定：最终正文或思考流提到红色（测试图是纯红色块）
+  // 判定：最终正文识别测试图的红、蓝两色；工具模式还必须实际调用。
   const sawImage = /红/.test(replyText) && /蓝/.test(replyText) && (!toolImage || toolCalls > 0);
   process.stdout.write(`${JSON.stringify({
     ok: sawImage,

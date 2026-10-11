@@ -8,8 +8,8 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 const require = createRequire(import.meta.url);
 const empty = () => null;
-function render(file, props, { messages = [], phase = 'idle', thinking = '', data = null, activeView = 'copywriting', pending = null, draftFiles = {} } = {}) {
-  const chat = { messages, currentSessionId: 's', activeView, draftFiles, streamingPhase: phase,
+function render(file, props, { messages = [], phase = 'idle', thinking = '', data = null, activeView = 'copywriting', pending = null, draftFiles = {}, draftMessage = '' } = {}) {
+  const chat = { messages, currentSessionId: 's', activeView, draftFiles, draftMessage, streamingPhase: phase,
     streamingContent: '', streamingThinkingContent: thinking, streamingSessions: {}, error: null };
   const store = Object.assign(selector => selector(chat), { getState: () => chat, subscribe: () => () => {} });
   const modules = {
@@ -110,4 +110,11 @@ test('writing drawer displays unsent attachments from the current conversation o
   const html = render('./AgentDrawer.tsx', drawerProps, { draftFiles: { s: ['/draft-reference.png'], other: ['/other.png'] } });
   assert.match(html, /conversation-attachments/);
   assert.doesNotMatch(render('./AgentDrawer.tsx', drawerProps, { draftFiles: { other: ['/other.png'] } }), /conversation-attachments/);
+});
+
+test('drawer composer displays the active conversation draft rather than component-local text',()=>{
+ const first=render('./AgentDrawer.tsx',drawerProps,{draftMessage:'甲的未发送草稿'});
+ const second=render('./AgentDrawer.tsx',drawerProps,{draftMessage:'乙的未发送草稿'});
+ assert.match(first,/甲的未发送草稿/);assert.doesNotMatch(first,/乙的未发送草稿/);
+ assert.match(second,/乙的未发送草稿/);assert.doesNotMatch(second,/甲的未发送草稿/);
 });

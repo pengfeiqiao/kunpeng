@@ -106,11 +106,16 @@ function nextStreamRequestId(): string {
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
+    if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+    const onAbort = () => {
       clearTimeout(timer);
       reject(new DOMException('Aborted', 'AbortError'));
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -840,6 +845,7 @@ export class GLMClient {
       const sseParser = new AnthropicSseDataParser();
       let chunk: string | undefined;
       let gotAnyChunk = false;
+      let sawTerminalEvent = false;
 
       const convertPayload = (payload: string): StreamDelta | null => {
         if (!payload || payload === '[DONE]') return null;
@@ -847,12 +853,17 @@ export class GLMClient {
         try {
           event = JSON.parse(payload) as SSEEvent;
         } catch (err) {
-          agentLog.warn('Anthropic', `Ignoring malformed SSE event (${payload.length} chars)`, err);
-          return null;
+          // Missing a tool argument fragment can leave valid but incomplete JSON.
+          // Never silently execute a request whose stream lost an event.
+          throw new Error('模型流式响应包含无效事件，本轮已停止，请重新发送。');
         }
         // Adapter errors are intentionally outside the JSON parse catch. An
         // Anthropic `type:error` event must reach the router/fallback layer.
-        return adapter.convert(event);
+        const delta = adapter.convert(event);
+        if (event.type === 'message_stop' || delta?.choices.some(choice => choice.finish_reason)) {
+          sawTerminalEvent = true;
+        }
+        return delta;
       };
 
       const workBudget = new StreamWorkBudget();
@@ -897,6 +908,9 @@ export class GLMClient {
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         const delta = convertPayload(payload);
         if (delta) yield delta;
+      }
+      if (!sawTerminalEvent) {
+        throw new Error('模型响应意外中断，未收到完成标记；未执行本轮工具，请重新发送。');
       }
     } finally {
       if (signal) signal.removeEventListener('abort', onAbort);

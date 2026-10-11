@@ -4,6 +4,7 @@ import {
   AI_DRAMA_BAN,
   findAiDramaPerformanceHits,
   PERFORMANCE_GUIDE,
+  DIALOGUE_DIRECTION_GUIDE,
 } from './performance.ts';
 import { buildAutoRunPrompt, buildOptimizeShotPrompt, buildShotPromptsPrompt } from '../workshop/workshopPrompts.ts';
 
@@ -33,6 +34,7 @@ test('findAiDramaPerformanceHits flags drama-style wording only', () => {
 test('workshop prompt builders carry the performance brief', () => {
   for (const prompt of [buildShotPromptsPrompt(), buildShotPromptsPrompt('', 'universal'), buildOptimizeShotPrompt('1'), buildAutoRunPrompt()]) {
     assert.ok(prompt.includes('触发→发酵→释放'), 'builder output should include the performance layering rule');
+    assert.ok(prompt.includes(DIALOGUE_DIRECTION_GUIDE));
     assert.ok(prompt.includes('行为目的'), 'builder output should include the behavior-purpose rule');
     assert.ok(prompt.includes('AI 短剧/漫剧风'), 'builder output should include the AI-drama ban');
     assert.ok(prompt.includes('内部导演决策'), 'builder output should include the hidden directing protocol');

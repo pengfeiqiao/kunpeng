@@ -32,7 +32,8 @@ export async function executeDshToolCall(
   hooks: DshToolHooks = {},
 ): Promise<ToolResult> {
   if (signal.aborted) return { success: false, output: '', error: '操作已中止，未执行工具。' };
-  const params = call.arguments ?? {};
+  const params = call.arguments === undefined ? {} : call.arguments;
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return { success: false, output: '', error: '工具参数必须是 JSON 对象。' };
   const tool = registry.get(call.name);
   if (!tool) return { success: false, output: '', error: `Unknown tool: ${call.name}` };
 
@@ -44,7 +45,8 @@ export async function executeDshToolCall(
   if (risk === 'deny') {
     return { success: false, output: '', error: riskCheck?.reason || `工具 ${call.name} 被禁止执行` };
   }
-  if (shouldOfferToolConfirmation(call.name, risk) && callbacks.onToolConfirm) {
+  if (shouldOfferToolConfirmation(call.name, risk)) {
+    if (!callbacks.onToolConfirm) return { success: false, output: '', error: '确认通道不可用，未执行工具。' };
     const allowed = await callbacks.onToolConfirm(call.name, params, riskCheck?.reason, signal);
     if (!allowed) {
       return { success: false, output: '', error: '用户拒绝执行此操作。请询问用户是否有其他方案。' };

@@ -41,7 +41,6 @@ import {
   writeSessionIndex,
   readAgentMessagesFromLocalStorage,
   readMessagesFromLocalStorage,
-  hydrateLocalStorageSession,
   compactAgentMessagesForStorage,
 } from '@/lib/historyPersistence';
 import type {
@@ -368,7 +367,7 @@ async function persistAgentMessagesNow({ sessionId, messages }: AgentMessagesSav
   try {
     safeLocalStorage.setItem(AGENT_MSGS_PREFIX + sessionId, JSON.stringify(compactMessages));
   } catch { /* quota */ }
-  const uiMessages = readMessagesFromLocalStorage(sessionId) ?? [];
+  const uiMessages = useChatStore.getState().getSessionMessages(sessionId) ?? readMessagesFromLocalStorage(sessionId) ?? [];
   // localStorage is only a small fast cache. The per-session file receives
   // the richer history and applies its own much larger disk safety limit.
   await writeSessionToFile(sessionId, { messages: uiMessages, agentMessages: messages });
@@ -627,16 +626,6 @@ function unregisterSharedDshBridge(agentId: string, bridge: DshBridge): void {
   if (sharedDshBridges.get(agentId) === bridge) sharedDshBridges.delete(agentId);
 }
 
-function getSharedDshBridge(agentId: string): DshBridge | null {
-  const exact = sharedDshBridges.get(agentId);
-  if (exact) return exact;
-  // A remounted drawer can temporarily lose its local Agent identity while
-  // the shared chat store still owns one active stream. Falling back is safe
-  // only when there is exactly one candidate; never stop an arbitrary run.
-  return sharedDshBridges.size === 1
-    ? sharedDshBridges.values().next().value ?? null
-    : null;
-}
 
 /**
  * useAgent — Agent 生命周期管理 Hook
@@ -651,8 +640,7 @@ export function useAgent(options?: { primary?: boolean }) {
   const isPrimary = options?.primary !== false;
   const glmClientRef = useRef<GLMClient | null>(null);
   const coordinatorRef = useRef<AgentCoordinator | null>(null);
-  // Tier 4: per-agent coordinators. Each agent gets its own coordinator so
-  // two agents can run concurrent streams. `coordinatorRef` tracks the active
+  // Each conversation owns its coordinator, including conversations of the same agent. `coordinatorRef` tracks the active
   // one (most recently used or the one matching the current agent) so legacy
   // call sites (e.g. abort/switchCwd) keep working.
   const coordinatorsRef = useRef<Map<string, AgentCoordinator>>(new Map());
@@ -682,7 +670,7 @@ export function useAgent(options?: { primary?: boolean }) {
       return false;
     });
   };
-  const coordinatorFactoryRef = useRef<((agentId: string) => AgentCoordinator) | null>(null);
+  const coordinatorFactoryRef = useRef<((agentId: string, sessionId?: string) => AgentCoordinator) | null>(null);
   // Latest coordinator config — resolved by the agent (sub-agent) tool at
   // execute time so dispatched sub-agents don't inherit a stale closure.
   const latestCoordinatorConfigRef = useRef<ConstructorParameters<typeof AgentCoordinator>[0] | null>(null);
@@ -690,17 +678,38 @@ export function useAgent(options?: { primary?: boolean }) {
   const skillLoaderRef = useRef<SkillLoader | null>(null);
   const mcpManagerRef = useRef<McpManager | null>(null);
   const toolExecutionsRef = useRef<ToolExecution[]>([]);
-  const userAbortedRef = useRef(false); // guards against double-cleanup after user abort
-  const activeRunTokenRef = useRef(0);
-  const lastUiSendRef = useRef<{ content: string; at: number } | null>(null);
-  // Serializes session restores: a slow restore (LLM compact inside
-  // restoreMessages) must not overwrite a newer one.
-  const restoreSeqRef = useRef(0);
   // Closes the sendMessage startup window: between the isRunning check and
   // coordinator.run() there are awaits (session ensure, Kimi media upload)
   // during which a second send would start a competing run on the same
   // coordinator and silently drop the first message.
-  const sendingRef = useRef(false);
+  const sessionRunsRef = useRef(new Map<string, { sending: { current: boolean }; aborted: { current: boolean }; token: { current: number }; tools: { current: ToolExecution[] }; admission?: Promise<void>; releaseAdmission?: () => void; cancelVersion: number; completion?: Promise<void>; settleCompletion?: () => void }>());
+  const restoresRef = useRef(new Map<string, Promise<void>>());
+  const pruningRef = useRef(false);
+  const trimIdleCoordinators = async () => {
+    if (pruningRef.current || coordinatorsRef.current.size <= 12) return;
+    pruningRef.current = true;
+    try {
+      for (const [sid, candidate] of coordinatorsRef.current) {
+        if (coordinatorsRef.current.size <= 12) break;
+        const runtime = sessionRunsRef.current.get(sid);
+        if (sid === 'main' || sid === useChatStore.getState().currentSessionId
+          || candidate.getIsRunning() || runtime?.sending.current || runtime?.admission || restoresRef.current.has(sid)) continue;
+        const revision = runtime?.token.current;
+        // Persist before eviction; a run that starts during the write keeps its coordinator.
+        if (isPrimary && useChatStore.getState().sessions.some(session => session.id === sid)) {
+          await flushAgentMessages(sid, candidate.getMessages());
+        }
+        if (coordinatorsRef.current.get(sid) === candidate && !candidate.getIsRunning()
+          && !runtime?.sending.current && !runtime?.admission && runtime?.token.current === revision
+          && sid !== useChatStore.getState().currentSessionId) {
+          coordinatorsRef.current.delete(sid);
+          if (runtime) runtime.tools.current = [];
+        }
+      }
+    } catch (error) {
+      agentLog.warn('Agent', `暂时保留会话缓存：${String(error)}`);
+    } finally { pruningRef.current = false; }
+  };
   const resumeContextQueueRef = useRef(new TaskResumeContextQueue());
   const ordinaryRunIdsRef = useRef(new Set<string>());
   const [isReady, setIsReady] = useState(false);
@@ -709,12 +718,12 @@ export function useAgent(options?: { primary?: boolean }) {
   // trajectory record, then maybe fires a background reflection pass.
   // Best-effort — never blocks or breaks the foreground run.
   const recordRunTrajectory = useCallback(
-    (status: 'done' | 'failed' | 'aborted', req: string, startTime: number | null, _ordinaryChat = false) => {
+    (status: 'done' | 'failed' | 'aborted', req: string, startTime: number | null, _ordinaryChat = false, executions = toolExecutionsRef.current) => {
       // Include canvas, workshop and editor runs in the learning journal.
       try {
         const tools: Record<string, number> = {};
         const fail: Record<string, number> = {};
-        for (const te of toolExecutionsRef.current) {
+        for (const te of executions) {
           tools[te.toolName] = (tools[te.toolName] || 0) + 1;
           if (te.status === 'error') fail[te.toolName] = (fail[te.toolName] || 0) + 1;
         }
@@ -723,7 +732,7 @@ export function useAgent(options?: { primary?: boolean }) {
           req: req.slice(0, 160),
           tools,
           fail,
-          traces: toolExecutionsRef.current.slice(-40).map((execution) => summarizeToolTrace({
+          traces: executions.slice(-40).map((execution) => summarizeToolTrace({
             toolName: execution.toolName,
             params: execution.params,
             status: execution.status,
@@ -961,7 +970,13 @@ export function useAgent(options?: { primary?: boolean }) {
       // Closes over the shared client/registry/workspace/customRules so
       // additional agents are cheap to spin up (no duplicated skill load).
       const shellEnv = await getShellInfo();
-      const buildCoordinator = (agentId: string): AgentCoordinator => {
+      const buildCoordinator = (agentId: string, sessionId?: string): AgentCoordinator => {
+        const sessionRegistry = registry.clone();
+        sessionRegistry.register(createBackgroundTaskTool(() => sessionId ?? '', task => useBackgroundTaskStore.getState().addTask(task)));
+        sessionRegistry.register(createTodoWriteTool(() => sessionId ?? ''));
+        const originView = useChatStore.getState().activeView;
+        sessionRegistry.setOriginView(originView);
+        const originProjectId = currentSkillProjectId();
         const settings = useSettingsStore.getState();
         const meta = settings.agentMetas[agentId];
         const globalOutputStyle = settings.outputStyle;
@@ -969,28 +984,28 @@ export function useAgent(options?: { primary?: boolean }) {
 
         const coordinatorConfig = {
           glmClient: client,
-          toolRegistry: registry,
+          toolRegistry: sessionRegistry,
           cwd,
           os: osDisplayName(shellEnv.platform),
           shell: shellEnv.shell,
           maxTurns: maxTurns || 30,
           workspace: workspace || undefined,
           skillDescriptions: loader.getDescriptionText({
-            activeView: useChatStore.getState().activeView,
-            projectId: currentSkillProjectId(),
+            activeView: originView,
+            projectId: originProjectId,
           }) || undefined,
           skillDescriptionResolver: (query: string) => loader.getDescriptionText({
-            activeView: useChatStore.getState().activeView,
+            activeView: originView,
             query,
-            projectId: currentSkillProjectId(),
+            projectId: originProjectId,
           }) || undefined,
           // Query-dependent relevance goes to a transient attachment, not the
           // system prompt — keeps the cached prefix byte-stable across turns.
           skillNoticeResolver: (query: string) =>
             buildSkillRelevanceNotice(loader.getAll(), {
-              activeView: useChatStore.getState().activeView,
+              activeView: originView,
               query,
-              projectId: currentSkillProjectId(),
+              projectId: originProjectId,
             }),
           customRules: mergedRules,
           routeStrategy: buildRouteStrategyFromSettings(settings, glmApiKey, meta?.preferredProviderId),
@@ -1029,10 +1044,9 @@ export function useAgent(options?: { primary?: boolean }) {
         for (const [agentId, c] of coordinatorsRef.current.entries()) {
           const msgs = compactAgentMessagesForStorage(c.getMessages());
           if (msgs.length <= 1) continue;
-          const parts = sid.split(':');
-          const sAgentId = parts.length >= 3 ? parts[1] : 'main';
-          if (sAgentId === agentId) {
-            try { safeLocalStorage.setItem('kunpeng-agent-messages-' + sid, JSON.stringify(msgs)); } catch { /* quota */ }
+          if (state.sessions.some(session => session.id === agentId)) {
+            try { safeLocalStorage.setItem(AGENT_MSGS_PREFIX + agentId, JSON.stringify(msgs)); } catch { /* quota */ }
+            void flushAgentMessages(agentId, c.getMessages()).catch(() => {});
           }
         }
         // Update session timestamp
@@ -1045,69 +1059,12 @@ export function useAgent(options?: { primary?: boolean }) {
         } catch { /* quota */ }
         // Mirror to per-session file (file is the source of truth on reload).
         try {
-          const activeAgentId = (sid.split(':').length >= 3 ? sid.split(':')[1] : 'main');
-          const activeCoord = coordinatorsRef.current.get(activeAgentId);
-          const agentMessages = activeCoord ? activeCoord.getMessages() : [];
-          void flushAgentMessages(sid, agentMessages).catch(() => {});
+          const activeCoord = coordinatorsRef.current.get(sid);
+          if (activeCoord) void flushAgentMessages(sid, activeCoord.getMessages()).catch(() => {});
         } catch { /* ignore */ }
       });
 
-      // Restore AgentMessage[] from the current active session (if any).
-      // Primary instance only — a secondary (wizard) engine restoring the
-      // chat session into its own coordinator is wasted work and double IO.
-      const currentSessionId = useChatStore.getState().currentSessionId;
-      if (isPrimary && currentSessionId) {
-        markStage('正在恢复当前会话');
-        let saved = loadAgentMessages(currentSessionId);
-        if (saved === null) {
-          const fromFile = await readSessionFromFile(currentSessionId);
-          if (fromFile) {
-            hydrateLocalStorageSession(currentSessionId, fromFile);
-            saved = fromFile.agentMessages;
-          } else {
-            saved = [];
-          }
-        }
-        if (saved.length > 0) {
-          let uiMsgs = readMessagesFromLocalStorage(currentSessionId);
-          if (uiMsgs === null) {
-            const fromFile = await readSessionFromFile(currentSessionId);
-            uiMsgs = fromFile?.messages ?? [];
-          }
-          const recovered = recoverDegradedAgentHistory(saved, uiMsgs);
-          await defaultCoordinator.restoreMessages(recovered);
-          if (recovered !== saved) {
-            saveAgentMessages(currentSessionId, recovered);
-            agentLog.warn('Agent', `Rebuilt degraded compacted history from ${uiMsgs.length} visible messages for ${currentSessionId}`);
-          } else {
-            agentLog.info('Agent', `Restored ${saved.length} agent messages for session ${currentSessionId}`);
-          }
-        } else {
-          // Fallback: rebuild from UI messages if agent-messages was lost
-          let uiMsgs = readMessagesFromLocalStorage(currentSessionId);
-          if (uiMsgs === null) {
-            const fromFile = await readSessionFromFile(currentSessionId);
-            uiMsgs = fromFile?.messages ?? [];
-          }
-          if (uiMsgs.length > 0) {
-            const projected = projectUIMessagesToAgentMessages(uiMsgs);
-            if (projected.length > 0) {
-              await defaultCoordinator.restoreMessages(projected);
-              agentLog.warn('Agent', `Rebuilt ${projected.length} agent msgs from UI for session ${currentSessionId}`);
-            }
-          }
-        }
-        let restoredUiMessages = readMessagesFromLocalStorage(currentSessionId);
-        if (restoredUiMessages === null) {
-          restoredUiMessages = (await readSessionFromFile(currentSessionId))?.messages ?? [];
-        }
-        resumeContextQueueRef.current.stage(currentSessionId, buildTaskResumeContext({
-          todos: useTodoStore.getState().todosBySession[currentSessionId] ?? [],
-          agentMessages: defaultCoordinator.getMessages(),
-          uiMessages: restoredUiMessages,
-        }));
-        markStage('当前会话恢复完成');
-      }
+
 
       // Ready immediately with built-in tools — no waiting for MCP
       setIsReady(true);
@@ -1121,6 +1078,7 @@ export function useAgent(options?: { primary?: boolean }) {
           if (cancelled) { mcpManager.shutdown(); return; }
           for (const tool of mcpTools) {
             registry.register(tool);
+            for (const coordinator of coordinatorsRef.current.values()) coordinator.getToolRegistry().register(tool);
           }
           configureEvolutionCatalog({
             toolNames: registry.getAll().map((tool) => tool.definition.name),
@@ -1153,7 +1111,7 @@ export function useAgent(options?: { primary?: boolean }) {
       const cleanupState = useChatStore.getState();
       const cleanupSid = cleanupState.currentSessionId;
       if (cleanupSid) {
-        const cleanupCoordinator = coordinatorRef.current;
+        const cleanupCoordinator = coordinatorsRef.current.get(cleanupSid);
         if (cleanupCoordinator) {
           const msgs = compactAgentMessagesForStorage(cleanupCoordinator.getMessages());
           if (msgs.length > 1) {
@@ -1206,9 +1164,11 @@ export function useAgent(options?: { primary?: boolean }) {
       syncRunninghubKeyFile(settings),
     ]).catch((error) => agentLog.warn('Agent', `同步模型配置失败：${String(error)}`));
     for (const [agentId, coordinator] of coordinatorsRef.current) {
-      const meta = settings.agentMetas[agentId];
+      const ownerAgentId = agentId.startsWith('agent:') ? agentId.split(':')[1] : 'main';
+      if (coordinator.getIsRunning() || sessionRunsRef.current.get(agentId)?.sending.current) continue;
+      const meta = settings.agentMetas[ownerAgentId];
       coordinator.setRuntimePromptConfig({
-        customRules: buildAgentCustomRules(baseCustomRulesRef.current, settings, agentId),
+        customRules: buildAgentCustomRules(baseCustomRulesRef.current, settings, ownerAgentId),
         outputStyle: meta?.outputStyle ?? settings.outputStyle ?? 'default',
         imageApiContext: buildImageApiContext(settings),
         runninghubContext: buildRunninghubContext(settings),
@@ -1238,7 +1198,8 @@ export function useAgent(options?: { primary?: boolean }) {
       const context = buildCombinedProjectContext();
       if (context === previousContext) return;
       previousContext = context;
-      for (const c of coordinatorsRef.current.values()) {
+      for (const [sid, c] of coordinatorsRef.current) {
+        if (sid !== useChatStore.getState().currentSessionId || c.getIsRunning() || sessionRunsRef.current.get(sid)?.sending.current) continue;
         c.setAigcMemoryContext(context);
       }
     };
@@ -1265,16 +1226,77 @@ export function useAgent(options?: { primary?: boolean }) {
   /** 发送消息 */
   const sendMessage = useCallback(
     async (content: string, filePaths?: string[]) => {
+      const origin = useChatStore.getState();
+      const originSettings = useSettingsStore.getState();
+      const turnProjectContext = buildCombinedProjectContext();
+      const skillProjectId = currentSkillProjectId();
+      const originProjectId = useUnifiedProjectStore.getState().activeId;
+      const generationPreference = useWorkshopStore.getState().data?.projectSpec?.generationConfirmation ?? 'paid-only-confirm';
+
+      let sessionId = origin.currentSessionId;
+      if (!sessionId) {
+        const initializing = ensureActiveConversationSessionRaw();
+        // Session creation publishes its identity before disk I/O; navigation during
+        // that write must not redirect or discard the already submitted message.
+        const reservedId = useChatStore.getState().currentSessionId;
+        const initialized = await initializing;
+        sessionId = reservedId ?? initialized?.id ?? null;
+      }
+      if (!sessionId) return;
+      const runtimeKey = sessionId;
+      let runtime = sessionRunsRef.current.get(runtimeKey);
+      if (!runtime) {
+        runtime = { sending: { current: false }, aborted: { current: false }, token: { current: 0 }, tools: { current: [] }, cancelVersion: 0 };
+        sessionRunsRef.current.set(runtimeKey, runtime);
+      }
+      const sendingRef = runtime.sending, userAbortedRef = runtime.aborted, activeRunTokenRef = runtime.token, toolExecutionsRef = runtime.tools;
+      const patch = (value: Parameters<ReturnType<typeof useChatStore.getState>['patchSessionView']>[1]) => useChatStore.getState().patchSessionView(sessionId, value);
+      const addMessage = (message: Message) => useChatStore.getState().appendSessionMessage(sessionId, message);
+      const setError = (error: string | null) => patch({ error });
+      const setIsStreaming = (isStreaming: boolean) => patch({ isStreaming });
+      const setStreamingPhase = (streamingPhase: 'idle' | 'waiting' | 'thinking' | 'streaming' | 'processing') => patch({ streamingPhase });
+      const setStreamingSessionId = (streamingSessionId: string | null) => patch({ streamingSessionId });
+      const clearStreamingContent = () => patch({ streamingContent: '', streamingThinkingContent: '', streamingSubAgentText: '', streamingToolName: null });
+      const startStreaming = (_id: string | null) => patch({ isStreaming: true, streamingSessionId: sessionId,
+        streamingPhase: 'waiting', streamingSentAt: Date.now(), streamingContent: '', streamingThinkingContent: '', streamingSubAgentText: '', streamingToolName: null });
+      const cancelVersion = runtime.cancelVersion;
+      while (runtime.admission) {
+        await runtime.admission;
+        if (runtime.cancelVersion !== cancelVersion) return;
+      }
+      let resolveAdmission!: () => void;
+      const admission = new Promise<void>(resolve => { resolveAdmission = resolve; });
+      const releaseAdmission = () => {
+        if (runtime.admission === admission) {
+          runtime.admission = undefined;
+          runtime.releaseAdmission = undefined;
+        }
+        resolveAdmission();
+      };
+      runtime.admission = admission;
+      runtime.releaseAdmission = releaseAdmission;
+      let ownedCompletion: Promise<void> | undefined;
+      let settleCompletion: (() => void) | undefined;
+      const startingNew = !sendingRef.current;
+      const stillAdmitted = () => runtime.cancelVersion === cancelVersion
+        && useChatStore.getState().sessions.some(session => session.id === sessionId);
+      try {
+      if (!stillAdmitted()) return;
+      if (!sendingRef.current) startStreaming(sessionId);
+      await restoreSession(sessionId);
+      if (!stillAdmitted()) return;
+
+      const sourceLabel = origin.sessions.find(s => s.id === sessionId)?.title ?? '新对话';
       const writingTurn = captureWritingTurn(content);
       // Tier 4: pick the coordinator for the CURRENT agent. Lazy-init on first
       // use so non-main agents get their own coordinator only when actually
       // invoked. The factory closes over shared client/registry/skills, so
       // this is cheap.
-      const currentAgentId = useChatStore.getState().currentAgent?.id || 'main';
-      let coordinator = coordinatorsRef.current.get(currentAgentId);
+      const currentAgentId = origin.currentAgent?.id || 'main';
+      let coordinator = coordinatorsRef.current.get(runtimeKey);
       if (!coordinator && coordinatorFactoryRef.current) {
-        coordinator = coordinatorFactoryRef.current(currentAgentId);
-        coordinatorsRef.current.set(currentAgentId, coordinator);
+        coordinator = coordinatorFactoryRef.current(currentAgentId, sessionId);
+        coordinatorsRef.current.set(runtimeKey, coordinator);
         agentLog.info('Agent', `Spawned coordinator for agent ${currentAgentId}`);
       }
       if (!coordinator) {
@@ -1284,14 +1306,15 @@ export function useAgent(options?: { primary?: boolean }) {
       // The system catalog, skill_invoke and the toolbar share this loader.
       // Refreshing here makes newly written evolution skills visible on the
       // next task without rebuilding the Agent engine.
-      await skillLoaderRef.current?.refreshIfDue();
+      if (!coordinator.getIsRunning() && !dshBridgesRef.current.has(runtimeKey)) await skillLoaderRef.current?.refreshIfDue();
+      if (!stillAdmitted()) return;
       coordinator.refreshSystemPrompt();
       // Secondary (wizard) engines share the global chat stores but must not
       // write session files — their coordinators hold wizard-scoped history
       // that would overwrite the real chat session's agent history on disk.
       const persistUiMessages: typeof persistMessages = isPrimary ? persistMessages : () => {};
       const displayContent = stripHarnessPrefix(content);
-      const activeDsh = dshBridgesRef.current.get(currentAgentId);
+      const activeDsh = dshBridgesRef.current.get(runtimeKey);
       if (activeDsh) {
         const pathPrefix = filePaths?.length
           ? `[用户补充了以下文件]\n${filePaths.map((path) => `- ${path}`).join('\n')}\n\n`
@@ -1302,18 +1325,18 @@ export function useAgent(options?: { primary?: boolean }) {
         let catalogPrefix = '';
         const catalogSkills = skillLoaderRef.current?.getAll() ?? [];
         const nextSig = skillCatalogSignature(catalogSkills);
-        const prevSig = dshSkillSigRef.current.get(currentAgentId);
+        const prevSig = dshSkillSigRef.current.get(runtimeKey);
         if (prevSig !== undefined) {
           const diff = diffSkillCatalog(prevSig, nextSig);
           if (diff) catalogPrefix = `${buildSkillCatalogUpdateNote(diff, catalogSkills)}\n\n`;
         }
-        dshSkillSigRef.current.set(currentAgentId, nextSig);
+        dshSkillSigRef.current.set(runtimeKey, nextSig);
         // queueGuidance 返回 false 只有一种情况：bridge 已 abort（运行刚结束）。
         // 此时不能把消息静默丢掉，也不能让它落进已失效的桥——清掉失效桥，
         // 按新任务走正常启动路径。bridge 在 ref 里存在即视为任务存活，
         // 绝不在它活着时并行起第二个 Harness 进程（并行抢同一工具桥）。
         if (activeDsh.queueGuidance(`${catalogPrefix}${pathPrefix}${displayContent}`)) {
-          const sessionId = useChatStore.getState().currentSessionId;
+
           addMessage({
             id: randomUUID(),
             role: 'user',
@@ -1324,9 +1347,9 @@ export function useAgent(options?: { primary?: boolean }) {
           persistUiMessages(sessionId ?? undefined);
           return;
         }
-        if (dshBridgesRef.current.get(currentAgentId) === activeDsh) {
-          dshBridgesRef.current.delete(currentAgentId);
-          dshSkillSigRef.current.delete(currentAgentId);
+        if (dshBridgesRef.current.get(runtimeKey) === activeDsh) {
+          dshBridgesRef.current.delete(runtimeKey);
+          dshSkillSigRef.current.delete(runtimeKey);
         }
       }
       if (coordinator.getIsRunning()) {
@@ -1335,7 +1358,7 @@ export function useAgent(options?: { primary?: boolean }) {
           : '';
         const queued = coordinator.queueGuidance(`${pathPrefix}${displayContent}`);
         if (!queued) return;
-        const sessionId = useChatStore.getState().currentSessionId;
+
         addMessage({
           id: randomUUID(),
           role: 'user',
@@ -1347,16 +1370,23 @@ export function useAgent(options?: { primary?: boolean }) {
         return;
       }
 
+      // A finished provider may still be disposing its bridge/subagents. Preserve
+      // this request and start it after cleanup instead of dropping it as "busy".
+      if (sendingRef.current && runtime.completion) {
+        await runtime.completion;
+        if (!stillAdmitted()) return;
+      }
+
       // Reset abort guard only when starting a genuinely new run. Doing this
       // for mid-run guidance would invalidate the active run's callbacks.
       setError(null);
-      const settings = useSettingsStore.getState();
-      const decisionView = useChatStore.getState().activeView;
+      const settings = originSettings;
+      const decisionView = origin.activeView;
       const surface = inferAgentWorkspaceScope(content);
       const isOrdinaryChatRun = isOrdinarySubagentRun(
         isPrimary,
         surface !== null,
-        useChatStore.getState().activeView,
+        origin.activeView,
       );
       const workspaceSelection = surface
         ? decodeChatModel(settings.workspaceAgentModels[surface])
@@ -1371,6 +1401,7 @@ export function useAgent(options?: { primary?: boolean }) {
       const primaryRoute = getPrimaryRouteSelection(routeStrategy);
       const usingHarness = primaryRoute.providerId === 'deepseek' && settings.deepseekEngine !== 'builtin';
       let executingHarness = usingHarness;
+      coordinator.getToolRegistry().setOriginView(decisionView);
       coordinator.setRouteStrategy(routeStrategy);
       // Make this the "active" coordinator so abort/switchCwd/agent-tool
       // relay target the right instance.
@@ -1379,30 +1410,33 @@ export function useAgent(options?: { primary?: boolean }) {
       // Check for slash commands. Drawer wrappers (canvas/workshop/editor)
       // prepend a "[用户正在…]\n\n" context prefix — strip it so /auto etc.
       // work from every chat surface.
-      const now = Date.now();
-      const lastSend = lastUiSendRef.current;
-      if (lastSend && lastSend.content === displayContent && now - lastSend.at < 5000) {
-        agentLog.warn('Agent', 'Dropped duplicate UI send within 5s');
-        return;
-      }
-      lastUiSendRef.current = { content: displayContent, at: now };
       // Close the startup race: from here until coordinator.run() starts there
       // are awaits (slash command, session ensure, Kimi media upload) during
       // which a second sendMessage would start a competing run on the same
       // coordinator — dropping the first message's final reply. Released in
       // the run's finally and on the early-return paths below.
       if (sendingRef.current) {
-        agentLog.warn('Agent', 'Dropped concurrent send during startup window');
-        return;
+        throw new Error('上一轮任务尚未完成清理，请稍后重试。');
       }
       sendingRef.current = true;
+      ownedCompletion = new Promise<void>(resolve => { settleCompletion = resolve; });
+      runtime.completion = ownedCompletion;
+      runtime.settleCompletion = settleCompletion;
+      const loader = skillLoaderRef.current;
+      coordinator.setTurnEnvironment({
+        aigcMemoryContext: turnProjectContext,
+        skillDescriptions: loader?.getDescriptionText({ activeView: decisionView, projectId: skillProjectId }) || undefined,
+        skillDescriptionResolver: query => loader?.getDescriptionText({ activeView: decisionView, projectId: skillProjectId, query }) || undefined,
+        skillNoticeResolver: query => buildSkillRelevanceNotice(loader?.getAll() ?? [], { activeView: decisionView, projectId: skillProjectId, query }),
+      });
       // Bump the run token only AFTER the duplicate/concurrent guards above.
       // Doing it earlier meant a dropped second send still invalidated the
       // active run's token — silencing all its callbacks, losing its final
       // reply, and leaving its run stuck in 'running'.
       userAbortedRef.current = false;
       const runToken = ++activeRunTokenRef.current;
-      const isCurrentRun = () => activeRunTokenRef.current === runToken && !userAbortedRef.current;
+      let terminal = false;
+      const isCurrentRun = () => !terminal && activeRunTokenRef.current === runToken && !userAbortedRef.current;
       const cmdText = displayContent;
       if (cmdText.startsWith('/')) {
         let result: Awaited<ReturnType<typeof executeCommand>>;
@@ -1442,19 +1476,6 @@ export function useAgent(options?: { primary?: boolean }) {
         }
       }
 
-      // A drawer and the main chat are two views of the same task. Recover a
-      // temporarily lost active session before creating anything new.
-      try {
-        await ensureActiveConversationSessionRaw();
-      } catch (err) {
-        sendingRef.current = false;
-        throw err;
-      }
-
-      // Lock sessionId now — any view switch after this point must NOT change
-      // which session we write to. All persist/streaming callbacks use this value.
-      const sessionId = useChatStore.getState().currentSessionId;
-      activeRunSessionRef.current = sessionId;
       const decisionSource = { sourceView: decisionView, sourceSessionId: sessionId,
         sourceLabel: useChatStore.getState().sessions.find(session => session.id === sessionId)?.title };
       const resumeContext = isOrdinaryChatRun
@@ -1490,7 +1511,7 @@ export function useAgent(options?: { primary?: boolean }) {
         modelProvider: primaryRoute.providerId,
         modelId: primaryRoute.modelId,
       });
-      activeRunIdsRef.current.set(currentAgentId, runId);
+      activeRunIdsRef.current.set(runtimeKey, runId);
       if (isOrdinaryChatRun) {
         ordinaryRunIdsRef.current.add(runId);
         const loadedSkills = skillLoaderRef.current?.getAll() ?? [];
@@ -1505,7 +1526,7 @@ export function useAgent(options?: { primary?: boolean }) {
       // Snapshot cheaply here; compaction/stringify/disk IPC are coalesced and
       // run during browser idle time by agentMessagesSaveQueue.
       const persistAgentMsgs = () => {
-        if (isPrimary && sessionId && coordinator) {
+        if (isPrimary && sessionId && coordinator && isCurrentRun()) {
           saveAgentMessages(sessionId, coordinator.getMessages());
         }
       };
@@ -1557,12 +1578,12 @@ export function useAgent(options?: { primary?: boolean }) {
             update.contextStats = stats;
           }
         }
-        useChatStore.setState(update);
+        patch(update);
       };
 
       const scheduleFlush = () => {
         if (flushTimerId !== null) return;
-        flushTimerId = window.setTimeout(flushToStore, 80);
+        flushTimerId = window.setTimeout(flushToStore, useChatStore.getState().currentSessionId === sessionId ? 80 : 400);
       };
 
       const cancelFlush = () => {
@@ -1624,7 +1645,7 @@ export function useAgent(options?: { primary?: boolean }) {
           // Tool events are infrequent — flush immediately
           cancelFlush();
           flushToStore();
-          useChatStore.setState({
+          patch({
             streamingPhase: 'processing',
             streamingToolName: name,
           });
@@ -1642,7 +1663,7 @@ export function useAgent(options?: { primary?: boolean }) {
         onToolEnd: (name, result) => {
           if (!isCurrentRun()) return;
           bindWritingToolResult(writingTurn, name, result);
-          useChatStore.setState({ streamingToolName: null });
+          patch({ streamingToolName: null });
           const running = [...toolExecutionsRef.current].reverse().find((te) =>
             te.toolName === name && te.status === 'running'
           );
@@ -1670,7 +1691,7 @@ export function useAgent(options?: { primary?: boolean }) {
 
           const duration = Math.floor((Date.now() - startTime) / 1000);
           const assistantMessageId = randomUUID();
-          const projectSnapshotId = completedProjectMutation(toolExecutionsRef.current)
+          const projectSnapshotId = completedProjectMutation(toolExecutionsRef.current) && useUnifiedProjectStore.getState().activeId === originProjectId
             ? useUnifiedProjectStore.getState().captureProjectSnapshot({
                 messageId: assistantMessageId,
                 label: displayContent.trim().slice(0, 36) || 'Agent 完成一次修改',
@@ -1695,15 +1716,16 @@ export function useAgent(options?: { primary?: boolean }) {
 
           persistUiMessages(sessionId ?? undefined);
           persistAgentMsgs();
-          if (coordinator && !executingHarness) useChatStore.getState().setContextStats(coordinator.getContextStats());
+          if (coordinator && !executingHarness) patch({ contextStats: coordinator.getContextStats() });
           setIsStreaming(false);
           setStreamingSessionId(null);
           if (sessionId) setSessionStreaming(sessionId, false);
           clearStreamingContent();
           setStreamingPhase('idle');
-          emit('agent-status-change', 'idle');
+          emit('agent-status-change', Object.keys(useChatStore.getState().streamingSessions).length ? 'working' : 'idle');
+          terminal = true;
           useRunStepStore.getState().finishRun('done', runId);
-          recordRunTrajectory('done', displayContent, startTime, isOrdinaryChatRun);
+          recordRunTrajectory('done', displayContent, startTime, isOrdinaryChatRun, toolExecutionsRef.current);
           learnWritingTurn(writingTurn, finalText || accumulatedText, sessionId ?? '', runId);
 
           // Tier 4: OS notification when window is unfocused. Skip very
@@ -1711,7 +1733,7 @@ export function useAgent(options?: { primary?: boolean }) {
           if (useSettingsStore.getState().notificationsEnabled && duration >= 5) {
             const preview = (finalText || accumulatedText).trim().slice(0, 80);
             void notify({
-              title: `${useChatStore.getState().currentAgent?.name || '鲲鹏'} 已完成`,
+              title: `${origin.currentAgent?.name || '鲲鹏'} 已完成`,
               body: preview || '回复已生成',
             });
           }
@@ -1730,13 +1752,14 @@ export function useAgent(options?: { primary?: boolean }) {
           if (sessionId) setSessionStreaming(sessionId, false);
           clearStreamingContent();
           setStreamingPhase('idle');
-          emit('agent-status-change', 'error');
+          emit('agent-status-change', Object.keys(useChatStore.getState().streamingSessions).length ? 'working' : 'error');
+          terminal = true;
           useRunStepStore.getState().finishRun('failed', runId);
-          recordRunTrajectory('failed', displayContent, startTime, isOrdinaryChatRun);
+          recordRunTrajectory('failed', displayContent, startTime, isOrdinaryChatRun, toolExecutionsRef.current);
 
           if (useSettingsStore.getState().notificationsEnabled) {
             void notify({
-              title: `${useChatStore.getState().currentAgent?.name || '鲲鹏'} 出错了`,
+              title: `${origin.currentAgent?.name || '鲲鹏'} 出错了`,
               body: error.message.slice(0, 120),
             });
           }
@@ -1747,19 +1770,18 @@ export function useAgent(options?: { primary?: boolean }) {
           if (isGenerationToolName(name)) {
             const tool = registry.get(name);
             const risk = tool?.checkRisk?.(params).risk ?? tool?.risk;
-            const preference = useWorkshopStore.getState().data?.projectSpec?.generationConfirmation
-              ?? 'paid-only-confirm';
+            const preference = generationPreference;
             if (!shouldConfirmGeneration(preference, isPaidGeneration(risk))) {
               return Promise.resolve(true);
             }
-            return useToolConfirmStore.getState().requestConfirm(name, params, reason, { scope: runId, signal, risk });
+            return useToolConfirmStore.getState().requestConfirm(name, params, reason, { scope: runId, signal, risk, sourceLabel });
           }
           // 自动执行模式：跳过确认弹窗（bashSecurity 的 deny 裁决在 coordinator
           // 层先于此回调，危险命令仍会被拦）
           if (useSettingsStore.getState().toolConfirmMode === 'auto') {
             return Promise.resolve(true);
           }
-          return useToolConfirmStore.getState().requestConfirm(name, params, reason, { scope: runId, signal });
+          return useToolConfirmStore.getState().requestConfirm(name, params, reason, { scope: runId, signal, sourceLabel });
         },
 
         onSubAgentDelta: (text, event) => {
@@ -1791,7 +1813,7 @@ export function useAgent(options?: { primary?: boolean }) {
           if (!isCurrentRun()) return;
           lastStatsEstimated = stats.estimatedTokens;
           lastStatsMax = stats.maxTokens;
-          useChatStore.getState().setContextStats(stats);
+          patch({ contextStats: stats });
         },
 
         onCompacting: () => {
@@ -1804,7 +1826,7 @@ export function useAgent(options?: { primary?: boolean }) {
             '正在整理较早的历史消息，避免重复内容拖慢后续操作。',
             runId,
           );
-          useChatStore.setState({ streamingPhase: 'processing', streamingToolName: '整理上下文' });
+          patch({ streamingPhase: 'processing', streamingToolName: '整理上下文' });
         },
 
         // Unfinished-todo guard: when the model tries to end the turn while
@@ -1838,7 +1860,7 @@ export function useAgent(options?: { primary?: boolean }) {
 
       let subagentRunner: SubagentRunner | null = null;
       const registry = coordinator.getToolRegistry();
-      const releaseWorkspaceDispatch = bindWorkspaceRunDispatch(runId, content);
+      const releaseWorkspaceDispatch = bindWorkspaceRunDispatch(runId, content, sessionId);
       registry.bindRunContext(runId, {
         decisionSource,
         nativeVision: ['deepseek', 'kimi', 'gpt'].includes(primaryRoute.providerId),
@@ -1895,17 +1917,19 @@ export function useAgent(options?: { primary?: boolean }) {
             finalContent += `\n\n[媒体输入状态]\n${media.notices.map((notice) => `- ${notice}`).join('\n')}`;
           }
         }
+        if (!isCurrentRun()) return;
         if (usingHarness) {
           const bridge = new DshBridge();
           useDeepseekHarnessStore.getState().startRun(runId);
-          dshBridgesRef.current.set(currentAgentId, bridge);
-          registerSharedDshBridge(currentAgentId, bridge);
+          dshBridgesRef.current.set(runtimeKey, bridge);
+          registerSharedDshBridge(runtimeKey, bridge);
           dshSkillSigRef.current.set(
-            currentAgentId,
+            runtimeKey,
             skillCatalogSignature(skillLoaderRef.current?.getAll() ?? []),
           );
           try {
             const context = await coordinator.buildHarnessTurnContext(finalContent);
+            if (!isCurrentRun()) return;
             const history = buildDshConversationContext(coordinator.getMessages());
             let input = context.turnContext
               ? `${context.turnContext}\n\n[用户请求]\n${finalContent}`
@@ -1913,6 +1937,7 @@ export function useAgent(options?: { primary?: boolean }) {
             if (resumeContext) input = `${resumeContext}\n\n${input}`;
             if (stagePrefix) input = `${stagePrefix}\n\n${input}`;
             if (filePaths?.length) mediaBlocks = await buildDshMediaBlocks(filePaths);
+            if (!isCurrentRun()) return;
             // Official DSH ACP and DeepSeek Flash 4.1 accept native images.
             // Video remains a separate analysis/transcription tool flow.
             const hasImageMedia = mediaBlocks.some((block) => block.type === 'image');
@@ -1925,7 +1950,9 @@ export function useAgent(options?: { primary?: boolean }) {
               if (resumeContext) coordinator.queueTransientNotice(resumeContext);
               if (stagePrefix) coordinator.queueRunNotice(stagePrefix);
               resumeContextDelivered = true;
-              await coordinator.run(finalContent, callbacks, mediaBlocks, runId);
+              const execution = coordinator.run(finalContent, callbacks, mediaBlocks, runId);
+              releaseAdmission();
+              await execution;
             } else {
             // 视觉模型：图片以 ACP image 块原生进 Harness；非视觉模型或含
             // 视频时维持工具路径（图片块在 mediaFilter 丢 base64 前有 directive 指引）。
@@ -1943,7 +1970,7 @@ export function useAgent(options?: { primary?: boolean }) {
                 + '请直接看图回答，禁止再调用 image_recognition 做重复识别。';
             }
             resumeContextDelivered = true;
-            const result = await bridge.run({
+            const execution = bridge.run({
               runId,
               apiKey: resolveApiKey(settings, 'provider:deepseek', settings.providerApiKeys.deepseek || ''),
               baseUrl: settings.providerBaseUrls.deepseek || 'https://api.deepseek.com',
@@ -1968,6 +1995,9 @@ export function useAgent(options?: { primary?: boolean }) {
               toolRegistry: coordinator.getToolRegistry(),
               callbacks,
             });
+            releaseAdmission();
+            const result = await execution;
+            if (!isCurrentRun()) return;
             coordinator.recordHarnessTurn(finalContent, result.text, result.thinking, mediaBlocks);
             persistAgentMsgs();
             callbacks.onComplete(result.text);
@@ -1993,32 +2023,37 @@ export function useAgent(options?: { primary?: boolean }) {
               if (resumeContext) coordinator.queueTransientNotice(resumeContext);
               if (stagePrefix) coordinator.queueRunNotice(stagePrefix);
               resumeContextDelivered = true;
-              await coordinator.run(finalContent, callbacks, mediaBlocks, runId);
+              const execution = coordinator.run(finalContent, callbacks, mediaBlocks, runId);
+              releaseAdmission();
+              await execution;
             } else {
               callbacks.onError(normalized);
             }
           } finally {
             useDeepseekHarnessStore.getState().finishRun(runId);
-            if (dshBridgesRef.current.get(currentAgentId) === bridge) {
-              dshBridgesRef.current.delete(currentAgentId);
-              dshSkillSigRef.current.delete(currentAgentId);
+            if (dshBridgesRef.current.get(runtimeKey) === bridge) {
+              dshBridgesRef.current.delete(runtimeKey);
+              dshSkillSigRef.current.delete(runtimeKey);
             }
-            unregisterSharedDshBridge(currentAgentId, bridge);
+            unregisterSharedDshBridge(runtimeKey, bridge);
           }
         } else {
           if (resumeContext) coordinator.queueTransientNotice(resumeContext);
           if (stagePrefix) coordinator.queueRunNotice(stagePrefix);
           resumeContextDelivered = true;
-          await coordinator.run(finalContent, callbacks, mediaBlocks, runId);
+          const execution = coordinator.run(finalContent, callbacks, mediaBlocks, runId);
+              releaseAdmission();
+              await execution;
         }
       } catch (err) {
+        if (!isCurrentRun()) return;
         persistAgentMsgs();
         setError(err instanceof Error ? err.message : String(err));
         setIsStreaming(false);
         setStreamingSessionId(null);
         if (sessionId) setSessionStreaming(sessionId, false);
         setStreamingPhase('idle');
-        emit('agent-status-change', 'error');
+        emit('agent-status-change', Object.keys(useChatStore.getState().streamingSessions).length ? 'working' : 'error');
         useRunStepStore.getState().finishRun('failed', runId);
       } finally {
         useToolConfirmStore.getState().cancelScope(runId);
@@ -2030,14 +2065,29 @@ export function useAgent(options?: { primary?: boolean }) {
         }
         coordinator.getToolRegistry().clearRunIdempotency(runId);
         ordinaryRunIdsRef.current.delete(runId);
-        if (activeRunIdsRef.current.get(currentAgentId) === runId) {
-          activeRunIdsRef.current.delete(currentAgentId);
+        if (activeRunIdsRef.current.get(runtimeKey) === runId) {
+          activeRunIdsRef.current.delete(runtimeKey);
         }
-        activeRunSessionRef.current = null;
-        sendingRef.current = false;
+
+        if (activeRunTokenRef.current === runToken) sendingRef.current = false;
         drainDeferredTeardown();
         clearInterval(persistInterval);
         cancelFlush();
+        void trimIdleCoordinators();
+      }
+      } catch (error) {
+        if (stillAdmitted()) setError(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (runtime.admission === admission && (startingNew || ownedCompletion) && stillAdmitted()) {
+          sendingRef.current = false;
+          patch({ isStreaming: false, streamingSessionId: null, streamingPhase: 'idle' });
+        }
+        if (ownedCompletion && runtime.completion === ownedCompletion) {
+          runtime.completion = undefined;
+          runtime.settleCompletion = undefined;
+        }
+        settleCompletion?.();
+        releaseAdmission();
       }
     },
     [
@@ -2056,242 +2106,87 @@ export function useAgent(options?: { primary?: boolean }) {
 
   /** 中止操作（中止当前 agent 的 coordinator） */
   const abort = useCallback(() => {
-    userAbortedRef.current = true; // prevent onComplete/onError from double-cleanup
-    activeRunTokenRef.current += 1; // invalidate callbacks from the aborted run
-    const currentAgentId = useChatStore.getState().currentAgent?.id || 'main';
-    // Prefer the agent the user is looking at, but if it has no active run,
-    // fall back to the one agent that actually does — a Stop click right
-    // after switching panels must stop the run the user means, and must
-    // never finish a run that belongs to another agent or a background
-    // (lark/wechat) run.
-    let targetAgentId = currentAgentId;
-    let activeRunId = activeRunIdsRef.current.get(currentAgentId);
-    let activeDsh = dshBridgesRef.current.get(currentAgentId)
-      ?? getSharedDshBridge(currentAgentId);
-    if (!activeRunId && !activeDsh) {
-      const candidates = [...new Set([
-        ...activeRunIdsRef.current.keys(),
-        ...dshBridgesRef.current.keys(),
-      ])];
-      if (candidates.length === 1) {
-        targetAgentId = candidates[0];
-        activeRunId = activeRunIdsRef.current.get(targetAgentId);
-        activeDsh = dshBridgesRef.current.get(targetAgentId)
-          ?? getSharedDshBridge(targetAgentId);
-      }
-    }
-    if (activeRunId) useToolConfirmStore.getState().cancelScope(activeRunId);
-    if (activeDsh) {
-      void activeDsh.abort();
-      for (const [agentId, shared] of sharedDshBridges) {
-        if (shared === activeDsh) unregisterSharedDshBridge(agentId, activeDsh);
-      }
-      for (const [agentId, bridge] of dshBridgesRef.current) {
-        if (bridge === activeDsh) {
-          dshBridgesRef.current.delete(agentId);
-          dshSkillSigRef.current.delete(agentId);
-        }
-      }
-    }
-    const c = coordinatorsRef.current.get(targetAgentId)
-      ?? (coordinatorRef.current && coordinatorsRef.current.size <= 1
-        ? coordinatorRef.current
-        : undefined);
-    let savedAgentMessages: ReturnType<AgentCoordinator['getMessages']> | null = null;
-    // Persist coordinator state before abort so partial results are saved
-    if (c) {
-      const abortState = useChatStore.getState();
-      const abortSid = abortState.currentSessionId;
-      if (abortSid) {
-        // The snapshot may catch the run mid-tool-execution (assistant
-        // tool_calls pushed, results not yet). Persisting that verbatim
-        // poisons the session file — OpenAI-style endpoints 400 on every
-        // later request. Repair pairs before persisting/restoring.
-        const rawMessages = repairToolPairingSnapshot(c.getMessages());
-        const cachedMessages = compactAgentMessagesForStorage(rawMessages);
-        savedAgentMessages = rawMessages;
-        if (cachedMessages.length > 1) {
-          try { safeLocalStorage.setItem(AGENT_MSGS_PREFIX + abortSid, JSON.stringify(cachedMessages)); } catch { /* quota */ }
-        }
-        if (abortState.messages.length > 0) {
-          try { safeLocalStorage.setItem('kunpeng-messages-' + abortSid, JSON.stringify(abortState.messages)); } catch { /* quota */ }
-        }
-        // Mirror to disk so a force-quit right after abort doesn't lose state.
-        void flushAgentMessages(abortSid, rawMessages).catch(() => {});
-      }
-    }
-    c?.abort();
-    const fresh = coordinatorFactoryRef.current?.(targetAgentId);
+    const state = useChatStore.getState();
+    const sid = state.currentSessionId;
+    if (!sid) return;
+    const runtime = sessionRunsRef.current.get(sid);
+    if (!runtime?.sending.current && !runtime?.admission && !state.streamingSessions[sid]) return;
+    if (runtime) { runtime.cancelVersion++; runtime.aborted.current = true; runtime.token.current++; runtime.sending.current = false; runtime.releaseAdmission?.(); runtime.settleCompletion?.(); runtime.completion = undefined; runtime.settleCompletion = undefined; }
+    const runId = activeRunIdsRef.current.get(sid);
+    if (runId) useToolConfirmStore.getState().cancelScope(runId);
+    const bridge = dshBridgesRef.current.get(sid) ?? sharedDshBridges.get(sid);
+    if (bridge) { void bridge.abort(); unregisterSharedDshBridge(sid, bridge); dshBridgesRef.current.delete(sid); dshSkillSigRef.current.delete(sid); }
+    const coordinator = coordinatorsRef.current.get(sid);
+    const saved = coordinator ? repairToolPairingSnapshot(coordinator.getMessages()) : [];
+    coordinator?.abort();
+    if (saved.length) void flushAgentMessages(sid, saved).catch(() => {});
+    const agentId = sid.startsWith('agent:') ? sid.split(':')[1] : 'main';
+    const fresh = coordinatorFactoryRef.current?.(agentId, sid);
     if (fresh) {
-      if (savedAgentMessages?.length) {
-        void fresh.restoreMessages(savedAgentMessages);
-      }
-      coordinatorsRef.current.set(targetAgentId, fresh);
-      coordinatorRef.current = fresh;
-      agentLog.info('Agent', `Replaced coordinator for ${targetAgentId} after abort`);
+      coordinatorsRef.current.set(sid, fresh);
+      const restore = fresh.restoreMessages(saved);
+      restoresRef.current.set(sid, restore);
+      void restore.catch(() => { if (coordinatorsRef.current.get(sid) === fresh) coordinatorsRef.current.delete(sid); }).finally(() => { if (restoresRef.current.get(sid) === restore) restoresRef.current.delete(sid); });
     }
-    // Immediately clear ALL streaming state — no timeout, no waiting
-    setIsStreaming(false);
-    setStreamingPhase('idle');
-    const sid = useChatStore.getState().streamingSessionId;
-    // 截断保留：把已流出的部分正文作为截断消息落进会话，而不是整段消失
-    // （abort 使回调失效后，pending flush 被 ghost-guard 拦截，随后
-    // clearStreamingContent 会把这部分内容清掉）。
-    {
-      const snapshot = useChatStore.getState();
-      const partialText = snapshot.streamingContent.trim();
-      const partialThinking = snapshot.streamingThinkingContent.trim();
-      if (partialText || partialThinking) {
-        snapshot.addMessage({
-          id: randomUUID(),
-          role: 'assistant',
-          content: partialText
-            ? `${partialText}\n\n_（已停止，以上为截断部分）_`
-            : '_（已停止，未产出正文）_',
-          ...(partialThinking ? { thinkingContent: partialThinking } : {}),
-          timestamp: Date.now(),
-        });
-        const persistSid = useChatStore.getState().currentSessionId;
-        if (persistSid) {
-          try { safeLocalStorage.setItem('kunpeng-messages-' + persistSid, JSON.stringify(useChatStore.getState().messages)); } catch { /* quota */ }
-        }
-      }
+    if (state.streamingContent.trim() || state.streamingThinkingContent.trim()) {
+      state.appendSessionMessage(sid, { id: randomUUID(), role: 'assistant', timestamp: Date.now(),
+        content: `${state.streamingContent || '未产出正文'}\n\n_（已停止，以上为截断部分）_`,
+        thinkingContent: state.streamingThinkingContent || undefined });
     }
-    if (sid) {
-      useChatStore.getState().setStreamingSessionId(null);
-      useChatStore.getState().setSessionStreaming(sid, false);
-      useChatStore.getState().clearStreamingContent();
-    }
-    emit('agent-status-change', 'idle');
-    // Only finish the run we actually targeted. Without an activeRunId there
-    // is nothing of ours to close — calling finishRun without a runId would
-    // stamp 'aborted' onto whatever run holds the global currentRunId slot
-    // (another agent, or a background lark/wechat run).
-    if (activeRunId) {
-      useRunStepStore.getState().finishRun('aborted', activeRunId);
-      activeRunIdsRef.current.delete(targetAgentId);
-    }
-    // Aborts are a user-dissatisfaction signal — feed the evolution journal.
-    const lastUserMsg = [...useChatStore.getState().messages].reverse().find((m) => m.role === 'user');
-    recordRunTrajectory(
-      'aborted',
-      lastUserMsg?.content || '',
-      useChatStore.getState().streamingSentAt,
-      Boolean(activeRunId && ordinaryRunIdsRef.current.has(activeRunId)),
-    );
-    if (activeRunId) ordinaryRunIdsRef.current.delete(activeRunId);
-  }, [setIsStreaming, setStreamingPhase, recordRunTrajectory]);
+    state.patchSessionView(sid, { isStreaming: false, streamingSessionId: null, streamingPhase: 'idle',
+      streamingContent: '', streamingThinkingContent: '', streamingSubAgentText: '', streamingToolName: null });
+    persistMessages(sid);
+    if (runId) { useRunStepStore.getState().finishRun('aborted', runId); activeRunIdsRef.current.delete(sid); ordinaryRunIdsRef.current.delete(runId); }
+    recordRunTrajectory('aborted', [...state.messages].reverse().find(m => m.role === 'user')?.content ?? '', state.streamingSentAt, false, runtime?.tools.current ?? []);
+  }, [persistMessages, recordRunTrajectory]);
 
   /** 切换工作目录（应用到所有 agent 的 coordinator） */
   const switchCwd = useCallback((cwd: string) => {
-    for (const c of coordinatorsRef.current.values()) c.setCwd(cwd);
+    for (const [sid, c] of coordinatorsRef.current) {
+      if (!c.getIsRunning() && !sessionRunsRef.current.get(sid)?.sending.current && !sessionRunsRef.current.get(sid)?.admission) c.setCwd(cwd);
+    }
   }, []);
 
   /** 清空对话（仅当前 agent） */
   const clearConversation = useCallback(() => {
-    const currentAgentId = useChatStore.getState().currentAgent?.id || 'main';
-    coordinatorsRef.current.get(currentAgentId)?.clear();
+    const sid = useChatStore.getState().currentSessionId;
+    if (sid && !sessionRunsRef.current.get(sid)?.sending.current && !sessionRunsRef.current.get(sid)?.admission) coordinatorsRef.current.get(sid)?.clear();
   }, []);
 
   /** 获取 token 使用量（当前 agent） */
   const getTokenUsage = useCallback((): TokenUsage | null => {
-    const currentAgentId = useChatStore.getState().currentAgent?.id || 'main';
-    return coordinatorsRef.current.get(currentAgentId)?.getTokenUsage() || null;
+    const sid = useChatStore.getState().currentSessionId;
+    return sid ? coordinatorsRef.current.get(sid)?.getTokenUsage() ?? null : null;
   }, []);
 
   /** 恢复会话上下文到对应 agent 的 coordinator（切换会话时调用） */
   const restoreSession = useCallback(async (sessionId: string) => {
-    // Sequence guard: restores contain slow awaits (file reads, and an LLM
-    // compact inside restoreMessages). Two rapid session switches interleave;
-    // without this, an older restore can finish LAST and overwrite the newer
-    // session's messages — UI shows session B while the coordinator holds A.
-    const seq = ++restoreSeqRef.current;
-    const isStale = () => seq !== restoreSeqRef.current;
-    // Session id format: `agent:{agentId}:{uuid}`. Pick the matching agent.
-    const parts = sessionId.split(':');
-    const agentId = parts.length >= 3 && parts[0] === 'agent' ? parts[1] : 'main';
-    if ((dshBridgesRef.current.get(agentId) ?? getSharedDshBridge(agentId))?.getIsRunning()) {
-      agentLog.warn('Agent', `Session switch: DeepSeek Harness for ${agentId} is running, deferring restore`);
-      return;
-    }
-    let coordinator = coordinatorsRef.current.get(agentId);
-    if (!coordinator && coordinatorFactoryRef.current) {
-      coordinator = coordinatorFactoryRef.current(agentId);
-      coordinatorsRef.current.set(agentId, coordinator);
-    }
+    const pending = restoresRef.current.get(sessionId);
+    if (pending) return pending;
+    if (coordinatorsRef.current.has(sessionId)) return;
+    const agentId = sessionId.startsWith('agent:') ? sessionId.split(':')[1] : 'main';
+    const coordinator = coordinatorFactoryRef.current?.(agentId, sessionId);
     if (!coordinator) return;
-    coordinatorRef.current = coordinator;
-
-    let saved = loadAgentMessages(sessionId);
-    if (saved === null) {
-      const fromFile = await readSessionFromFile(sessionId);
-      if (isStale()) return;
-      if (fromFile) {
-        hydrateLocalStorageSession(sessionId, fromFile);
-        saved = fromFile.agentMessages;
-      } else {
-        saved = [];
+    let restoring!: Promise<void>;
+    restoring = (async () => {
+      let saved = loadAgentMessages(sessionId);
+      let ui = useChatStore.getState().getSessionMessages(sessionId) ?? readMessagesFromLocalStorage(sessionId);
+      if (saved === null || ui === null) {
+        const disk = await readSessionFromFile(sessionId);
+        saved ??= disk?.agentMessages ?? [];
+        ui ??= disk?.messages ?? [];
       }
-    }
-    // Don't clear a running coordinator — would corrupt an active conversation
-    if (coordinator.getIsRunning()) {
-      agentLog.warn('Agent', `Session switch: ${agentId} is running, deferring restore`);
-      return;
-    }
-    if (saved.length > 0) {
-      let uiMsgs = readMessagesFromLocalStorage(sessionId);
-      if (uiMsgs === null) {
-        const fromFile = await readSessionFromFile(sessionId);
-        if (isStale()) return;
-        uiMsgs = fromFile?.messages ?? [];
-      }
-      const recovered = recoverDegradedAgentHistory(saved, uiMsgs);
-      coordinator.clear();
+      const recovered = saved.length ? recoverDegradedAgentHistory(saved, ui ?? []) : projectUIMessagesToAgentMessages(ui ?? []);
       await coordinator.restoreMessages(recovered);
-      if (isStale()) return;
-      if (recovered !== saved) {
-        saveAgentMessages(sessionId, recovered);
-        agentLog.warn('Agent', `Session switch: rebuilt degraded history from visible chat for ${agentId}`);
-      } else {
-        agentLog.info('Agent', `Session switch: restored ${saved.length} agent messages for ${agentId}`);
-      }
-    } else {
-      // Fallback: agent-messages key missing but UI messages may still exist
-      // (storage eviction, dev↔prod origin switch). Read UI messages for
-      // THIS session id (not chatStore — that still holds the previous
-      // session's messages at this point in the load flow).
-      let uiMsgs = readMessagesFromLocalStorage(sessionId);
-      if (uiMsgs === null) {
-        const fromFile = await readSessionFromFile(sessionId);
-        if (isStale()) return;
-        uiMsgs = fromFile?.messages ?? [];
-      }
-      if (uiMsgs.length > 0) {
-        const projected = projectUIMessagesToAgentMessages(uiMsgs);
-        coordinator.clear();
-        if (projected.length > 0) {
-          await coordinator.restoreMessages(projected);
-          if (isStale()) return;
-          agentLog.warn('Agent', `Session switch: rebuilt ${projected.length} agent msgs from UI for ${agentId}`);
-        }
-      } else {
-        coordinator.clear();
-        agentLog.info('Agent', `Session switch: ${agentId} starting fresh`);
-      }
-    }
-    // Refresh the context-usage pill for the newly active conversation.
-    let restoredUiMessages = readMessagesFromLocalStorage(sessionId);
-    if (restoredUiMessages === null) {
-      const fromFile = await readSessionFromFile(sessionId);
-      if (isStale()) return;
-      restoredUiMessages = fromFile?.messages ?? [];
-    }
-    resumeContextQueueRef.current.stage(sessionId, buildTaskResumeContext({
-      todos: useTodoStore.getState().todosBySession[sessionId] ?? [],
-      agentMessages: coordinator.getMessages(),
-      uiMessages: restoredUiMessages,
-    }));
-    useChatStore.getState().setContextStats(coordinator.getContextStats());
+      if (restoresRef.current.get(sessionId) !== restoring || !useChatStore.getState().sessions.some(session => session.id === sessionId)) return;
+      coordinatorsRef.current.set(sessionId, coordinator);
+      resumeContextQueueRef.current.stage(sessionId, buildTaskResumeContext({
+        todos: useTodoStore.getState().todosBySession[sessionId] ?? [], agentMessages: coordinator.getMessages(), uiMessages: ui ?? [],
+      }));
+      useChatStore.getState().patchSessionView(sessionId, { contextStats: coordinator.getContextStats() });
+    })();
+    restoresRef.current.set(sessionId, restoring);
+    try { await restoring; } finally { if (restoresRef.current.get(sessionId) === restoring) restoresRef.current.delete(sessionId); }
   }, []);
 
   // 注册到 useSessions 的回调，确保切换会话时 coordinator 同步。

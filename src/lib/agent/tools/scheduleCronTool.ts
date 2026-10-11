@@ -80,7 +80,7 @@ export const scheduleCronTool: Tool = {
     },
   },
   risk: 'safe',
-  async execute(params) {
+  async execute(params, _signal, context) {
     const { cron, prompt, recurring, reason } = params as {
       cron?: string;
       prompt?: string;
@@ -106,7 +106,7 @@ export const scheduleCronTool: Tool = {
       // Bind to the session that scheduled it — the scheduler skips firing
       // while a different session is active, so the prompt never lands in an
       // unrelated conversation.
-      sessionId: useChatStore.getState().currentSessionId || undefined,
+      sessionId: context?.decisionSource?.sourceSessionId ?? useChatStore.getState().currentSessionId ?? undefined,
     });
     return {
       success: true,

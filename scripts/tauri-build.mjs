@@ -26,6 +26,11 @@ if (process.platform === 'win32') {
   overlay.tauri.bundle.targets = ['nsis'];
 } else if (process.platform === 'linux') {
   overlay.tauri.bundle.targets = ['deb', 'appimage'];
+} else if (process.platform === 'darwin') {
+  // Local/private releases do not always have an Apple Developer certificate.
+  // Explicit ad-hoc bundle signing still seals resources correctly; relying on
+  // the linker signature produces a DMG whose app fails strict verification.
+  overlay.tauri.bundle.macOS = { signingIdentity: '-' };
 }
 
 if (isPrivate) {

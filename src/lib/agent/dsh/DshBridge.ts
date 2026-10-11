@@ -12,6 +12,7 @@ export class DshBridge {
   private tools: DshToolBridge | null = null;
   private visibleOutput = false;
   private aborted = false;
+  private acceptingGuidance = true;
   private callbacksRef: DshRunOptions['callbacks'] | null = null;
 
   getIsRunning(): boolean {
@@ -26,7 +27,7 @@ export class DshBridge {
     // 只以 aborted 为界：bridge 注册后、run() 尚未把 running 置真之前有一个
     // 窗口期，此时若用 running 判断会静默丢消息并可能误起并行 Harness 进程
     // （并行 ACP 抢同一工具桥 socket，表现为 MCP "Connection closed"）。
-    if (this.aborted || (!text.trim() && media.length === 0)) return false;
+    if (this.aborted || !this.acceptingGuidance || (!text.trim() && media.length === 0)) return false;
     this.queuedGuidance.push({ text: text.trim(), media });
     // 即时确认：补充要等当前轮安全结束才发出，没有这条提示时用户看到的
     // 是"发出去毫无反应"（与 coordinator.queueGuidance 的反馈对齐）。
@@ -43,6 +44,7 @@ export class DshBridge {
     if (this.running) throw new Error('DeepSeek Harness is already running');
     this.running = true;
     this.aborted = false;
+    this.acceptingGuidance = true;
     this.visibleOutput = false;
     this.callbacksRef = options.callbacks;
     let text = '';
@@ -138,6 +140,8 @@ export class DshBridge {
       options.callbacks.onContextUsage?.({ estimatedTokens: usage.used, maxTokens: usage.size });
       return { text: finalText, thinking, visibleOutput: this.visibleOutput, stopReason };
     } finally {
+      this.acceptingGuidance = false;
+      options.toolRegistry.releaseSoftware?.(options.runId);
       options.signal?.removeEventListener('abort', abort);
       await this.dispose();
     }
@@ -150,6 +154,7 @@ export class DshBridge {
     // request to the run being cancelled.
     this.running = false;
     this.aborted = true;
+    this.acceptingGuidance = false;
     this.callbacksRef = null;
     this.queuedGuidance = [];
     const tools = this.tools;

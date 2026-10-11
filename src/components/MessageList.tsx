@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, ArrowRight, ChevronDown, ChevronRight, Loader2, BookOpen, PencilLine, Wrench, RotateCcw, GitBranch } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { confirm as tauriConfirm, message as tauriMessage } from '@tauri-apps/api/dialog';
 import { Message } from '@/types';
 import { useChatStore } from '@/stores';
@@ -160,7 +160,7 @@ function StreamingCard({ phase, sentAt }: StreamingCardProps) {
 
 // ── WorkLogCard — Codex-like collapsed work log for completed messages ──────
 
-function WorkLogCard({
+const WorkLogCard = memo(function WorkLogCard({
   thinkingContent,
   duration,
   runId,
@@ -260,7 +260,7 @@ function WorkLogCard({
       </AnimatePresence>
     </motion.div>
   );
-}
+});
 
 // ── MessageList ───────────────────────────────────────────────────────────────
 
@@ -295,7 +295,7 @@ export default function MessageList({
     ? pendingDecision
     : null;
   const timelineEvents = [
-    ...visibleMessages.map((message) => ({ kind: 'message' as const, at: message.timestamp, message })),
+    ...visibleMessages.map((message, offset) => ({ kind: 'message' as const, at: message.timestamp, message, index: firstVisibleIndex + offset })),
     ...relevantHistory.map((decision) => ({ kind: 'decision' as const, at: decision.createdAt, decision })),
   ].sort((left, right) => left.at - right.at);
 
@@ -330,7 +330,7 @@ export default function MessageList({
         </div>
       )}
 
-      {timelineEvents.map((event, visibleIndex) => {
+      {timelineEvents.map((event) => {
         if (event.kind === 'decision') {
           return (
             <AskUserDecisionCard
@@ -341,8 +341,7 @@ export default function MessageList({
           );
         }
         const message = event.message;
-        const messageIndex = messages.findIndex((candidate) => candidate.id === message.id);
-        const index = messageIndex >= 0 ? messageIndex : firstVisibleIndex + visibleIndex;
+        const index = event.index;
         const isRecent = index >= messages.length - 4;
         return (
         <div key={message.id} className={message.role === 'assistant' ? 'conversation-reply space-y-3' : undefined}>
@@ -475,7 +474,7 @@ interface MessageItemProps {
   onOptionClick?: (option: string) => void;
 }
 
-function MessageItem({ message, index, animateEntry = true, isStreaming, onOptionClick }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ message, index, animateEntry = true, isStreaming, onOptionClick }: MessageItemProps) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
@@ -631,4 +630,4 @@ function MessageItem({ message, index, animateEntry = true, isStreaming, onOptio
         </div>
     </motion.div>
   );
-}
+});

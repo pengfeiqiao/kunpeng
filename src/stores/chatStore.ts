@@ -19,7 +19,23 @@ function readAttachmentDrafts(): Record<string, string[]> {
   } catch { return {}; }
 }
 
+const sessionViewKeys = ['messages', 'isStreaming', 'streamingContent', 'streamingSessionId', 'streamingPhase',
+  'streamingSentAt', 'streamingLastTextAt', 'streamingToolName', 'streamingThinkingContent',
+  'streamingSubAgentText', 'contextStats', 'error', 'draftMessage'] as const;
+type SessionView = Pick<ChatState, typeof sessionViewKeys[number]>;
+const emptySessionView = (): SessionView => ({ messages: [], isStreaming: false, streamingContent: '',
+  streamingSessionId: null, streamingPhase: 'idle', streamingSentAt: null, streamingLastTextAt: null,
+  streamingToolName: null, streamingThinkingContent: '', streamingSubAgentText: '', contextStats: null,
+  error: null, draftMessage: '' });
+function captureSessionView(state: ChatState): SessionView {
+  return Object.fromEntries(sessionViewKeys.map(key => [key, state[key]])) as SessionView;
+}
+
 interface ChatState {
+  sessionViews: Record<string, SessionView>;
+  patchSessionView: (sessionId: string, patch: Partial<SessionView>) => void;
+  appendSessionMessage: (sessionId: string, message: Message) => void;
+  getSessionMessages: (sessionId: string) => Message[] | undefined;
   draftFiles: Record<string, string[]>;
   appendCurrentDraftFiles: (paths: string[]) => void;
   setDraftFiles: (key: string, value: string[] | ((previous: string[]) => string[])) => void;
@@ -103,6 +119,27 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
+  sessionViews: {},
+  patchSessionView: (sessionId, patch) => set(state => {
+    const current = state.currentSessionId === sessionId;
+    const view = { ...(current ? captureSessionView(state) : state.sessionViews[sessionId] ?? emptySessionView()), ...patch };
+    let streamingSessions = state.streamingSessions;
+    if (Boolean(streamingSessions[sessionId]) !== view.isStreaming) {
+      streamingSessions = { ...streamingSessions };
+      if (view.isStreaming) streamingSessions[sessionId] = true; else delete streamingSessions[sessionId];
+    }
+    return { sessionViews: { ...state.sessionViews, [sessionId]: view }, streamingSessions, ...(current ? patch : {}) };
+  }),
+  appendSessionMessage: (sessionId, message) => {
+    const state = get();
+    const messages = state.getSessionMessages(sessionId) ?? [];
+    state.patchSessionView(sessionId, { messages: [...messages, message] });
+    if (state.currentSessionId !== sessionId) state.markSessionUnread(sessionId);
+  },
+  getSessionMessages: sessionId => {
+    const state = get();
+    return state.currentSessionId === sessionId ? state.messages : state.sessionViews[sessionId]?.messages;
+  },
   draftFiles: readAttachmentDrafts(),
   appendCurrentDraftFiles: paths => {
     const state = get();
@@ -134,15 +171,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     return { sessions };
   }),
-  setCurrentSession: (sessionId) => set({ currentSessionId: sessionId }),
-  addSession: (session) => set((state) => ({
-    sessions: [session, ...state.sessions.filter(item => item.id !== session.id)],
-    currentSessionId: session.id,
-  })),
+  setCurrentSession: (sessionId) => set(state => {
+    if (sessionId === state.currentSessionId) return state;
+    const sessionViews = { ...state.sessionViews };
+    if (state.currentSessionId) sessionViews[state.currentSessionId] = captureSessionView(state);
+    return { currentSessionId: sessionId, sessionViews, ...(sessionId ? sessionViews[sessionId] ?? emptySessionView() : emptySessionView()) };
+  }),
+  addSession: (session) => {
+    get().setCurrentSession(session.id);
+    set(state => ({ sessions: [session, ...state.sessions.filter(item => item.id !== session.id)] }));
+  },
   removeSession: (sessionId) => set((state) => {
     const draftFiles = { ...state.draftFiles };
     delete draftFiles[sessionId];
+    const sessionViews = { ...state.sessionViews };
+    delete sessionViews[sessionId];
+    const streamingSessions = { ...state.streamingSessions };
+    delete streamingSessions[sessionId];
     return {
+      sessionViews, streamingSessions,
+      ...(state.currentSessionId === sessionId ? emptySessionView() : {}),
       sessions: state.sessions.filter((s) => s.id !== sessionId),
       currentSessionId: state.currentSessionId === sessionId ? null : state.currentSessionId,
       draftFiles,
@@ -187,7 +235,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       } else {
         delete next[sessionId];
       }
-      return { streamingSessions: next, isStreaming: Object.keys(next).length > 0 };
+      return { streamingSessions: next, ...(state.currentSessionId === sessionId ? { isStreaming: streaming } : {}) };
     }),
   setStreamingContent: (content) => set({ streamingContent: content }),
   clearStreamingContent: () => set({
