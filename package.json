@@ -30,10 +30,16 @@
     "test:video-recreation": "node --test src/lib/videoAnalysis/recreation.test.ts src/lib/videoAnalysis/recreation.integration.test.mjs src/lib/agent/tools/videoUnderstandingTool.test.mjs",
     "test:media-regression": "node --test src/lib/canvas/mediaPath.test.ts src/lib/midjourney/resultUrls.test.ts src/lib/workspace/assistantHistory.test.ts src/stores/projectStore.persistence.test.mjs src/lib/workspace/legacyCanvasImport.test.ts src/lib/workspace/projectAssistantQueue.test.ts src/components/mediaChatRegression.test.mjs src/stores/canvasMigration.test.mjs src/lib/canvas/taskOwnership.test.ts src/lib/canvas/importedMedia.test.mjs src/lib/canvas/mediaImport.test.mjs",
     "test:dsh-startup": "node dsh-runtime/tests/acp-host-smoke.mjs --startup-only",
-    "test:conversation": "node --test src/components/chat/parallelComposer.test.mjs src/lib/agent/dsh/DshBridge.lifecycle.test.mjs src/hooks/useAgent.parallel.test.mjs src/lib/agent/softwareLease.test.ts src/stores/chatDraftFiles.test.mjs src/components/chat/conversation.test.mjs src/components/mediaChatRegression.test.mjs src/components/workspace/WorkspaceAssistantPresentation.test.mjs",
+    "test:conversation": "node --test src/components/chat/parallelComposer.test.mjs src/components/copywriting/longDocumentEditor.test.mjs src/lib/agent/dsh/DshBridge.lifecycle.test.mjs src/hooks/useAgent.parallel.test.mjs src/lib/agent/softwareLease.test.ts src/stores/chatDraftFiles.test.mjs src/components/chat/conversation.test.mjs src/components/mediaChatRegression.test.mjs src/components/workspace/WorkspaceAssistantPresentation.test.mjs",
     "test:writing-evolution": "node --test src/lib/copywriting/learningPolicy.test.ts src/lib/copywriting/learningRuntime.test.mjs src/lib/copywriting/experiencePersistence.test.mjs src/lib/copywriting/referenceCraft.test.ts src/lib/automotive/craft.test.ts"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.14",
     "@reactflow/node-resizer": "^2.2.14",
     "@types/three": "^0.184.0",
     "clsx": "^2.1.0",

@@ -27,11 +27,13 @@ import { auditCopywriting, buildTargetedRewritePrompt } from '@/lib/copywriting/
 import { createCopyCommentTarget, findCopyCommentTarget, type CopyCommentTarget } from '@/lib/copywriting/commentAnchors';
 import type { CopyComment, CopyDoc } from '@/lib/copywriting/types';
 import type { WsShot } from '@/lib/workshop/types';
+import LongDocumentEditor, { type LongDocumentEditorHandle } from './LongDocumentEditor';
 
 const FONT_STACK = "'Inter', 'PingFang SC', '-apple-system', 'Segoe UI', sans-serif";
 
 const TB_SEP = 'sep' as const;
-type ToolbarItem = { key: string; icon: React.ElementType; label: string; action: (ta: HTMLTextAreaElement) => ReturnType<typeof wrapSelection> } | typeof TB_SEP;
+type EditorSnapshot = { value: string; selectionStart: number; selectionEnd: number };
+type ToolbarItem = { key: string; icon: React.ElementType; label: string; action: (ta: EditorSnapshot) => ReturnType<typeof wrapSelection> } | typeof TB_SEP;
 
 const TOOLBAR: ToolbarItem[] = [
   { key: 'bold', icon: Bold, label: '加粗', action: ta => wrapSelection(ta.value, ta.selectionStart, ta.selectionEnd, '**') },
@@ -83,11 +85,11 @@ export default function DocEditor({ doc }: Props) {
   const [qualityOpen, setQualityOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [commentTarget, setCommentTarget] = useState<CopyCommentTarget | null>(null);
-  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<LongDocumentEditorHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const analyzedDocIdRef = useRef(doc?.id ?? null);
-  const [analysisContent, setAnalysisContent] = useState(doc?.content ?? '');
+  const [analysisContent, setAnalysisContent] = useState('');
 
   // Keep typing urgent. Document maps, audits and table parsing are useful
   // metadata, but none of them should run between the key event and paint.
@@ -98,70 +100,26 @@ export default function DocEditor({ doc }: Props) {
     const nextContent = doc?.content ?? '';
     if (analyzedDocIdRef.current !== nextDocId) {
       analyzedDocIdRef.current = nextDocId;
-      setAnalysisContent(nextContent);
-      return;
+      setAnalysisContent('');
     }
-    const timer = setTimeout(() => setAnalysisContent(nextContent), 400);
+    const timer = setTimeout(() => setAnalysisContent(nextContent), 450);
     return () => clearTimeout(timer);
   }, [doc?.id, doc?.content]);
 
   const applyToolbar = useCallback((item: Exclude<ToolbarItem, typeof TB_SEP>) => {
-    const ta = editorRef.current;
-    if (!ta || !doc) return;
-    const { next, selStart, selEnd } = item.action(ta);
-    updateDoc(doc.id, { content: next });
-    requestAnimationFrame(() => {
-      ta.focus();
-      ta.setSelectionRange(selStart, selEnd);
-    });
+    const editor = editorRef.current;
+    if (!editor || !doc) return;
+    const { next, selStart, selEnd } = item.action(editor.snapshot());
+    editor.replaceDocument(next, selStart, selEnd);
   }, [doc, updateDoc]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!e.metaKey && !e.ctrlKey) return;
-    const ta = editorRef.current;
-    if (!ta || !doc) return;
+  const handleEditorChange = useCallback((content: string) => {
+    if (!doc) return;
+    updateDoc(doc.id, { content });
+  }, [doc?.id, updateDoc]);
 
-    let result: ReturnType<typeof wrapSelection> | null = null;
-    if (e.key === 'b') {
-      e.preventDefault();
-      result = wrapSelection(ta.value, ta.selectionStart, ta.selectionEnd, '**');
-    } else if (e.key === 'i') {
-      e.preventDefault();
-      result = wrapSelection(ta.value, ta.selectionStart, ta.selectionEnd, '*');
-    } else if (e.key === 'u') {
-      e.preventDefault();
-      result = wrapSelection(ta.value, ta.selectionStart, ta.selectionEnd, '<u>', '</u>');
-    } else if (e.key === 's' && e.shiftKey) {
-      e.preventDefault();
-      result = wrapSelection(ta.value, ta.selectionStart, ta.selectionEnd, '~~');
-    }
-    if (result) {
-      updateDoc(doc.id, { content: result.next });
-      requestAnimationFrame(() => {
-        ta.focus();
-        ta.setSelectionRange(result!.selStart, result!.selEnd);
-      });
-    }
-  }, [doc, updateDoc]);
-
-  const handleSelect = useCallback(() => {
-    const ta = editorRef.current;
-    if (!ta) return;
-    const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd);
-    if (sel.length > 2) {
-      const rect = ta.getBoundingClientRect();
-      const lineHeight = 30;
-      const lines = ta.value.substring(0, ta.selectionStart).split('\n').length;
-      const approxY = rect.top + lines * lineHeight - ta.scrollTop;
-      setSelection({
-        text: sel,
-        start: ta.selectionStart,
-        end: ta.selectionEnd,
-        rect: new DOMRect(rect.left + 60, approxY, 200, lineHeight),
-      });
-    } else {
-      setSelection(null);
-    }
+  const handleEditorSelection = useCallback((next: { text: string; start: number; end: number; rect: DOMRect } | null) => {
+    setSelection(next && next.text.length > 2 ? next : null);
   }, []);
 
   const handlePushToWorkshop = useCallback((rows: Record<string, string>[]) => {
@@ -244,13 +202,14 @@ export default function DocEditor({ doc }: Props) {
     setEditingBlock(null);
   }, [doc, editingBlock, updateDoc]);
 
+  const structureContent = mode === 'preview' ? (doc?.content ?? '') : analysisContent;
   const contentBlocks = useMemo(() => {
-    if (!doc?.content) return [];
+    if (!structureContent) return [];
     const blocks: { type: 'md' | 'table' | 'report'; content: string; start: number; end: number }[] = [];
     const reportRe = /```json:report\n([\s\S]*?)```/g;
 
     let lastIndex = 0;
-    const content = doc.content;
+    const content = structureContent;
     const markers: { start: number; end: number; type: 'table' | 'report'; raw: string }[] = [];
 
     let m;
@@ -275,7 +234,7 @@ export default function DocEditor({ doc }: Props) {
     }
 
     return blocks;
-  }, [doc?.content]);
+  }, [structureContent]);
 
   const replaceContentRange = useCallback((start: number, end: number, nextBlock: string) => {
     if (!doc || useCopywritingStore.getState().docs.find(item => item.id === doc.id)?.content !== doc.content) return;
@@ -338,12 +297,7 @@ export default function DocEditor({ doc }: Props) {
     setCommentsOpen(true);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        const editor = editorRef.current;
-        if (!editor) return;
-        editor.focus({ preventScroll: true });
-        editor.setSelectionRange(comment.start, comment.end);
-        const line = doc.content.slice(0, comment.start).split('\n').length - 1;
-        editor.scrollTop = Math.max(0, line * 30 - editor.clientHeight * 0.35);
+        editorRef.current?.focusRange(comment.start, comment.end);
       });
     });
   }, [doc]);
@@ -588,7 +542,7 @@ export default function DocEditor({ doc }: Props) {
             onMouseEnter={e => { e.currentTarget.style.background = '#F3F4F6'; e.currentTarget.style.color = '#1A1A1A'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--cw-text-muted)'; }}
             title="撤销 (Cmd+Z)"
-            onClick={() => document.execCommand('undo')}
+            onClick={() => editorRef.current?.undo()}
           >
             <Undo2 size={14} />
           </button>
@@ -598,7 +552,7 @@ export default function DocEditor({ doc }: Props) {
             onMouseEnter={e => { e.currentTarget.style.background = '#F3F4F6'; e.currentTarget.style.color = '#1A1A1A'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--cw-text-muted)'; }}
             title="重做 (Cmd+Shift+Z)"
-            onClick={() => document.execCommand('redo')}
+            onClick={() => editorRef.current?.redo()}
           >
             <Redo2 size={14} />
           </button>
@@ -607,26 +561,20 @@ export default function DocEditor({ doc }: Props) {
 
       {/* Editor / Preview */}
       <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="min-w-0 flex-1 overflow-hidden">
           {mode === 'edit' ? (
-          <div className="max-w-[720px] mx-auto px-8 py-10">
-            <textarea
+          <div className="h-full min-h-0">
+            <LongDocumentEditor
+              key={doc.id}
               ref={editorRef}
               value={doc.content}
-              onChange={e => updateDoc(doc.id, { content: e.target.value })}
-              onSelect={handleSelect}
-              onBlur={() => setTimeout(() => setSelection(null), 200)}
-              onKeyDown={handleKeyDown}
-              className="w-full min-h-[calc(100vh-200px)] resize-none text-[16px] leading-[1.85] outline-none"
-              style={{
-                background: 'transparent',
-                color: 'var(--cw-text)',
-                fontFamily: FONT_STACK,
-              }}
-              placeholder="开始写作…&#10;&#10;提示：在右侧 AI 对话中描述需求，生成的内容会自动同步到这里。&#10;&#10;快捷键：Cmd+B 加粗 | Cmd+I 斜体 | Cmd+U 下划线"
+              onChange={handleEditorChange}
+              onSelectionChange={handleEditorSelection}
+              placeholder="开始写作…右侧 AI 生成的内容会自动同步到这里"
             />
           </div>
         ) : (
+          <div className="h-full overflow-y-auto">
           <div ref={previewRef} onMouseUp={handlePreviewSelect} className="max-w-[720px] mx-auto px-8 py-10">
             {doc.content ? (
               <div style={{ color: 'var(--cw-text)', fontFamily: FONT_STACK }}>
@@ -673,6 +621,7 @@ export default function DocEditor({ doc }: Props) {
                 暂无内容
               </p>
             )}
+          </div>
           </div>
           )}
         </div>
@@ -868,6 +817,8 @@ function EditableMarkdownBlocks({ content, offset, comments, editingBlock, onEdi
               borderColor: blockCommentCount > 0 ? '#D6D3D1' : 'transparent',
               background: blockCommentCount > 0 ? '#FAFAF9' : 'transparent',
               paddingRight: blockCommentCount > 0 ? 32 : undefined,
+              contentVisibility: 'auto',
+              containIntrinsicSize: 'auto 120px',
             }}
             onDoubleClick={() => onEdit({ id: block.id, start: block.start, end: block.end, value: block.content })}
             title="双击编辑"
