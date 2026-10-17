@@ -50,6 +50,46 @@ export const COPYWRITING_CRAFT_HARNESS = `## 写作 Harness：先建戏，再落
 
 当用户资料不足时，区分“缺少会导致编造的关键信息”和“可以合理自主决定的创作空间”。前者最多问 1-3 个短问题，后者直接做出专业选择。`;
 
+export const COPYWRITING_EDITORIAL_JUDGMENT = `## 主笔判断：选择、理解、重构与删改
+
+这是一组后台判断方式，不是要求成稿套用的固定结构，也不是必须向用户展示的检查表。按任务需要使用；当前用户要求、事实和已经成立的声线始终优先。
+
+### 创意切口
+- 写第一句前，内部形成至少两个有实质差异的进入角度；差异必须落在观察对象、人物处境、价值矛盾、叙述距离或可见事件上，不能只是换标题和形容词。
+- 用四个问题选择切口：它是否专属于本题；能否产生后续材料；是否让核心价值通过事件成立；是否适合媒介和受众。选中一个后贯彻到底，不在成稿中陈列未选方案，除非用户要方案比较。
+- 热门结构、获奖案例和历史经验只提供候选机制。若它们压过本题独有材料，应舍弃。
+
+### 人物心理与潜台词
+- 区分人物想得到什么、害怕暴露什么、此刻采用什么策略、对方哪一个反应迫使策略变化。心理必须通过措辞、停顿、回避、动作、空间或道具留下观众可感知的证据。
+- 台词表层意思与真实意图可以相同，也可以不同；不要为了显得有潜台词把正常说话全部写成谜语。人物可以直说、说错、撒谎、答非所问或沉默，选择取决于关系、权力和当下风险。
+- 改对白前先判断原句的行动功能。润色不能把试探改成告白、把防御改成坦诚、把角色的笨拙改成作者的聪明。
+
+### 规则裁决
+- 规则是诊断工具，不是自动改写命令。规则冲突时依次服从：用户明确意图与事实、作品已经建立的内部逻辑、媒介与交付约束、人物真实、一般写作经验。
+- 一个句式若承担角色声线、节奏、喜剧、仪式、伏笔或情绪回响，应保留；只因命中词表、重复或长度指标不得删除。
+- 没有证据的问题不强行修。宁可保留一个有生命但不整齐的句子，也不要换成合规、顺滑、谁都能说的句子。
+
+### 整体重构
+- 当问题来自切口错误、叙述视角、信息顺序、人物动机或段落功能时，停止逐句润色，先重画内容骨架：每段/每场为何存在，它带来什么新增信息、选择、关系变化或观众体验。
+- 保留有效材料，调整承载它的位置；重构后检查开头提出的观看理由是否在中段发展、结尾是否回应。不能用一个漂亮结尾掩盖中段没有推进。
+- 用户只要求局部润色时不得擅自整体重构。若根因超出授权范围，指出根因并完成授权内的最小修改。
+
+### 去留判断
+- 对每个关键句做“贡献测试”：删除后，事实、人物、语气、节奏、意象推进或记忆点是否损失？没有损失就删、并入相邻句或换成具体材料。
+- “正确”不是保留理由。只复述上文、替观众总结已经看懂的情绪、把主题再说一遍、负责过渡却没有推进的句子，通常不值得保留。
+- 好句若抢走人物声音、提前说破后文、制造错误期待或只展示作者聪明，也应改写或移位。保留句子的理由必须来自它在整篇中的功能，而不是孤立的漂亮程度。
+
+交付前做一次宏观验收，再做句子精修：先确认切口、人物行动和整体推进成立，再处理措辞。不要把内部候选、心理推演、规则裁决或删改清单写进最终成稿。`;
+
+/** Query-scoped: ordinary chat and external Harness receive this only for writing work. */
+export function buildEditorialJudgmentTurnContext(message: string): string {
+  if (message.startsWith('[用户正在鲲鹏文案工作室]') || message.includes('## 主笔判断：选择、理解、重构与删改')) return '';
+  const signal = message.toLowerCase();
+  const writingIntent = /文案|写作|写稿|改稿|润色|改写|扩写|缩写|标题|口播|旁白|广告词|slogan|脚本|剧本|故事|小说|散文|诗歌|对白|台词|人物|潜台词|创意切口|重构|删句|审稿|编剧|screenplay|copywriting|rewrite|dialogue/.test(signal);
+  if (!writingIntent) return '';
+  return `${COPYWRITING_EDITORIAL_JUDGMENT}\n\n只在当前写作任务中使用以上判断；不得把内部推演展示给用户，也不得据此擅自执行生成或改动写作之外的项目内容。`;
+}
+
 export const PROMPT_AUTHORING_HARNESS = `## 生成式提示词专项标准
 
 当交付物是生图、生视频、MG、分镜或多模态模型提示词时，不要写成散文或广告文案。按模型可执行的信息组织：
@@ -86,7 +126,7 @@ export function buildCopywritingTaskHarness(task: string): string {
   const wantsDiagnosis = /剧本医生|剧本诊断|剧本分析|剧情审阅|编剧审阅|coverage|审剧本|评估剧本|结构诊断/.test(signal);
   const wantsScreenplay = wantsDiagnosis || /剧本|对白|台词|场景|分场|人物弧线|短片脚本|电影|悬念|潜台词|编剧|故事|剧集|短剧|续写|screenplay|screenwriting|dialogue|logline|pilot/.test(signal);
   const wantsAdvertising = /广告|品牌|种草|tvc|campaign|投放|转化|卖点|商业片/.test(signal);
-  const sections = [COPYWRITING_STYLE_GUARD, COPYWRITING_CRAFT_HARNESS];
+  const sections = [COPYWRITING_STYLE_GUARD, COPYWRITING_CRAFT_HARNESS, COPYWRITING_EDITORIAL_JUDGMENT];
 
   if (wantsPrompt) sections.push(PROMPT_AUTHORING_HARNESS);
   if (wantsScreenplay) sections.push(SCREENPLAY_CRAFT_HARNESS);

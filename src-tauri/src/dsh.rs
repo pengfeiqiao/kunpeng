@@ -12,8 +12,8 @@ use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{oneshot, Mutex, RwLock};
 use tokio::time::{timeout, Duration};
 
-const DSH_VERSION: &str = "0.2.0-rc.2";
-const DSH_RUNTIME_REVISION: &str = "0.2.0-rc.2-kunpeng.1";
+const DSH_VERSION: &str = "0.2.1-rc.2";
+const DSH_RUNTIME_REVISION: &str = "0.2.1-rc.2-kunpeng.1";
 const DSH_EVENT_PREFIX: &str = "__KUNPENG_DSH_EVENT__";
 
 #[derive(Clone)]
@@ -68,6 +68,7 @@ pub struct DshStartRequest {
     pub workspace: String,
     pub max_tokens: Option<u64>,
     pub context_window: Option<u64>,
+    pub web_search_enabled: Option<bool>,
     pub http_proxy: Option<String>,
     pub https_proxy: Option<String>,
 }
@@ -660,7 +661,7 @@ async fn dsh_start_inner(
             "defaultContextWindow": request.context_window.unwrap_or(1_000_000),
             "models": [{
                 "id": "deepseek-flash",
-                "name": "DeepSeek V4.1 Flash",
+                "name": "DeepSeek V4.1 Flash 1017",
                 "contextWindow": request.context_window.unwrap_or(1_000_000),
                 "maxTokens": request.max_tokens.unwrap_or(32768),
                 "inputModalities": ["text", "image"],
@@ -684,6 +685,7 @@ async fn dsh_start_inner(
                 "toolJobs": false,
                 "goals": false,
                 "maxParallelToolCalls": 1,
+                "webSearchEnabled": request.web_search_enabled.unwrap_or(false),
                 "persistenceRoot": sessions.to_string_lossy(),
                 "contextWindow": request.context_window.unwrap_or(1_000_000),
                 "packChunks": true,

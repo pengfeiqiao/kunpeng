@@ -10,6 +10,7 @@ export interface DshStartOptions {
   workspace: string;
   maxTokens?: number;
   contextWindow?: number;
+  webSearchEnabled?: boolean;
   httpProxy?: string;
   httpsProxy?: string;
 }

@@ -117,6 +117,7 @@ const config = [
       toolJobs: false,
       goals: false,
       maxParallelToolCalls: 1,
+      webSearchEnabled: process.env.DSH_WEB_SEARCH_ENABLED === '1',
       persistenceRoot,
       contextWindow: 1_000_000,
       packChunks: true,
@@ -237,6 +238,9 @@ try {
   if (!startupOnly && !process.env.SMOKE_PROMPT && (toolCalls < 1 || !replyText.includes("ECHO:hello"))) {
     throw new Error("ACP completed without the required tool execution and echoed result");
   }
+  if (!startupOnly && process.env.EXPECT_WEB_RESULT === '1' && !/https?:\/\//.test(replyText)) {
+    throw new Error('ACP web_search completed without a citeable source URL');
+  }
   process.stdout.write(`${JSON.stringify({
     ok: true,
     toolCalls,
@@ -245,6 +249,7 @@ try {
     session: Boolean(session?.sessionId),
     stopReason: prompt?.stopReason,
     observerEventCount: observerEvents.length,
+    webSourceVerified: process.env.EXPECT_WEB_RESULT === '1' ? /https?:\/\//.test(replyText) : undefined,
   })}\n`);
 } catch (error) {
   process.stderr.write(`${JSON.stringify({

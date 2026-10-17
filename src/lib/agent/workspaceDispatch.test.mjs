@@ -1,5 +1,6 @@
 import * as softwareLease from './softwareLease.ts';
 import { buildReferenceCraftTurnContext } from '../copywriting/referenceCraft.ts';
+import { buildEditorialJudgmentTurnContext } from '../copywriting/antiAiStyle.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -465,6 +466,7 @@ test('queued project authority binds only after dequeue; admitted runs share pro
 
 const { AgentCoordinator } = load('./coordinator.ts', {
   '../copywriting/referenceCraft': { buildReferenceCraftTurnContext },
+  '../copywriting/antiAiStyle': { buildEditorialJudgmentTurnContext },
   './toolExposure': load('./toolExposure.ts'),
   './summaryCircuit': load('./summaryCircuit.ts'),
   './requestBudget': load('./requestBudget.ts'),
@@ -589,10 +591,10 @@ test('ordinary requests and DSH share bounded craft evidence without persisting 
     } }, toolRegistry: r, cwd: '/fixture', maxTurns: 3,
   });
   const request = '写大陆乡村悬疑电影剧本';
-  const expected = buildReferenceCraftTurnContext(request);
+  const expected = [buildReferenceCraftTurnContext(request), buildEditorialJudgmentTurnContext(request)].filter(Boolean).join('\n\n');
   const harness = await coordinator.buildHarnessTurnContext(request);
   assert.equal(harness.turnContext, expected);
-  assert.ok(expected.length > 0 && expected.length < 2400);
+  assert.ok(expected.length > 0 && expected.length < 6000);
   await coordinator.run(request, callbacks());
   assert.ok(requests[0].some(message => message.content === expected));
   assert.equal(requests[0].at(-1).content, request);

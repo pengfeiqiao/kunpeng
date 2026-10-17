@@ -1982,14 +1982,16 @@ export function useAgent(options?: { primary?: boolean }) {
               // errors observed in real sessions.
               persona: [
                 context.systemPrompt,
-                '[工具命名规则] 本会话中所有工具的实际名称都带有 mcp__kunpeng__ 前缀'
+                '[工具命名规则] 除原生 web_search/web_fetch 外，本会话中鲲鹏工具的实际名称都带有 mcp__kunpeng__ 前缀'
                   + '（例如 image_recognition 的完整名称是 mcp__kunpeng__image_recognition）。'
-                  + '调用工具时必须使用工具列表里给出的完整名称，不要省略前缀。',
+                  + '调用工具时必须使用工具列表里给出的完整名称，不要省略前缀。'
+                  + '开启联网时，web_search 和 web_fetch 是 DeepSeek Harness 原生工具，不带 MCP 前缀。',
                 history,
               ].filter(Boolean).join('\n\n'),
               workspace: coordinator.getCwd(),
               maxTokens: 32_768,
               contextWindow: 1_000_000,
+              webSearchEnabled: settings.webSearchEnabled,
               input,
               mediaBlocks: acpMediaBlocks,
               toolRegistry: coordinator.getToolRegistry(),

@@ -55,6 +55,7 @@ export class DshToolBridge {
    * mid-dispatch) — that is what blocks a double-billing replay.
    */
   private readonly onToolDispatched?: () => void;
+  private readonly nativeWebTools: boolean;
 
   // NOTE: no constructor parameter properties (`private x` in the signature)
   // — this file is imported by node --test strip-only type stripping, which
@@ -65,16 +66,22 @@ export class DshToolBridge {
     registry: ToolRegistry,
     callbacks: CoordinatorCallbacks,
     onToolDispatched?: () => void,
+    nativeWebTools = false,
   ) {
     this.runId = runId;
     this.instanceId = instanceId;
     this.registry = registry;
     this.callbacks = callbacks;
     this.onToolDispatched = onToolDispatched;
+    this.nativeWebTools = nativeWebTools;
   }
 
   async start(): Promise<void> {
-    const tools = serializeDshTools(this.registry, this.runId);
+    const tools = serializeDshTools(
+      this.registry,
+      this.runId,
+      this.nativeWebTools ? new Set(['web_search', 'web_fetch']) : undefined,
+    );
     await invoke('dsh_set_tools', { runId: this.runId, instanceId: this.instanceId, tools });
     this.unlisten.push(await listen<DshToolCallEvent>('dsh-tool-call', ({ payload }) => {
       if (payload.runId !== this.runId || payload.instanceId !== this.instanceId) return;

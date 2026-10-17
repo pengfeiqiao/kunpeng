@@ -9,16 +9,19 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection';
 import TokenMeter from '@deepseek-ai/dsh-token-meter';
 import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic';
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner';
-import JsonlSessionPersistence, {
-  JsonlCompressionSchema,
-} from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import { JsonlCompressionSchema } from '@deepseek-ai/dsh-session-persistence-jsonl';
 import * as sessionCheckpointPolicy from '@deepseek-ai/dsh-session-checkpoint-policy';
 import SqliteSessionQueryEngine from '@deepseek-ai/dsh-session-query-sqlite';
 
 export const name = 'kunpeng-acp-host';
 
 export const Config = z.intersect([
-  z.object({ persona: z.string().default(''), maxParallelToolCalls: z.number().default(1) }),
+  z.object({
+    persona: z.string().default(''),
+    maxParallelToolCalls: z.number().default(1),
+    webSearchEnabled: z.boolean().default(false),
+  }),
   z.object({
     provider: z.string().required(),
     model: z.string().required(),
@@ -60,10 +63,6 @@ export async function apply(ctx, config) {
       ['@deepseek-ai/dsh-llm-retry', {}],
       ['@deepseek-ai/dsh-jobs-local', {}],
       ['@deepseek-ai/dsh-invariants', {}],
-      ['@deepseek-ai/dsh-session/invariant', {}],
-      ['@deepseek-ai/dsh-agent/invariant', {}],
-      ['@deepseek-ai/dsh-scope/invariant', {}],
-      ['@deepseek-ai/dsh-agent-loop/invariant', {}],
       ['@deepseek-ai/dsh-agent-loop', { agents: [], maxParallelToolCalls: config.maxParallelToolCalls }],
     ];
     for (const [name, options] of core) {
@@ -99,6 +98,40 @@ export async function apply(ctx, config) {
     const compaction = ctx.plugin(BasicCompactionEngine);
     await compaction;
     yield compaction.dispose;
+
+    // DSH 0.2.1 native web seam. Search and Fetch both use DeepSeek's
+    // independent /v1/tools APIs; they do not consume an auxiliary Flash
+    // inference turn. Keep this scoped to Kunpeng's existing “联网” switch.
+    if (config.webSearchEnabled) {
+      const [webModule, webApiModule, toolWebModule] = await Promise.all([
+        import('@deepseek-ai/dsh-web'),
+        import('@deepseek-ai/dsh-web-deepseek-api'),
+        import('@deepseek-ai/dsh-tool-web'),
+      ]);
+      const web = ctx.plugin(webModule.default ?? webModule, {
+        searchProvider: 'deepseek-search-api',
+        fetchProvider: 'deepseek-fetch-api',
+      });
+      await web;
+      yield web.dispose;
+
+      const webApi = ctx.plugin(webApiModule.default ?? webApiModule, {
+        apiKeyEnv: 'DEEPSEEK_API_KEY',
+        baseURL: 'https://api.deepseek.com/v1/tools',
+      });
+      await webApi;
+      yield webApi.dispose;
+
+      const webTools = ctx.plugin(toolWebModule.default ?? toolWebModule, {
+        search: true,
+        fetch: true,
+        searchMaxResults: 8,
+        searchMaxQueries: 4,
+        fetchMaxOutputChars: 200_000,
+      });
+      await webTools;
+      yield webTools.dispose;
+    }
 
     // MCP is a sibling of the spine, so it resolves the same ToolRuntime
     // service that the official agent loop uses without mutating DSH source.

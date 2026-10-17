@@ -108,6 +108,7 @@ export class DshBridge {
       () => {
         this.visibleOutput = true;
       },
+      options.webSearchEnabled === true,
     );
     this.acp = new DshAcpClient(options, instanceId, onUpdate);
     const abort = () => void this.abort();

@@ -20,7 +20,7 @@
 
 ## 硬性纪律
 
-1. **DeepSeek Harness 锁定 `0.2.0-rc.2`**：不改 `dsh-runtime/node_modules` 上游源码，后续升级必须全量回归（test:harness + test:dsh-runtime + 真实 ACP 冒烟）。
+1. **DeepSeek Harness 锁定 `0.2.1-rc.2`**：不改 `dsh-runtime/node_modules` 上游源码，后续升级必须全量回归（test:harness + test:dsh-runtime + 真实 ACP 冒烟）。
 2. **Harness 失败只允许降级到同一个 DeepSeek 模型的普通模式**，不得跳转到其他供应商。
 3. **付费工具（生图/视频/配音等）一旦执行过，禁止整轮重放**，避免重复扣费。
 4. **密钥纪律**：key 只存 `settingsStore`（凭证注册表），不进日志/错误消息/进程参数/对话历史；写盘走 `write_text_file_private`（0600）；设置导出不含凭证。

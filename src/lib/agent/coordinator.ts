@@ -13,6 +13,7 @@ import type { GLMClient } from './glmClient';
 import type { ToolRegistry } from './toolRegistry';
 import { ContextManager } from './contextManager';
 import { buildReferenceCraftTurnContext } from '../copywriting/referenceCraft';
+import { buildEditorialJudgmentTurnContext } from '../copywriting/antiAiStyle';
 import { buildSystemPrompt, type OutputStyle } from './systemPrompt';
 import { agentLog } from './logger';
 import { createAbortController, createChildAbortController } from './abortController';
@@ -360,6 +361,8 @@ export class AgentCoordinator {
     const additions: string[] = [];
     const craftContext = buildReferenceCraftTurnContext(userInput);
     if (craftContext) additions.push(craftContext);
+    const editorialContext = buildEditorialJudgmentTurnContext(userInput);
+    if (editorialContext) additions.push(editorialContext);
     const speechRoutingNotice = buildDoubaoSpeechRoutingNotice(userInput);
     if (speechRoutingNotice) additions.push(speechRoutingNotice);
     if (isTimeSensitiveQuery(userInput)) additions.push(buildTemporalTurnContext());
@@ -514,7 +517,10 @@ export class AgentCoordinator {
 
     try {
       this.refreshScopedSkills(userInput);
-      const craftContext = buildReferenceCraftTurnContext(userInput);
+      const craftContext = [
+        buildReferenceCraftTurnContext(userInput),
+        buildEditorialJudgmentTurnContext(userInput),
+      ].filter(Boolean).join('\n\n');
       this.transientCraftContext = craftContext ? { role: 'user', content: craftContext } : null;
       this.transientTemporalContext = isTimeSensitiveQuery(userInput)
         ? { role: 'user', content: buildTemporalTurnContext() }

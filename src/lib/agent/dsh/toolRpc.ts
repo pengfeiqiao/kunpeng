@@ -13,9 +13,14 @@ export function isAgentDelegateDshAvailable(registry: ToolRegistry, runId?: stri
   return Boolean(runId && registry.hasDelegateForRun(runId));
 }
 
-export function serializeDshTools(registry: ToolRegistry, runId?: string): Array<Record<string, unknown>> {
+export function serializeDshTools(
+  registry: ToolRegistry,
+  runId?: string,
+  excludedNames: ReadonlySet<string> = new Set(),
+): Array<Record<string, unknown>> {
   return registry.getDefinitions()
     .filter((definition) => definition.name !== 'agent_delegate' || isAgentDelegateDshAvailable(registry, runId))
+    .filter((definition) => !excludedNames.has(definition.name))
     .map((definition) => ({
     name: definition.name,
     description: definition.description,

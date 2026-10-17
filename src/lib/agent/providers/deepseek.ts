@@ -9,7 +9,9 @@ import { EventFifo, StreamWorkBudget } from '../../performance/eventQueue';
  * Rust SSE proxy). Otherwise we fall back to the OpenAI-compatible streaming
  * path implemented inline below.
  *
- * The only supported DeepSeek model is deepseek-flash (V4.1 Flash, native vision).
+ * The only supported DeepSeek model is deepseek-flash
+ * (V4.1 Flash 1017, native vision). The official API keeps the stable wire id
+ * while the release label identifies the deployed checkpoint.
  */
 
 import { invoke } from '@tauri-apps/api/tauri';
@@ -22,7 +24,7 @@ import { GLMClient } from '../glmClient';
 import { sanitizeOpenAIToolPairing } from './pairing';
 
 const DEEPSEEK_VISION_MODEL = 'deepseek-flash';
-const MODELS: ModelDef[] = [{ id: DEEPSEEK_VISION_MODEL, displayName: 'DeepSeek V4.1 Flash', contextWindow: 1_000_000, supportsTools: true }];
+const MODELS: ModelDef[] = [{ id: DEEPSEEK_VISION_MODEL, displayName: 'DeepSeek V4.1 Flash 1017', contextWindow: 1_000_000, supportsTools: true }];
 
 export interface DeepSeekConfig {
   apiKey: string;

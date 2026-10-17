@@ -19,7 +19,7 @@ export const CHAT_MODELS: Record<string, ChatModelOption[]> = {
     { value: 'glm-5.1', label: 'GLM 5.1', detail: '兼容备用模型' },
   ],
   deepseek: [
-    { value: 'deepseek-flash', label: 'DeepSeek V4.1 Flash', detail: '原生识图 · 1M 上下文' },
+    { value: 'deepseek-flash', label: 'DeepSeek V4.1 Flash 1017', detail: '1017 最新检查点 · 原生识图 · 1M 上下文' },
   ],
   kimi: [
     { value: 'k3[1m]', label: 'Kimi K3 1M', detail: '多模态与 1M 长上下文' },
