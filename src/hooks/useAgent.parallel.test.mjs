@@ -19,7 +19,12 @@ function fixture(provider = 'kimi') {
   const noop = ()=>{};
   const steps = new Proxy({startRun: args=>{started.push(args);return `${args.sessionId}:${++serial}`;},finishRun:(status,id)=>finishes.push({status,id})},{get:(o,k)=>o[k]??noop});
   class Queue { schedule(){} async flush(){} }
-  class Resume { stage(){} consume(){return null;} restore(){} }
+  class Resume {
+    contexts = new Map();
+    stage(sid, context){this.contexts.set(sid, context);}
+    consume(sid){const context=this.contexts.get(sid)??null;this.contexts.delete(sid);return context;}
+    restore(sid, context){if(!this.contexts.has(sid)&&context)this.contexts.set(sid,context);}
+  }
   class Bridge {
     running = false;
     closing = false;
@@ -39,6 +44,15 @@ function fixture(provider = 'kimi') {
     '@/stores/runStepStore':{useRunStepStore:hook(steps)},
     '@/stores/toolConfirmStore':{useToolConfirmStore:hook({requestConfirm:(...args)=>{confirms.push(args);return Promise.resolve(true);},cancelScope:noop})},
     '@/lib/agent':{repairToolPairingSnapshot:m=>m},
+    '@/lib/agent/interruptedTurn':{
+      appendInterruptedTurnCheckpoint:(messages,checkpoint)=>{
+        const next=[...messages];
+        if(checkpoint.userRequest&&!next.some(message=>message.role==='user'&&message.content===checkpoint.userRequest))next.push({role:'user',content:checkpoint.userRequest});
+        next.push({role:'assistant',content:`[中断任务恢复检查点]\n原始任务：${checkpoint.userRequest||'（未记录）'}`});
+        return next;
+      },
+      buildInterruptedResumeContext:checkpoint=>`[中断任务恢复检查点]\n原始任务：${checkpoint.userRequest||'（未记录）'}\n已发起但结果未知的写操作必须先查状态。`,
+    },
     '@/lib/agent/dsh':{DshBridge:Bridge,skillCatalogSignature:()=>'',diffSkillCatalog:()=>'',shouldFallbackHarnessToBuiltin:()=>false},
     '@/stores/deepseekHarnessStore':{useDeepseekHarnessStore:hook({startRun:noop,finishRun:noop})},
     '@/lib/credentials':{resolveApiKey:()=> 'test'},
@@ -78,7 +92,7 @@ function fixture(provider = 'kimi') {
   refs.coordinatorFactoryRef.current=(_agent,sid)=>{
     let messages=[],running=false;
     const registry={setOriginView:noop,bindRunContext:noop,clearRunContext:noop,clearRunIdempotency:noop};
-    const c={restoreMessages:async m=>{messages=[...m];},getMessages:()=>messages,getContextStats:()=>({estimatedTokens:1,maxTokens:100}),refreshSystemPrompt:noop,getIsRunning:()=>running,setTurnEnvironment:noop,setRouteStrategy:noop,getToolRegistry:()=>registry,queueGuidance:text=>{messages.push({role:'user',content:text});return true;},abort:()=>{running=false;},queueRunNotice:noop,queueTransientNotice:noop,getCwd:()=>'/workspace',buildHarnessTurnContext:async()=>({systemPrompt:'persona',turnContext:''}),recordHarnessTurn:(input,answer)=>{messages.push({role:'user',content:input},{role:'assistant',content:answer});},
+    const c={restoreMessages:async m=>{messages=[...m];},getMessages:()=>messages,getContextStats:()=>({estimatedTokens:1,maxTokens:100}),refreshSystemPrompt:noop,getIsRunning:()=>running,setTurnEnvironment:noop,setRouteStrategy:noop,getToolRegistry:()=>registry,queueGuidance:text=>{messages.push({role:'user',content:text});return true;},abort:()=>{running=false;},queueRunNotice:noop,queueTransientNotice:text=>messages.push({role:'system',content:text}),getCwd:()=>'/workspace',buildHarnessTurnContext:async()=>({systemPrompt:'persona',turnContext:''}),recordHarnessTurn:(input,answer)=>{messages.push({role:'user',content:input},{role:'assistant',content:answer});},
       run:async(text,callbacks,_media,id)=>{running=true;messages.push({role:'user',content:text});const done=deferred();runs.push({sid,id,callbacks,complete:answer=>{messages.push({role:'assistant',content:answer});callbacks.onComplete(answer);running=false;done.resolve();},settle:done.resolve});await done.promise;},
     };return c;
   };
@@ -127,6 +141,18 @@ test('old run finally cannot unlock a replacement run after cancellation', async
   await f.agent.sendMessage('follow up');assert.equal(f.runs.length,2);
   f.runs[1].complete('new answer');await replacement;
   assert.equal(f.store.getState().messages.at(-1).content,'new answer');
+});
+
+test('stop creates a durable checkpoint and stages immediate continue context',async()=>{
+  const f=fixture();f.select('a');const stopped=f.agent.sendMessage('inspect the project');await until(()=>f.runs.length===1);
+  f.runs[0].callbacks.onTextDelta('I found the first cause');
+  f.agent.abort();f.runs[0].settle();await stopped;
+  const checkpoint=f.refs.coordinatorsRef.current.get('a').getMessages();
+  assert.equal(checkpoint.some(message=>message.role==='user'&&message.content==='inspect the project'),true);
+  assert.match(checkpoint.at(-1).content,/中断任务恢复检查点/);
+  const resume=f.refs.resumeContextQueueRef.current.consume('a');
+  assert.match(resume,/inspect the project/);
+  assert.match(resume,/已发起但结果未知/);
 });
 
 test('completed coordinator cache is bounded without evicting active conversations',async()=>{

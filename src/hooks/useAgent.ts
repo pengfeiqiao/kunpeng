@@ -32,6 +32,11 @@ import { buildPipelineStagePrefix, resolveTodoAwareMaxTurns } from '@/lib/agent/
 import { SubagentRunner } from '@/lib/agent/subagentRunner';
 import { isOrdinarySubagentRun } from '@/lib/agent/subagentPolicy';
 import { buildTaskResumeContext, TaskResumeContextQueue } from '@/lib/agent/resumeContext';
+import {
+  appendInterruptedTurnCheckpoint,
+  buildInterruptedResumeContext,
+  type InterruptedTurnCheckpoint,
+} from '@/lib/agent/interruptedTurn';
 import { registerCleanup } from '@/lib/cleanupRegistry';
 import { getShellInfo, osDisplayName } from '@/lib/platform';
 import { safeLocalStorage } from '@/lib/safeStorage';
@@ -711,6 +716,10 @@ export function useAgent(options?: { primary?: boolean }) {
     } finally { pruningRef.current = false; }
   };
   const resumeContextQueueRef = useRef(new TaskResumeContextQueue());
+  // Live checkpoint is provider-neutral. Coordinator, Kimi and DSH callbacks
+  // all update it, so Stop can persist the active turn before tearing down the
+  // provider-specific runtime.
+  const interruptedTurnsRef = useRef(new Map<string, InterruptedTurnCheckpoint>());
   const ordinaryRunIdsRef = useRef(new Set<string>());
   const [isReady, setIsReady] = useState(false);
 
@@ -1419,6 +1428,10 @@ export function useAgent(options?: { primary?: boolean }) {
         throw new Error('上一轮任务尚未完成清理，请稍后重试。');
       }
       sendingRef.current = true;
+      interruptedTurnsRef.current.set(runtimeKey, {
+        userRequest: displayContent,
+        filePaths: filePaths?.length ? [...filePaths] : undefined,
+      });
       ownedCompletion = new Promise<void>(resolve => { settleCompletion = resolve; });
       runtime.completion = ownedCompletion;
       runtime.settleCompletion = settleCompletion;
@@ -1458,11 +1471,13 @@ export function useAgent(options?: { primary?: boolean }) {
           });
         } catch (err) {
           sendingRef.current = false;
+          interruptedTurnsRef.current.delete(runtimeKey);
           throw err;
         }
 
         if (result.handled) {
           sendingRef.current = false;
+          interruptedTurnsRef.current.delete(runtimeKey);
           // Add command output as system message
           if (result.output) {
             addMessage({
@@ -1512,6 +1527,10 @@ export function useAgent(options?: { primary?: boolean }) {
         modelId: primaryRoute.modelId,
       });
       activeRunIdsRef.current.set(runtimeKey, runId);
+      interruptedTurnsRef.current.set(runtimeKey, {
+        userRequest: displayContent,
+        filePaths: filePaths?.length ? [...filePaths] : undefined,
+      });
       if (isOrdinaryChatRun) {
         ordinaryRunIdsRef.current.add(runId);
         const loadedSkills = skillLoaderRef.current?.getAll() ?? [];
@@ -1605,6 +1624,8 @@ export function useAgent(options?: { primary?: boolean }) {
         onTextDelta: (text) => {
           if (!isCurrentRun()) return;
           accumulatedText += text;
+          const checkpoint = interruptedTurnsRef.current.get(runtimeKey);
+          if (checkpoint) checkpoint.partialAssistant = accumulatedText;
           pendingPhase = 'streaming';
           pendingLastTextAt = Date.now();
           scheduleFlush();
@@ -1724,6 +1745,7 @@ export function useAgent(options?: { primary?: boolean }) {
           setStreamingPhase('idle');
           emit('agent-status-change', Object.keys(useChatStore.getState().streamingSessions).length ? 'working' : 'idle');
           terminal = true;
+          interruptedTurnsRef.current.delete(runtimeKey);
           useRunStepStore.getState().finishRun('done', runId);
           recordRunTrajectory('done', displayContent, startTime, isOrdinaryChatRun, toolExecutionsRef.current);
           learnWritingTurn(writingTurn, finalText || accumulatedText, sessionId ?? '', runId);
@@ -1754,6 +1776,7 @@ export function useAgent(options?: { primary?: boolean }) {
           setStreamingPhase('idle');
           emit('agent-status-change', Object.keys(useChatStore.getState().streamingSessions).length ? 'working' : 'error');
           terminal = true;
+          interruptedTurnsRef.current.delete(runtimeKey);
           useRunStepStore.getState().finishRun('failed', runId);
           recordRunTrajectory('failed', displayContent, startTime, isOrdinaryChatRun, toolExecutionsRef.current);
 
@@ -2049,6 +2072,7 @@ export function useAgent(options?: { primary?: boolean }) {
         }
       } catch (err) {
         if (!isCurrentRun()) return;
+        interruptedTurnsRef.current.delete(runtimeKey);
         persistAgentMsgs();
         setError(err instanceof Error ? err.message : String(err));
         setIsStreaming(false);
@@ -2119,9 +2143,33 @@ export function useAgent(options?: { primary?: boolean }) {
     const bridge = dshBridgesRef.current.get(sid) ?? sharedDshBridges.get(sid);
     if (bridge) { void bridge.abort(); unregisterSharedDshBridge(sid, bridge); dshBridgesRef.current.delete(sid); dshSkillSigRef.current.delete(sid); }
     const coordinator = coordinatorsRef.current.get(sid);
-    const saved = coordinator ? repairToolPairingSnapshot(coordinator.getMessages()) : [];
+    const baseSaved = coordinator ? repairToolPairingSnapshot(coordinator.getMessages()) : [];
+    const live = interruptedTurnsRef.current.get(sid);
+    const unfinishedTodos = (useTodoStore.getState().todosBySession[sid] ?? [])
+      .filter((todo) => todo.status !== 'completed')
+      .map((todo) => todo.content);
+    const checkpoint: InterruptedTurnCheckpoint = {
+      userRequest: live?.userRequest
+        || [...state.messages].reverse().find((message) => message.role === 'user')?.content
+        || '',
+      filePaths: live?.filePaths,
+      partialAssistant: live?.partialAssistant || state.streamingContent || undefined,
+      tools: (runtime?.tools.current ?? []).map((execution) => ({
+        toolName: execution.toolName,
+        status: execution.status,
+        result: execution.result,
+      })),
+      unfinishedTodos,
+    };
+    const saved = appendInterruptedTurnCheckpoint(baseSaved, checkpoint);
+    const interruptedResume = buildInterruptedResumeContext(checkpoint);
+    resumeContextQueueRef.current.stage(sid, interruptedResume);
+    interruptedTurnsRef.current.delete(sid);
     coordinator?.abort();
-    if (saved.length) void flushAgentMessages(sid, saved).catch(() => {});
+    if (saved.length) void flushAgentMessages(sid, saved).catch((error) => {
+      agentLog.error('Agent', `中断检查点持久化失败：${String(error)}`);
+      setError('任务已停止，但中断检查点未能写入磁盘；本次应用内仍可继续，请暂时不要关闭鲲鹏。');
+    });
     const agentId = sid.startsWith('agent:') ? sid.split(':')[1] : 'main';
     const fresh = coordinatorFactoryRef.current?.(agentId, sid);
     if (fresh) {
@@ -2140,7 +2188,7 @@ export function useAgent(options?: { primary?: boolean }) {
     persistMessages(sid);
     if (runId) { useRunStepStore.getState().finishRun('aborted', runId); activeRunIdsRef.current.delete(sid); ordinaryRunIdsRef.current.delete(runId); }
     recordRunTrajectory('aborted', [...state.messages].reverse().find(m => m.role === 'user')?.content ?? '', state.streamingSentAt, false, runtime?.tools.current ?? []);
-  }, [persistMessages, recordRunTrajectory]);
+  }, [persistMessages, recordRunTrajectory, setError]);
 
   /** 切换工作目录（应用到所有 agent 的 coordinator） */
   const switchCwd = useCallback((cwd: string) => {

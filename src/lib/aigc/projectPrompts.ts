@@ -166,7 +166,7 @@ export function buildStagePrompt(stage: StageId, p: AigcProject): string {
    a. 取出"视频提示词"、"场景图"、"车辆资产图"、"视频引擎"字段
    b. **路由**：
       - 记录的"视频引擎"字段为 "rhtv" → python3 ~/.kunpeng/skills/rhtv/scripts/runninghub.py（seedance2.0 端点）
-      - 否则 → dreamina multimodal2video --model seedance2.0_vip（注册到 background_task）
+      - 否则 → 先运行 dreamina multimodal2video -h 核对当前契约，再用 dreamina multimodal2video --model_version=seedance2.0_vip --video_resolution=720p（注册到 background_task）
    c. 拿到结果视频 → 上传到该 record 的"生成视频"附件字段
    d. lark-cli +record-update 设置"生成状态"="已完成"
 4. 全部完成后报告统计：本轮处理 N 条，剩余 M 条待确认`;

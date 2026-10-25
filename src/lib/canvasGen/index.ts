@@ -69,7 +69,11 @@ import {
   generateSeedreamWithDreamina,
 } from '@/lib/dreamina/image';
 import {
+  DREAMINA_SEEDANCE_20_DIRECT_ENDPOINT,
+  DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID,
   DREAMINA_SEEDANCE_25_ENDPOINT,
+  DREAMINA_SEEDANCE_25_DIRECT_ENDPOINT,
+  DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID,
   DREAMINA_SEEDANCE_25_ENGINE_ID,
   generateSeedance25WithDreamina,
   normalizedGenMode,
@@ -2463,6 +2467,11 @@ async function runArkSeedanceGeneration(req: CoreGenRequest): Promise<CoreGenRes
 
 // ── Core: store-agnostic generation run ──────────────────────────────────────
 async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult> {
+  if (req.engineId === DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID || req.engineId === DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID) {
+    // Canvas Dreamina mode is deliberately direct: the exact textarea prompt
+    // reaches the CLI without an Agent rewrite/planning turn.
+    return runDreaminaSeedance25Generation(req);
+  }
   if (req.engineId === DREAMINA_SEEDANCE_25_ENGINE_ID) {
     // Seedance 2.5：默认筷子丽帧（mode=seedance2.5），仅提交前/提交即失败时降级即梦 CLI
     return runSeedance25Generation(req);
@@ -2887,6 +2896,14 @@ async function runStandardGeneration(req: CoreGenRequest): Promise<CoreGenResult
 }
 
 async function runDreaminaSeedance25Generation(req: CoreGenRequest): Promise<CoreGenResult> {
+  const isDirect20 = req.engineId === DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID;
+  const isDirect25 = req.engineId === DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID;
+  const modelVersion = isDirect20 ? 'seedance2.0_vip' as const : 'seedance2.5' as const;
+  const modelLabel = modelVersion === 'seedance2.5' ? 'Seedance 2.5' : 'Seedance 2.0';
+  const taskEngineId = isDirect20 || isDirect25 ? req.engineId : DREAMINA_SEEDANCE_25_ENGINE_ID;
+  const endpoint = isDirect20
+    ? DREAMINA_SEEDANCE_20_DIRECT_ENDPOINT
+    : isDirect25 ? DREAMINA_SEEDANCE_25_DIRECT_ENDPOINT : DREAMINA_SEEDANCE_25_ENDPOINT;
   // 首帧/首尾帧模式：只取前 1/2 张图作首/尾帧；CLI 的 image2video/frames2video
   // 不接受视频/音频输入，这些参考在本模式下一律剥离。
   const genMode = normalizedGenMode(String(req.params?.genMode ?? ''));
@@ -2899,9 +2916,9 @@ async function runDreaminaSeedance25Generation(req: CoreGenRequest): Promise<Cor
   const taskId = useCanvasTaskStore.getState().addTask({
     nodeId: req.nodeId ?? '',
     kind: 'video',
-    engineId: DREAMINA_SEEDANCE_25_ENGINE_ID,
-    engineLabel: '即梦 Seedance 2.5',
-    endpoint: DREAMINA_SEEDANCE_25_ENDPOINT,
+    engineId: taskEngineId,
+    engineLabel: `即梦 ${modelLabel}`,
+    endpoint,
     prompt: req.prompt,
     referenceUrls: refs.length > 0 ? refs : undefined,
     params: req.params,
@@ -2918,7 +2935,7 @@ async function runDreaminaSeedance25Generation(req: CoreGenRequest): Promise<Cor
       submittedImages: refs.length,
       submittedAudio: audioUrls.length,
       submittedVideo: videoUrls.length,
-      provider: DREAMINA_SEEDANCE_25_ENDPOINT,
+      provider: endpoint,
     },
   });
   const ac = new AbortController();
@@ -2930,9 +2947,10 @@ async function runDreaminaSeedance25Generation(req: CoreGenRequest): Promise<Cor
   try {
     await acquireSlot(taskId);
     if (ac.signal.aborted) throw new DOMException('Aborted', 'AbortError');
-    update({ status: 'uploading', progress: '准备 Seedance 2.5 参考素材…' });
+    update({ status: 'uploading', progress: `准备即梦 ${modelLabel} 参考素材…` });
     const result = await generateSeedance25WithDreamina({
       prompt: req.prompt,
+      modelVersion,
       imageUrls: refs,
       videoUrls,
       audioUrls,
@@ -2947,21 +2965,21 @@ async function runDreaminaSeedance25Generation(req: CoreGenRequest): Promise<Cor
       ].filter(Boolean).join('；'),
       onSubmitted: (submitId) => {
         providerTaskId = submitId;
-        update({ rhTaskId: submitId, status: 'running', progress: `Seedance 2.5 已提交，等待生成…` });
+        update({ rhTaskId: submitId, status: 'running', progress: `${modelLabel} 已提交，等待生成…` });
       },
       onProgress: (progress) => update({ status: 'running', progress }),
     });
     const displayUrls = result.paths.map((path) => convertFileSrc(path));
     update({
       status: 'succeeded',
-      progress: '完成（Seedance 2.5）',
+      progress: `完成（即梦 ${modelLabel}）`,
       rhTaskId: result.submitId,
       resultPaths: result.paths,
       resultUrls: result.urls.length > 0 ? result.urls : displayUrls,
       finishedAt: Date.now(),
     });
     for (const path of result.paths) {
-      void appendArtifact({ path, type: 'video', engine: DREAMINA_SEEDANCE_25_ENGINE_ID, prompt: req.prompt, taskId });
+      void appendArtifact({ path, type: 'video', engine: taskEngineId, prompt: req.prompt, taskId });
     }
     void appendGenerationLog({
       timestamp: new Date().toISOString(),
@@ -2971,7 +2989,7 @@ async function runDreaminaSeedance25Generation(req: CoreGenRequest): Promise<Cor
       prompt: req.prompt,
       outputPath: result.paths[0] ?? '',
       outputPaths: result.paths,
-      model: 'dreamina-cli/seedance-2.5',
+      model: endpoint,
       taskId,
       shotNo: req.workshopShotNo,
       params: req.params,
@@ -2997,7 +3015,7 @@ async function runDreaminaSeedance25Generation(req: CoreGenRequest): Promise<Cor
       update({
         status: 'running',
         rhTaskId: remoteTaskId,
-        progress: 'Seedance 2.5 仍在生成，后台继续查询…',
+        progress: `${modelLabel} 仍在生成，后台继续查询…`,
         error: undefined,
       });
       return {
@@ -3006,10 +3024,10 @@ async function runDreaminaSeedance25Generation(req: CoreGenRequest): Promise<Cor
         resultPaths: [],
         resultUrls: [],
         engineKind: 'video',
-        error: 'Seedance 2.5 仍在生成，鲲鹏会在后台继续查询',
+        error: `${modelLabel} 仍在生成，鲲鹏会在后台继续查询`,
       };
     }
-    const message = aborted ? '已取消' : `Seedance 2.5 失败: ${err instanceof Error ? err.message : String(err)}`;
+    const message = aborted ? '已取消' : `${modelLabel} 失败: ${err instanceof Error ? err.message : String(err)}`;
     update({ status: 'failed', error: message, finishedAt: Date.now() });
     return { success: false, taskId, resultPaths: [], resultUrls: [], engineKind: 'video', error: message };
   } finally {
@@ -3251,6 +3269,8 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
   const canvasProjectId = useProjectStore.getState().activeProjectId;
   const sameCanvas = () => useProjectStore.getState().activeProjectId === canvasProjectId;
   const isDreaminaSeedance25 = req.engineId === DREAMINA_SEEDANCE_25_ENGINE_ID;
+  const isDirectDreaminaVideo = req.engineId === DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID
+    || req.engineId === DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID;
   const isCustomMediaRoute = isCustomMediaEngine(req.engineId);
   const isGptImageRoute = req.engineId.startsWith('gpt-image');
   const isKuaiziRoute = req.engineId === KUAIZI_SEEDANCE_ENGINE_ID ||
@@ -3260,7 +3280,7 @@ export async function generateForNode(req: CanvasGenRequest): Promise<CanvasGenR
     ? 'image' as const
     : isCustomMediaRoute
       ? (findCustomMediaApi(req.engineId)?.kind ?? 'image') as 'image' | 'video'
-      : isKuaiziRoute || isDreaminaSeedance25
+      : isKuaiziRoute || isDreaminaSeedance25 || isDirectDreaminaVideo
         ? 'video' as const
         : undefined;
   // Midjourney V8.2 is an APIMart-only route and deliberately does not live in

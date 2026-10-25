@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { SkillLoader, resolveSkillCatalogId, type SkillLoaderAdapter } from './skillLoader.ts';
 
 function skillMd(name: string, description: string): string {
@@ -120,7 +121,9 @@ test('UI projection keeps SKILL.md-only reference skills visible in Settings', (
 });
 
 test('bundled Blender modeling loads as a reference skill without a new toolbar action', async () => {
-  const root = new URL('../../../skills', import.meta.url).pathname;
+  // fileURLToPath 而不是 .pathname：含中文/空格的目录经 URL 编码后
+  // .pathname 是百分号编码串，readFileSync 打不开。
+  const root = fileURLToPath(new URL('../../../skills', import.meta.url));
   const loader = new SkillLoader([root], {
     scan: async () => ['blender-modeling'],
     read: async path => readFileSync(path, 'utf8'),

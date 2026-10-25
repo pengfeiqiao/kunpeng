@@ -13,6 +13,7 @@ import { previewPrice } from '@/lib/rhtv/pricePreview';
 import { estimateEngineCost, pricingCapsFromSettings } from '@/lib/pricing/estimate';
 import { useSelectedAssets, clearAssets, toggleAsset, type AttachedAsset } from '@/lib/canvas/selectedAssets';
 import { collectNodeReferences, selfUploadFallback, selfVideoFallback } from '@/lib/canvas/collectRefs';
+import { buildCanvasDreaminaVideoRequest } from '@/lib/canvas/dreaminaVideoRequest';
 import CameraPresetPicker from './CameraPresetPicker';
 import StyleLibraryPicker from './StyleLibraryPicker';
 import OmniStyleLibrary from './OmniStyleLibrary';
@@ -31,7 +32,11 @@ import {
   type MgMotionRecipe,
 } from '@/lib/omni/styles';
 import { OMNI_MG_ENGINE_ID, runMinimaxH3MgForCanvasNode, runOmniForCanvasNode, runSeedanceMiniMgForCanvasNode } from '@/lib/omni/workflow';
-import { DREAMINA_SEEDANCE_25_ENGINE_ID } from '@/lib/dreamina/video';
+import {
+  DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID,
+  DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID,
+  DREAMINA_SEEDANCE_25_ENGINE_ID,
+} from '@/lib/dreamina/video';
 import {
   readGlobalVideoPromptTemplate,
   rewriteVideoPrompt,
@@ -624,6 +629,10 @@ export default function NodeInfoBar() {
       if (data.modelVersion) setVModel(
         data.modelVersion === 'minimax-hailuo-h3'
           ? 'minimax-h3'
+          : data.modelVersion === DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID
+            ? 'seedance-2.0'
+            : data.modelVersion === DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID
+              ? 'seedance-2.5'
           : data.modelVersion === DREAMINA_SEEDANCE_25_ENGINE_ID
             ? 'seedance-2.5'
             : data.modelVersion as string,
@@ -1619,8 +1628,10 @@ export default function NodeInfoBar() {
       : { legacyVideoPrompt: prompt };
 
     const handleVideoGenerate = async () => {
-      const prompt = videoPrompt.trim();
-      if (!prompt) return;
+      // Dreamina direct mode is a literal transport: preserve every character
+      // entered in the canvas textarea. Other routes keep historical trim.
+      const prompt = vMode === 'dreamina' ? videoPrompt : videoPrompt.trim();
+      if (!prompt.trim()) return;
       // 统一参考收集：顺序 = edge 序（组原地展开），与工具栏"参考素材"行的
       // @图片N 编号严格一致；音频去重按本地路径形态；视频参考实时收集
       //（源视频后生成/重新生成都拿最新的）。资产库主体图尾部追加。
@@ -1628,6 +1639,8 @@ export default function NodeInfoBar() {
       const collected = collectNodeReferences(node.id, { extraTailImages: assetImages });
       const mergedRefs = collected.images.map((r) => r.submitUrl);
       const audioUrls = collected.audios.map((r) => r.submitUrl);
+      const assetAudio = attachedAssets.map((a) => a.audioPath).filter((x): x is string => Boolean(x));
+      const mergedAudio = [...new Set([...audioUrls, ...assetAudio])];
       const videoLimit = vModel === 'seedance-2.5' ? 10 : vModel === 'minimax-h3' ? 3 : vModel === 'wan-3.0' ? 5 : 1;
       const refVideoUrls = selfVideoFallback(node.id, collected).slice(0, videoLimit);
 
@@ -1710,10 +1723,36 @@ export default function NodeInfoBar() {
         return;
       }
 
-      // 即梦备用 或 Agent 模式 → 走 Agent 链路
+      // 即梦画布模式直接提交 CLI。这里不得经过 Agent、提示词规划、风格拼接
+      // 或任何 LLM 改写，用户在文本框里的内容就是供应商收到的 prompt。
       if (vMode === 'dreamina') {
-        const fullPrompt = `${prompt}\n\n[请使用即梦 dreamina 生成此视频（multimodal2video），参数：分辨率 ${effectiveVRes}，比例 ${vRatio}，时长 ${vDuration}s]${mergedRefs.length > 0 ? `\n参考图片: ${mergedRefs.join(', ')}` : ''}`;
-        triggerAgentAction('ai-generate-video', node.id, fullPrompt);
+        const is25 = vModel === 'seedance-2.5';
+        const direct = buildCanvasDreaminaVideoRequest({
+          version: is25 ? 'seedance-2.5' : 'seedance-2.0',
+          prompt,
+          resolution: effectiveVRes,
+          ratio: vRatio,
+          duration: vDuration,
+        });
+        updateNode(node.id, {
+          description: prompt,
+          ...promptSlotPatch(prompt),
+          modelVersion: direct.engineId,
+          resolution: effectiveVRes,
+          aspectRatio: vRatio,
+          duration: vDuration,
+        });
+        const result = await generateForNode({
+          nodeId: node.id,
+          engineId: direct.engineId,
+          prompt: direct.prompt,
+          referenceUrls: mergedRefs,
+          audioUrls: mergedAudio,
+          videoUrls: refVideoUrls,
+          overwrite: true,
+          params: direct.params,
+        });
+        if (!result.success) alert('即梦生成视频失败: ' + (result.error || '未知错误'));
         return;
       }
       if (genMode === 'agent') {
@@ -1726,9 +1765,7 @@ export default function NodeInfoBar() {
       }
 
       // API 直连：canvasGen → rhtv，按模式选引擎
-      const assetAudio = attachedAssets.map((a) => a.audioPath).filter((x): x is string => Boolean(x));
       const stylePrompts = attachedAssets.map((a) => a.stylePrompt).filter(Boolean);
-      const mergedAudio = [...new Set([...audioUrls, ...assetAudio])];
       const finalVPrompt = stylePrompts.length > 0 ? `${prompt}\n风格：${stylePrompts.join('；')}` : prompt;
       const isFastModel = vModel.includes('fast');
       const isMiniModel = vModel.includes('mini');
@@ -1795,8 +1832,13 @@ export default function NodeInfoBar() {
     const isH3 = vModel === 'minimax-h3';
     const isWan3 = vModel === 'wan-3.0';
     const isSeedance25 = vModel === 'seedance-2.5';
+    const isDreaminaMode = vMode === 'dreamina';
     // MiniMax H3 分辨率只有 2K 一档（枚举大写 K）；万相 3.0 为 480P/720P/1080P
-    const vResOptions = isSeedance25
+    const vResOptions = isDreaminaMode && isSeedance25
+      ? [{ value: '480p', label: '480p' }, { value: '720p', label: '720p' }, { value: '1080p', label: '1080p' }]
+      : isDreaminaMode
+      ? [{ value: '720p', label: '720p' }, { value: '1080p', label: '1080p' }, { value: '4k', label: '4K' }]
+      : isSeedance25
       ? [{ value: '480p', label: '480p' }, { value: '720p', label: '720p' }]
       : isH3
       ? [{ value: '2K', label: '2K' }]
@@ -1807,7 +1849,11 @@ export default function NodeInfoBar() {
       : [{ value: '480p', label: '480p' }, { value: '720p', label: '720p' }, { value: 'native1080p', label: '原生1080p' }, { value: '1080p', label: '1080p' }, { value: '2k', label: '2k' }, { value: '4k', label: '4k' }];
     // Fast/Mini 模型不支持 1080p — 在渲染期间用钳制值，切换模型的事件回调里
     // 再写回 state（不能在 render 中 setState）。
-    const effectiveVRes = isSeedance25
+    const effectiveVRes = isDreaminaMode && isSeedance25
+      ? (['480p', '720p', '1080p'].includes(vResolution) ? vResolution : '720p')
+      : isDreaminaMode
+      ? (['720p', '1080p', '4k'].includes(vResolution) ? vResolution : '720p')
+      : isSeedance25
       ? (vResolution === '480p' ? '480p' : '720p')
       : isH3 ? '2K'
       : isWan3 ? (['480P', '720P', '1080P'].includes(vResolution) ? vResolution : '720P')
@@ -2003,6 +2049,20 @@ export default function NodeInfoBar() {
                 key={m}
                 onClick={() => {
                   setVMode(m as typeof vMode);
+                  if (m === 'dreamina') {
+                    const nextModel = vModel === 'seedance-2.5' ? 'seedance-2.5' : 'seedance-2.0';
+                    setVModel(nextModel);
+                    setVResolution('720p');
+                    setVDuration(nextModel === 'seedance-2.5'
+                      ? Math.min(30, Math.max(4, vDuration))
+                      : Math.min(15, Math.max(4, vDuration)));
+                    updateNode(node.id, {
+                      modelVersion: nextModel === 'seedance-2.5'
+                        ? DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID
+                        : DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID,
+                      resolution: '720p',
+                    });
+                  }
                   if (m === 'omni') {
                     setMgGenerationEngine('omni');
                     setShowCameraPicker(false);
@@ -2279,7 +2339,7 @@ export default function NodeInfoBar() {
           {/* Bottom toolbar — 不能用 overflow-x-auto：会把向上弹出的参数面板裁掉 */}
           <div className="flex items-center gap-1.5 px-3 py-2.5">
             {/* API = canvasGen → rhtv Seedance 直连；Agent = 画布气泡派发 */}
-            {vMode !== 'omni' && (
+            {vMode !== 'omni' && vMode !== 'dreamina' && (
               <button
                 onClick={() => setGenMode(genMode === 'api' ? 'agent' : 'api')}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-colors shrink-0 border ${
@@ -2292,7 +2352,7 @@ export default function NodeInfoBar() {
                 {genMode === 'api' ? 'API' : 'Agent'}
               </button>
             )}
-            {vMode !== 'startend' && vMode !== 'dreamina' && vMode !== 'omni' && (
+            {vMode !== 'startend' && vMode !== 'omni' && (
               <SelectPill
                 value={vModel}
                 onChange={(val) => {
@@ -2302,19 +2362,27 @@ export default function NodeInfoBar() {
                   if (val === 'seedance-2.5') {
                     setVResolution('720p');
                     setVDuration(Math.min(30, Math.max(4, vDuration)));
+                  } else if (vMode === 'dreamina') {
+                    setVResolution('720p');
+                    setVDuration(Math.min(15, Math.max(4, vDuration)));
                   }
                   if (val === 'wan-3.0') {
                     setVResolution('720P');
                     setVDuration(Math.min(30, Math.max(2, vDuration)));
                   }
                   updateNode(node.id, {
-                    modelVersion: val === 'minimax-h3'
+                    modelVersion: vMode === 'dreamina'
+                      ? (val === 'seedance-2.5' ? DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID : DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID)
+                      : val === 'minimax-h3'
                       ? 'minimax-hailuo-h3'
                       : val === 'seedance-2.5' ? DREAMINA_SEEDANCE_25_ENGINE_ID : val,
                     ...(val === 'seedance-2.5' ? { resolution: '720p', duration: Math.min(30, Math.max(4, vDuration)) } : {}),
                   });
                 }}
-                options={[
+                options={vMode === 'dreamina' ? [
+                  { value: 'seedance-2.0', label: '即梦 2.0' },
+                  { value: 'seedance-2.5', label: '即梦 2.5' },
+                ] : [
                   { value: 'seedance-2.0', label: 'Seedance 2.0' },
                   { value: 'seedance-2.5', label: 'Seedance 2.5' },
                   { value: 'seedance-2.0-fast', label: 'Seedance 2.0 Fast' },
@@ -2325,7 +2393,7 @@ export default function NodeInfoBar() {
                     .filter((api) => api.kind === 'video' && api.enabled)
                     .map((api) => ({ value: `custom-media:${api.id}`, label: api.label })),
                 ]}
-                title="模型"
+                title={vMode === 'dreamina' ? '即梦模型' : '模型'}
               />
             )}
             <ParamSummaryPill
@@ -2475,7 +2543,7 @@ export default function NodeInfoBar() {
               label={isCurrentNodeRewriting
                 ? '正在完善提示词…'
                 : vMode === 'dreamina'
-                ? 'Agent 生成'
+                ? '即梦生成'
                 : vMode === 'omni'
                   ? mgGenerationEngine === 'omni' ? 'Omni生成' : mgGenerationEngine === 'minimax-h3' ? 'H3生成' : 'Mini生成'
                   : '生成'}

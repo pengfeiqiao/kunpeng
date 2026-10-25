@@ -14,6 +14,10 @@ const MODEL_WINDOWS: Record<string, number> = {
   'deepseek-reasoner': 64_000,
   k3: 262_144,
   'k3[1m]': 1_048_576,
+  'k3.1-pro': 1_048_576,
+  'k3.1-pro-highspeed': 1_048_576,
+  'kimi-k3.1-pro': 1_048_576,
+  'kimi-k3.1-pro-highspeed': 1_048_576,
 };
 
 /** Remove provider/migration qualifiers before looking up model capability. */

@@ -228,7 +228,8 @@
 
 ```bash
 # 提交
-dreamina multimodal2video --model seedance2.0_vip \
+dreamina multimodal2video --model_version=seedance2.0_vip \
+  --video_resolution=720p \
   --prompt "<视频提示词>" \
   --image "<场景图本地路径>" \
   --image "<资产图本地路径>"

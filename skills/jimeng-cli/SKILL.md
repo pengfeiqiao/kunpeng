@@ -1,14 +1,10 @@
 ---
-name: jimeng-cli
-description: Use when an agent needs Dreamina（即梦） login, sessions, task history, Seedream 5.0 Pro, or Seedance 2.5 image/video generation through the dreamina CLI.
+name: dreamina-cli
+description: Use when an agent needs Dreamina（即梦） login, sessions, task history, or image/video generation through the dreamina CLI.
 visibility: library
 ---
 
 # Dreamina CLI
-
-## Mandatory confirmation before paid generation
-
-Before running any command that consumes credits (`text2image`, `text2video`, `image2image`, `image2video`, `multimodal2video`, `multiframe2video`, `frames2video`, or `image_upscale`), show the user the intended model, duration/resolution, input count, and complete command, then wait for explicit confirmation. Help, `user_credit`, `query_result`, and `list_task` are read-only and do not require confirmation.
 
 Use this skill when you need Dreamina（即梦） image or video generation, login, session management, or task history work through `dreamina`.
 

@@ -26,7 +26,11 @@ import {
 import { loadMediaInput } from '@/lib/agent/mediaInput';
 import type { MgMotionRecipe } from '@/lib/omni/styles';
 import { mergeCanvasNodeGenerationParams } from '@/lib/canvas/generationParams';
-import { DREAMINA_SEEDANCE_25_ENGINE_ID } from '@/lib/dreamina/video';
+import {
+  DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID,
+  DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID,
+  DREAMINA_SEEDANCE_25_ENGINE_ID,
+} from '@/lib/dreamina/video';
 import { calibrateGenerationForEngine } from '@/lib/projectObjects/generationDraft';
 
 // UI short names are accepted as aliases and normalized before generation.
@@ -36,6 +40,8 @@ const ENGINE_IDS = [
   'minimax-h3',
   'seedance-2.5',
   DREAMINA_SEEDANCE_25_ENGINE_ID,
+  DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID,
+  DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID,
 ];
 
 export const canvasGenerateTool: Tool = {
@@ -47,7 +53,8 @@ export const canvasGenerateTool: Tool = {
       + '非 MJ 图片提示词一律按五维参数框架构建（主体与置景→美学调性类型标签→焦距/光圈/景别/机位/构图→具体物理光源与色板→胶片颗粒/电影级调色等后期质感），禁止"唯美/高级感/超高清/神作/光线柔和"式虚词。'
       + '视频引擎: seedance-2.0（多模态，必须传参考图，提示词须遵守 ~/.kunpeng/aigc-memory/prompt-templates/seedance/README.md）、'
       + 'seedance-2.0-t2v（无参考图时用）、seedance-2.0-fast、'
-      + 'seedance-2.5（多模态，别名 dreamina-seedance-2.5；默认走筷子丽帧通道，失败才降级即梦 CLI；支持图片≤30、视频≤10、音频≤10，总素材≤50，480p/720p，时长 4-30 秒；提交前应按官方 2.5 结构改写提示词，并严格按实际素材顺序使用 @图片N/@视频N/@音频N）、'
+      + 'seedance-2.5（多模态通用路由；默认走筷子丽帧通道，失败才降级即梦 CLI；支持图片≤30、视频≤10、音频≤10，总素材≤50，480p/720p，时长 4-30 秒；提交前应按官方 2.5 结构改写提示词，并严格按实际素材顺序使用 @图片N/@视频N/@音频N）、'
+      + '即梦 CLI 直连：dreamina-seedance-2.0 或 dreamina-seedance-2.5；用户明确要“即梦”时必须选直连，不得路由到筷子。直连请求保留用户 prompt 原文，2.0 支持 720p/1080p/4k、4-15s，2.5 支持 480p/720p/1080p、4-30s。'
       + 'minimax-hailuo-h3（MiniMax H3 多模态，别名 minimax-h3；有无参考图均可，图≤9/视频≤3/音频≤3，固定 2K，时长 5-15 秒）。'
       + 'wan-3.0（万相 3.0 全能参考视频：图≤10/视频≤5/音频≤5，另支持 file_url 文档与 link_url 网页参考，两者互斥；480P/720P/1080P，时长 2-30 秒；默认筷子丽帧主渠道，失败自动容灾 RunningHub/APIMart）。'
       + 'video-upscaler（视频超分：把已有视频节点提升到 720p/1080p/2K/4K，params.targetResolution 传档，默认 720p；需连接源视频节点，标准模型主通道、失败自动容灾快速通道）。'
@@ -140,6 +147,10 @@ export const canvasGenerateTool: Tool = {
       ? 'minimax-hailuo-h3'
       : requestedEngine === 'seedance-2.5'
         ? DREAMINA_SEEDANCE_25_ENGINE_ID
+        : requestedEngine === DREAMINA_SEEDANCE_25_ENGINE_ID
+          ? DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID
+          : requestedEngine === 'dreamina-seedance-2.0'
+            ? DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID
         : requestedEngine;
     const prompt = params.prompt as string;
     const promptTemplate = params.prompt_template === 'universal' || params.prompt_template === 'legacy'
@@ -318,14 +329,21 @@ export const canvasGenerateTool: Tool = {
     if (engineId === 'minimax-hailuo-h3') {
       const h3Duration = Math.min(15, Math.max(5, Math.round(Number(overrides.duration) || 5)));
       overrides = { resolution: '2K', ratio: String(overrides.ratio ?? overrides.aspectRatio ?? 'adaptive'), duration: String(h3Duration) };
-    } else if (engineId === DREAMINA_SEEDANCE_25_ENGINE_ID) {
+    } else if (engineId === DREAMINA_SEEDANCE_25_ENGINE_ID || engineId === DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID) {
       const duration = Math.min(30, Math.max(4, Math.round(Number(overrides.duration) || 5)));
-      const resolution = String(overrides.resolution).toLowerCase() === '480p' ? '480p' : '720p';
+      const requestedResolution = String(overrides.resolution ?? '720p').toLowerCase();
+      const resolution = ['480p', '720p', '1080p'].includes(requestedResolution) ? requestedResolution : '720p';
       overrides = {
         resolution,
         ratio: String(overrides.ratio ?? overrides.aspectRatio ?? 'adaptive'),
         duration: String(duration),
+        ...(engineId === DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID ? { genMode: 'multimodal', verbatimPrompt: true } : {}),
       };
+    } else if (engineId === DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID) {
+      const duration = Math.min(15, Math.max(4, Math.round(Number(overrides.duration) || 5)));
+      const requestedResolution = String(overrides.resolution ?? '720p').toLowerCase();
+      const resolution = ['720p', '1080p', '4k'].includes(requestedResolution) ? requestedResolution : '720p';
+      overrides = { resolution, ratio: String(overrides.ratio ?? overrides.aspectRatio ?? '16:9'), duration: String(duration), genMode: 'multimodal', verbatimPrompt: true };
     }
 
     // agent 未显式传参考时，自动收集节点上已有的参考（用户连线/挂载的
@@ -350,7 +368,7 @@ export const canvasGenerateTool: Tool = {
         audioUrls = collected.audios.map((r) => r.submitUrl);
       }
       if (videoUrls.length === 0 && engineKind === 'video') {
-        const videoLimit = engineId === DREAMINA_SEEDANCE_25_ENGINE_ID
+        const videoLimit = engineId === DREAMINA_SEEDANCE_25_ENGINE_ID || engineId === DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID
           ? 10
           : engineId === 'minimax-hailuo-h3' ? 3 : 1;
         videoUrls = selfVideoFallback(nodeId, collected).slice(0, videoLimit);

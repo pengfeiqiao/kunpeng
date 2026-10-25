@@ -2,7 +2,11 @@ import { VIDEO_PROMPT_DRAFTING_POLICY } from '@/lib/videoPrompt/template';
 import type { Tool } from '../types';
 import { runGeneration } from '@/lib/canvasGen';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { DREAMINA_SEEDANCE_25_ENGINE_ID } from '@/lib/dreamina/video';
+import {
+  DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID,
+  DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID,
+  DREAMINA_SEEDANCE_25_ENGINE_ID,
+} from '@/lib/dreamina/video';
 import { PERFORMANCE_BRIEF } from '@/lib/videoPrompt/performance';
 import { findCustomMediaApi } from '@/lib/customMedia/runner';
 
@@ -12,6 +16,8 @@ type ChatVideoEngine =
   | 'seedance-2.0-fast'
   | 'seedance-2.0-mini'
   | 'seedance-2.5'
+  | 'dreamina-seedance-2.0'
+  | 'dreamina-seedance-2.5'
   | 'wan-3.0'
   | 'omni-mg-animation';
 
@@ -44,8 +50,13 @@ function normalizeEngine(
       }
       return { engineId: 'seedance-2.0-fast', label: 'Seedance 2.0 Fast' };
     case 'seedance-2.5':
+      return { engineId: DREAMINA_SEEDANCE_25_ENGINE_ID, label: 'Seedance 2.5' };
+    case 'dreamina-seedance-2.0':
+    case DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID:
+      return { engineId: DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID, label: '即梦 Seedance 2.0' };
     case DREAMINA_SEEDANCE_25_ENGINE_ID:
-      return { engineId: DREAMINA_SEEDANCE_25_ENGINE_ID, label: '即梦 Seedance 2.5' };
+    case DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID:
+      return { engineId: DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID, label: '即梦 Seedance 2.5 直连' };
     case 'wan-3.0':
     case 'wan3.0':
     case 'wan3':
@@ -62,7 +73,8 @@ export const videoGenerateTool: Tool = {
     name: 'video_generate',
     description:
       '普通对话直接生成视频并返回本地文件，不创建画布节点，也不切换视图。'
-      + '支持 MiniMax H3、Seedance 2.0、Seedance 2.0 Fast、Seedance 2.0 Mini、即梦 Seedance 2.5 和万相 3.0（wan-3.0）。'
+      + '支持 MiniMax H3、Seedance 2.0、Seedance 2.0 Fast、Seedance 2.0 Mini、即梦 CLI Seedance 2.0/2.5 和万相 3.0（wan-3.0）。'
+      + '用户明确说“即梦”时，必须使用 dreamina-seedance-2.0 或 dreamina-seedance-2.5 直连引擎，不得用 seedance-2.0/2.5 的筷子或通用路由代替。'
       + '万相 3.0 是阿里全能参考视频模型：文生/图/视频/音频参考之外，还支持 file_url（文档）与 link_url（公开网页）输入；用户给了文档或网页链接并指定万相时直接用这两个参数。'
       + 'APIMart 通道自动并行检测 api.apimart.ai、apib.ai、aiuxu.com、aishuch.com 并选择当前最快健康线路；遇到 TCP 超时时先调用 apimart_route_status({refresh:true})，不要用 bash/curl 猜线路。'
       + '用户指定 MiniMax/H3/海螺 H3 时直接使用 minimax-h3；指定万相/wan/wan3.0 时使用 wan-3.0；没有指定模型时使用普通对话工具栏当前选择。'
@@ -74,7 +86,7 @@ export const videoGenerateTool: Tool = {
         prompt: { type: 'string', description: `视频提示词。${VIDEO_PROMPT_DRAFTING_POLICY}只能引用本次实际传入的素材，图片/视频/音频编号按数组顺序排列。${PERFORMANCE_BRIEF}` },
         engine: {
           type: 'string',
-          description: '可选。省略时沿用普通对话底部选择的生视频模型。内置值：minimax-h3、seedance-2.0、seedance-2.0-fast、seedance-2.0-mini、seedance-2.5、wan-3.0；自定义视频插件用 custom-media:{插件id}（先 media_api_plugin list 查看）',
+          description: '可选。省略时沿用普通对话底部选择的生视频模型。内置值：minimax-h3、seedance-2.0、seedance-2.0-fast、seedance-2.0-mini、seedance-2.5、dreamina-seedance-2.0（即梦 CLI 2.0 直连）、dreamina-seedance-2.5（即梦 CLI 2.5 直连）、wan-3.0；自定义视频插件用 custom-media:{插件id}（先 media_api_plugin list 查看）',
         },
         image_urls: { type: 'array', items: { type: 'string' }, description: '参考图片路径或 URL；MiniMax H3 最多 9 张，万相 3.0 最多 10 张' },
         video_urls: { type: 'array', items: { type: 'string' }, description: '参考视频路径或 URL；MiniMax H3 最多 3 个，万相 3.0 最多 5 个' },
@@ -185,11 +197,13 @@ export const videoGenerateTool: Tool = {
     }
 
     const rawDuration = Number(params.duration ?? 5);
+    const isDreamina25Direct = normalized.engineId === DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID;
+    const isDreamina20Direct = normalized.engineId === DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID;
     const duration = normalized.engineId === 'minimax-hailuo-h3'
       ? Math.min(15, Math.max(5, Math.round(rawDuration || 5)))
       : normalized.engineId === 'wan-3.0'
         ? (rawDuration === -1 ? -1 : Math.min(30, Math.max(2, Math.round(rawDuration || 5))))
-        : Math.min(30, Math.max(4, Math.round(rawDuration || 5)));
+        : Math.min(isDreamina20Direct ? 15 : 30, Math.max(4, Math.round(rawDuration || 5)));
     const ratio = String(params.ratio ?? 'adaptive');
     const generationParams: Record<string, string | number | boolean> = normalized.engineId === 'minimax-hailuo-h3'
       ? { resolution: '2K', duration: String(duration), ratio }
@@ -205,6 +219,7 @@ export const videoGenerateTool: Tool = {
           duration: String(duration),
           ratio,
           generateAudio: params.generate_audio !== false,
+          ...(isDreamina20Direct || isDreamina25Direct ? { genMode: 'multimodal', verbatimPrompt: true } : {}),
           ...(params.video_edit === true && videoUrls.length > 0 ? { videoEdit: true } : {}),
         };
 

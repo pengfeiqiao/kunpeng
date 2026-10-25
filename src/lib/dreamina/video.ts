@@ -13,6 +13,15 @@ import {
   type DreaminaResponse,
 } from '@/lib/dreamina/image';
 import { PaidSubmissionUnknownError, PaidTaskCreatedError } from '@/lib/billingSafety';
+import type { DreaminaSeedanceVersion } from './videoContract';
+export {
+  DREAMINA_SEEDANCE_20_DIRECT_ENDPOINT,
+  DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID,
+  DREAMINA_SEEDANCE_25_DIRECT_ENDPOINT,
+  DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID,
+  DREAMINA_SEEDANCE_25_ENDPOINT,
+  DREAMINA_SEEDANCE_25_ENGINE_ID,
+} from './videoContract';
 
 interface DreaminaVideoItem {
   path?: string;
@@ -27,11 +36,10 @@ interface DreaminaVideoResponse extends DreaminaResponse {
   };
 }
 
-export const DREAMINA_SEEDANCE_25_ENGINE_ID = 'dreamina-seedance-2.5';
-export const DREAMINA_SEEDANCE_25_ENDPOINT = 'dreamina-cli/seedance-2.5';
-
 export interface DreaminaSeedance25Request {
   prompt: string;
+  /** Explicit canvas selection. Defaults to 2.5 for compatibility with existing callers. */
+  modelVersion?: DreaminaSeedanceVersion;
   imageUrls?: string[];
   videoUrls?: string[];
   audioUrls?: string[];
@@ -117,14 +125,11 @@ function normalizedRatio(value?: string): string {
   return ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].includes(ratio) ? ratio : '16:9';
 }
 
-function normalizedResolution(value?: string): string {
-  return String(value || '720p').toLowerCase() === '480p' ? '480p' : '720p';
-}
-
 async function queryUntilComplete(
   submitId: string,
   outputDir: string,
   request: Pick<DreaminaSeedance25Request, 'signal' | 'onProgress' | 'taskContext'>,
+  modelLabel: string,
 ): Promise<DreaminaVideoResponse> {
   const started = Date.now();
   const maxMs = 12 * 60_000;
@@ -140,9 +145,9 @@ async function queryUntilComplete(
     const status = String(response.gen_status || '').toLowerCase();
     if (status === 'success') return response;
     if (status === 'fail' || result.exit_code !== 0) {
-      throw new Error(responseError(response, combined || `即梦 Seedance 2.5 查询失败（${result.exit_code}）`));
+      throw new Error(responseError(response, combined || `即梦 ${modelLabel} 查询失败（${result.exit_code}）`));
     }
-    request.onProgress?.(`Seedance 2.5 生成中 · ${Math.round((Date.now() - started) / 1000)}s`);
+    request.onProgress?.(`${modelLabel} 生成中 · ${Math.round((Date.now() - started) / 1000)}s`);
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
   throw new DreaminaTaskPendingError(submitId);
@@ -189,18 +194,23 @@ export async function generateSeedance25WithDreamina(
   const images = request.imageUrls ?? [];
   const videos = request.videoUrls ?? [];
   const audios = request.audioUrls ?? [];
+  const modelVersion = request.modelVersion ?? 'seedance2.5';
+  const modelLabel = modelVersion === 'seedance2.5' ? 'Seedance 2.5' : 'Seedance 2.0';
   const genMode = normalizedGenMode(request.genMode);
   if (genMode === 'first-frame' && images.length < 1) {
-    throw new Error('Seedance 2.5 首帧模式需要 1 张首帧参考图，请在参考中加入图片');
+    throw new Error(`${modelLabel} 首帧模式需要 1 张首帧参考图，请在参考中加入图片`);
   }
   if (genMode === 'first-last-frame' && images.length < 2) {
-    throw new Error(`Seedance 2.5 首尾帧模式需要 2 张参考图（首帧 + 尾帧），当前只有 ${images.length} 张`);
+    throw new Error(`${modelLabel} 首尾帧模式需要 2 张参考图（首帧 + 尾帧），当前只有 ${images.length} 张`);
   }
   if (genMode === 'multimodal') {
-    if (images.length > 30) throw new Error(`Seedance 2.5 最多支持 30 张参考图，当前 ${images.length} 张`);
-    if (videos.length > 10) throw new Error(`Seedance 2.5 最多支持 10 个参考视频，当前 ${videos.length} 个`);
-    if (audios.length > 10) throw new Error(`Seedance 2.5 最多支持 10 个参考音频，当前 ${audios.length} 个`);
-    if (images.length + videos.length + audios.length > 50) throw new Error('Seedance 2.5 参考素材总数不能超过 50 个');
+    const limits = modelVersion === 'seedance2.5'
+      ? { images: 30, videos: 10, audios: 10, total: 50 }
+      : { images: 9, videos: 3, audios: 3, total: 12 };
+    if (images.length > limits.images) throw new Error(`${modelLabel} 最多支持 ${limits.images} 张参考图，当前 ${images.length} 张`);
+    if (videos.length > limits.videos) throw new Error(`${modelLabel} 最多支持 ${limits.videos} 个参考视频，当前 ${videos.length} 个`);
+    if (audios.length > limits.audios) throw new Error(`${modelLabel} 最多支持 ${limits.audios} 个参考音频，当前 ${audios.length} 个`);
+    if (images.length + videos.length + audios.length > limits.total) throw new Error(`${modelLabel} 参考素材总数不能超过 ${limits.total} 个`);
   }
 
   const materializedImages = await Promise.all(images.map((url, index) => materializeMedia(url, 'image', index, tempDir)));
@@ -211,34 +221,48 @@ export async function generateSeedance25WithDreamina(
     ? await Promise.all(audios.map((url, index) => materializeMedia(url, 'audio', index, tempDir)))
     : [];
   const allMaterialized = [...materializedImages, ...materializedVideos, ...materializedAudios];
-  const duration = Math.min(30, Math.max(4, Math.round(request.duration || 5)));
+  const duration = Math.min(modelVersion === 'seedance2.5' ? 30 : 15, Math.max(4, Math.round(request.duration || 5)));
+  const resolution = modelVersion === 'seedance2.5'
+    ? (['480p', '720p', '1080p'].includes(String(request.resolution).toLowerCase()) ? String(request.resolution).toLowerCase() : '720p')
+    : (['720p', '1080p', '4k'].includes(String(request.resolution).toLowerCase()) ? String(request.resolution).toLowerCase() : '720p');
+  const hasMultimodalInputs = materializedImages.length + materializedVideos.length + materializedAudios.length > 0;
   // seedance2.5 的 image2video/frames2video 输出跟随首帧，CLI 拒绝显式
   // --ratio（官方 1.4.18 起）。全能参考模式才传比例。
-  const args = genMode === 'first-frame'
+  const args = genMode === 'multimodal' && !hasMultimodalInputs
+    ? [
+      'text2video',
+      `--prompt=${request.prompt}`,
+      `--model_version=${modelVersion}`,
+      `--duration=${duration}`,
+      `--ratio=${normalizedRatio(request.ratio)}`,
+      `--video_resolution=${resolution}`,
+      '--poll=2',
+    ]
+    : genMode === 'first-frame'
     ? [
       'image2video',
       `--prompt=${request.prompt}`,
-      '--model_version=seedance2.5',
+      `--model_version=${modelVersion}`,
       `--duration=${duration}`,
-      `--video_resolution=${normalizedResolution(request.resolution)}`,
+      `--video_resolution=${resolution}`,
       '--poll=2',
     ]
     : genMode === 'first-last-frame'
       ? [
         'frames2video',
         `--prompt=${request.prompt}`,
-        '--model_version=seedance2.5',
+        `--model_version=${modelVersion}`,
         `--duration=${duration}`,
-        `--video_resolution=${normalizedResolution(request.resolution)}`,
+        `--video_resolution=${resolution}`,
         '--poll=2',
       ]
       : [
         'multimodal2video',
         `--prompt=${request.prompt}`,
-        '--model_version=seedance2.5',
+        `--model_version=${modelVersion}`,
         `--duration=${duration}`,
         `--ratio=${normalizedRatio(request.ratio)}`,
-        `--video_resolution=${normalizedResolution(request.resolution)}`,
+        `--video_resolution=${resolution}`,
         '--poll=2',
       ];
   if (genMode === 'first-frame') {
@@ -252,37 +276,37 @@ export async function generateSeedance25WithDreamina(
   }
 
   try {
-    request.onProgress?.('提交即梦 Seedance 2.5…');
+    request.onProgress?.(`提交即梦 ${modelLabel}…`);
     let submitted;
     try {
       submitted = await executeDreamina(args, { timeoutMs: 60_000, signal: request.signal });
     } catch (err) {
       if (request.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-      throw new PaidSubmissionUnknownError('即梦 Seedance 2.5', err instanceof Error ? err.message : String(err));
+      throw new PaidSubmissionUnknownError(`即梦 ${modelLabel}`, err instanceof Error ? err.message : String(err));
     }
     const combined = `${submitted.stdout}\n${submitted.stderr}`.trim();
     if (looksLikeLoginFailure(combined)) requestAgentLogin(combined, request.taskContext);
     if (/AigcComplianceConfirmationRequired/i.test(combined)) {
-      throw new Error('Seedance 2.5 首次使用需要先在即梦网页完成一次生成与合规确认');
+      throw new Error(`${modelLabel} 首次使用需要先在即梦网页完成一次生成与合规确认`);
     }
     const response = parseVideoResponse(submitted.stdout);
     if (submitted.exit_code !== 0 || String(response.gen_status).toLowerCase() === 'fail') {
-      throw new Error(responseError(response, combined || `即梦 Seedance 2.5 提交失败（${submitted.exit_code}）`));
+      throw new Error(responseError(response, combined || `即梦 ${modelLabel} 提交失败（${submitted.exit_code}）`));
     }
     const submitId = response.submit_id;
-    if (!submitId) throw new PaidSubmissionUnknownError('即梦 Seedance 2.5', `成功响应未返回 submit_id：${combined.slice(0, 300)}`);
+    if (!submitId) throw new PaidSubmissionUnknownError(`即梦 ${modelLabel}`, `成功响应未返回 submit_id：${combined.slice(0, 300)}`);
     request.onSubmitted?.(submitId);
     try {
       const completed = videoPaths(response).length > 0
         ? response
-        : await queryUntilComplete(submitId, outputDir, request);
+        : await queryUntilComplete(submitId, outputDir, request, modelLabel);
       const paths = videoPaths(completed);
       if (paths.length === 0) throw new Error('生成成功，但没有下载到本地视频');
       return { submitId, paths, urls: videoUrls(completed) };
     } catch (err) {
       if (err instanceof DreaminaTaskPendingError) throw err;
       if (err instanceof DOMException && err.name === 'AbortError') throw err;
-      throw new PaidTaskCreatedError('即梦 Seedance 2.5', submitId, err instanceof Error ? err.message : String(err));
+      throw new PaidTaskCreatedError(`即梦 ${modelLabel}`, submitId, err instanceof Error ? err.message : String(err));
     }
   } finally {
     allMaterialized.forEach((item) => {

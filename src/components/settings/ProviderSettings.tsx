@@ -74,7 +74,7 @@ const KNOWN_PROVIDERS: ProviderMeta[] = [
     docUrl: 'https://www.kimi.com/code/console',
     placeholder: '粘贴 Kimi Code API Key',
     defaultBaseUrl: 'https://api.kimi.com/coding/',
-    models: ['k3[1m]', 'k3'],
+    models: ['k3[1m]', 'k3', 'k3.1-pro-highspeed', 'k3.1-pro'],
   },
   // 通用 Anthropic 兼容渠道（MiniMax / Qwen / 豆包），元数据与
   // providers/anthropic.ts 的 ANTHROPIC_PRESETS 保持同源。

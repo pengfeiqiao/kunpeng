@@ -24,6 +24,8 @@ export const CHAT_MODELS: Record<string, ChatModelOption[]> = {
   kimi: [
     { value: 'k3[1m]', label: 'Kimi K3 1M', detail: '多模态与 1M 长上下文' },
     { value: 'k3', label: 'Kimi K3', detail: '多模态推理与 256K 上下文' },
+    { value: 'k3.1-pro-highspeed', label: 'Kimi K3.1 · 高速', detail: 'Pro 同等智能 · 约 3 倍速度 · 1M 上下文' },
+    { value: 'k3.1-pro', label: 'Kimi K3.1 Pro · 旗舰', detail: '最强能力 · 视觉/3D/编程 · 1M 上下文' },
   ],
   minimax: [
     { value: 'MiniMax-M3', label: 'MiniMax M3', detail: '旗舰 · 1M 上下文 · 多模态输入' },

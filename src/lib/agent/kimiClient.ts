@@ -10,7 +10,7 @@ import { agentLog } from './logger';
 export interface KimiK3Result {
   text: string;
   model: string;
-  label: 'Kimi K3';
+  label: string;
 }
 
 interface KimiConfig {
@@ -102,22 +102,28 @@ function statusError(label: string, status: number, data: unknown): Error & { st
   return error;
 }
 
+function isKimiK31(model: string): boolean {
+  return /^(?:kimi-)?k3\.1-pro(?:-highspeed)?$/i.test(model.trim());
+}
+
 async function anthropicChat(config: KimiConfig, messages: unknown[], extra: Record<string, unknown>): Promise<string> {
   const timeout = Math.max(30, Number(extra.timeout ?? 600));
   const requestExtra = { ...extra };
   delete requestExtra.timeout;
   delete requestExtra.response_format;
   const converted = toAnthropicMessages(messages);
-  const payload = {
+  const payload: Record<string, unknown> = {
     model: config.model,
     system: converted.system,
     messages: converted.messages,
     thinking: { type: 'enabled', effort: 'max' },
     max_tokens: 16_000,
-    temperature: 0.3,
     ...requestExtra,
     stream: false,
   };
+  // K3.1 has fixed sampling defaults. Do not inherit K3's creative sampling
+  // override; the official endpoint may reject unsupported values.
+  if (!isKimiK31(config.model) && payload.temperature === undefined) payload.temperature = 0.3;
   // 大请求体（识图 base64）走 curl 传输：Windows 上 tauriFetch 大 body 会
   // 被网关判为 invalid JSON request body（HTTP 400），curl 同 body 正常。
   if (JSON.stringify(payload).length > DEBUG_BODY_THRESHOLD) void dumpDebugBody('k3-anthropic-body', payload);
@@ -160,15 +166,15 @@ async function openAIChat(config: KimiConfig, messages: unknown[], extra: Record
   const timeout = Math.max(30, Number(extra.timeout ?? 600));
   const requestExtra = { ...extra };
   delete requestExtra.timeout;
-  const payload = {
+  const payload: Record<string, unknown> = {
     model: config.model,
     messages,
     reasoning_effort: 'max',
-    temperature: 0.3,
     max_tokens: 16_000,
     stream: false,
     ...requestExtra,
   };
+  if (!isKimiK31(config.model) && payload.temperature === undefined) payload.temperature = 0.3;
   if (JSON.stringify(payload).length > DEBUG_BODY_THRESHOLD) void dumpDebugBody('k3-openai-body', payload);
   if (JSON.stringify(payload).length > CURL_TRANSPORT_THRESHOLD) {
     agentLog.warn('Kimi K3', `请求体超过 ${CURL_TRANSPORT_THRESHOLD / 1024}KB，改走 curl 传输（OpenAI 备用）`);

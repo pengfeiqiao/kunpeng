@@ -16,6 +16,18 @@ const MODELS: ModelDef[] = [
     contextWindow: 262_144,
     supportsTools: true,
   },
+  {
+    id: 'k3.1-pro-highspeed',
+    displayName: 'Kimi K3.1 · 高速',
+    contextWindow: 1_048_576,
+    supportsTools: true,
+  },
+  {
+    id: 'k3.1-pro',
+    displayName: 'Kimi K3.1 Pro · 旗舰',
+    contextWindow: 1_048_576,
+    supportsTools: true,
+  },
 ];
 
 export interface KimiConfig {

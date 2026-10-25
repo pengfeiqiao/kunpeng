@@ -27,7 +27,11 @@ import {
   queryDreaminaSeedreamTask,
 } from '@/lib/dreamina/image';
 import {
+  DREAMINA_SEEDANCE_20_DIRECT_ENDPOINT,
+  DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID,
   DREAMINA_SEEDANCE_25_ENDPOINT,
+  DREAMINA_SEEDANCE_25_DIRECT_ENDPOINT,
+  DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID,
   queryDreaminaSeedance25Task,
 } from '@/lib/dreamina/video';
 import {
@@ -99,7 +103,8 @@ function isDreaminaSeedance25Task(task: CanvasTask): boolean {
   // 2.5 默认走筷子丽帧：engineId 仍是 dreamina-seedance-2.5，但 endpoint/label
   // 是筷子的任务必须用筷子通道恢复（rhTaskId 是筷子 task_id）
   if (isKuaiziTask(task)) return false;
-  return task.endpoint === DREAMINA_SEEDANCE_25_ENDPOINT || task.engineId === 'dreamina-seedance-2.5';
+  return [DREAMINA_SEEDANCE_25_ENDPOINT, DREAMINA_SEEDANCE_20_DIRECT_ENDPOINT, DREAMINA_SEEDANCE_25_DIRECT_ENDPOINT].includes(task.endpoint)
+    || ['dreamina-seedance-2.5', DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID, DREAMINA_SEEDANCE_25_DIRECT_ENGINE_ID].includes(task.engineId);
 }
 
 /** 跨项目隔离：任务属于别的项目时，一切回填/恢复动作跳过 */
@@ -412,6 +417,7 @@ async function recoverOne(task: CanvasTask): Promise<void> {
   }
 
   if (isDreaminaSeedance25Task(task)) {
+    const modelLabel = task.engineId === DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID ? 'Seedance 2.0' : 'Seedance 2.5';
     try {
       const response = await queryDreaminaSeedance25Task(task.rhTaskId, {
         taskContext: [
@@ -425,11 +431,11 @@ async function recoverOne(task: CanvasTask): Promise<void> {
         return;
       }
       if (response.status === 'failed') {
-        throw new RhtvBusinessError('task_failed', response.error || 'Seedance 2.5 任务失败');
+        throw new RhtvBusinessError('task_failed', response.error || `${modelLabel} 任务失败`);
       }
       useCanvasTaskStore.getState().updateTask(task.id, {
         status: 'running',
-        progress: `Seedance 2.5 后台恢复轮询 · ${Math.round((Date.now() - task.createdAt) / 1000)}s`,
+        progress: `${modelLabel} 后台恢复轮询 · ${Math.round((Date.now() - task.createdAt) / 1000)}s`,
         recoveryAttempts: 0,
       });
       return;
