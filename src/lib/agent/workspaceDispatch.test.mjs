@@ -481,6 +481,7 @@ const { AgentCoordinator } = load('./coordinator.ts', {
   './completionGuard': { terminalToolResults: () => [] },
   '../projectObjects/generationDraft': { shouldOfferToolConfirmation },
   './transientNoticeQueue': { TransientNoticeQueue: class { addOnce() {} endRun() {} takeForRequest() { return []; } } },
+  './projectWorkflowContext': { loadProjectWorkflowContext: async () => '' },
 });
 
 test('real coordinator tool-call loop routes every call through the same enforced registry', async () => {
