@@ -148,3 +148,79 @@ test('stream-json emits task lifecycle and timeout never resubmits paid tool', a
     assert.equal(submissions, 1);
   });
 });
+
+async function withQueue(run) {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'kunpeng-queue-test-'));
+  for (const name of ['inbox', 'processing', 'results', 'cancel']) {
+    await fs.promises.mkdir(path.join(root, name), { recursive: true });
+  }
+  try { return await run(root); }
+  finally { await fs.promises.rm(root, { recursive: true, force: true }); }
+}
+
+async function waitFor(check, description) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const value = await check();
+    if (value) return value;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`timeout waiting for ${description}`);
+}
+
+test('queue transport submits agent task without cli.json or local TCP', async () => {
+  await withQueue(async (root) => {
+    const pending = runCli(path.join(root, 'missing-cli.json'), ['task', '云端任务', '--session', 'cloud-01', '--queue', root, '--json']);
+    const file = await waitFor(() => {
+      const files = fs.readdirSync(path.join(root, 'inbox')).filter((name) => name.endsWith('.json'));
+      return files[0] ? path.join(root, 'inbox', files[0]) : null;
+    }, 'queue task');
+    const request = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.equal(request.type, 'run_task');
+    assert.equal(request.prompt, '云端任务');
+    assert.equal(request.session, 'cloud-01');
+    assert.equal(request.autoApprove, false);
+    fs.renameSync(file, path.join(root, 'processing', `${request.requestId}.json`));
+    fs.writeFileSync(path.join(root, 'results', `${request.requestId}.json`), JSON.stringify({ type: 'task_result', requestId: request.requestId, ok: true, text: '队列完成' }));
+    const result = await pending;
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).text, '队列完成');
+  });
+});
+
+test('queue direct generation streams events and timeout writes one cancel without replay', async () => {
+  await withQueue(async (root) => {
+    const pending = runCli(path.join(root, 'missing-cli.json'), ['image', '远程生图', '--queue', root, '--timeout', '1', '--stream-json']);
+    const file = await waitFor(() => {
+      const files = fs.readdirSync(path.join(root, 'inbox')).filter((name) => name.endsWith('.json'));
+      return files[0] ? path.join(root, 'inbox', files[0]) : null;
+    }, 'direct queue task');
+    const request = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.equal(request.type, 'run_tool');
+    assert.equal(request.name, 'image_generate');
+    fs.renameSync(file, path.join(root, 'processing', `${request.requestId}.json`));
+    fs.writeFileSync(path.join(root, 'results', `${request.requestId}.events.ndjson`), `${JSON.stringify({ type: 'task_event', requestId: request.requestId, event: { type: 'status', status: 'running' } })}\n`);
+    await waitFor(() => fs.existsSync(path.join(root, 'cancel', `${request.requestId}.json`)), 'queue cancel');
+    fs.writeFileSync(path.join(root, 'results', `${request.requestId}.json`), JSON.stringify({ type: 'task_result', requestId: request.requestId, ok: false, error: '已取消' }));
+    const result = await pending;
+    assert.equal(result.code, 3, result.stderr);
+    const events = result.stdout.trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(events[0].type, 'task_started');
+    assert.equal(events.at(-1).type, 'result');
+    assert.equal(fs.readdirSync(path.join(root, 'inbox')).filter((name) => name.endsWith('.json')).length, 0);
+  });
+});
+
+test('queue status reads heartbeat and queue counts without credentials', async () => {
+  await withQueue(async (root) => {
+    fs.writeFileSync(path.join(root, 'status.json'), JSON.stringify({ type: 'status', ready: true, version: 'test', updatedAt: new Date().toISOString() }));
+    fs.writeFileSync(path.join(root, 'inbox', 'queued.json'), '{}');
+    fs.writeFileSync(path.join(root, 'processing', 'running.json'), '{}');
+    const result = await runCli(path.join(root, 'missing-cli.json'), ['status', '--queue', root, '--json']);
+    assert.equal(result.code, 0, result.stderr);
+    const status = JSON.parse(result.stdout);
+    assert.equal(status.online, true);
+    assert.equal(status.activeTasks, 1);
+    assert.equal(status.queuedTasks, 1);
+  });
+});

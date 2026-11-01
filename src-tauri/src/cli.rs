@@ -437,7 +437,252 @@ async fn handle_connection(
     Ok(())
 }
 
+fn cli_queue_dir() -> Option<PathBuf> {
+    if let Some(root) = std::env::var_os("KUNPENG_QUEUE_DIR") {
+        if !root.is_empty() {
+            return Some(PathBuf::from(root));
+        }
+    }
+    dirs::home_dir().map(|home| home.join(".kunpeng").join("queue"))
+}
+
+fn queue_valid_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+}
+
+fn queue_atomic_write(path: &Path, contents: &str) -> Result<(), String> {
+    let temp = path.with_extension(format!("tmp-{}", random_token(12)));
+    crate::commands::write_file_private(&temp, contents)?;
+    #[cfg(target_os = "windows")]
+    if path.exists() {
+        let _ = std::fs::remove_file(path);
+    }
+    std::fs::rename(&temp, path).map_err(|error| format!("发布队列文件失败: {}", error))
+}
+
+fn queue_write_error(request_id: &str, error: &str) -> Result<(), String> {
+    let Some(root) = cli_queue_dir() else { return Ok(()); };
+    let result = json!({
+        "type": "task_result",
+        "requestId": request_id,
+        "ok": false,
+        "error": error,
+        "completedAt": chrono::Utc::now().to_rfc3339(),
+    });
+    queue_atomic_write(&root.join("results").join(format!("{}.json", request_id)), &result.to_string())
+}
+
+fn queue_write_response(response: &CliTaskResponse) -> Result<(), String> {
+    let Some(root) = cli_queue_dir() else { return Ok(()); };
+    let result = json!({
+        "type": "task_result",
+        "requestId": response.request_id,
+        "ok": response.ok,
+        "text": response.text,
+        "error": response.error,
+        "runId": response.run_id,
+        "session": response.session,
+        "data": response.data,
+        "completedAt": chrono::Utc::now().to_rfc3339(),
+    });
+    queue_atomic_write(&root.join("results").join(format!("{}.json", response.request_id)), &result.to_string())
+}
+
+fn queue_append_event(request_id: &str, event: &Value) -> Result<(), String> {
+    let Some(root) = cli_queue_dir() else { return Ok(()); };
+    let path = root.join("results").join(format!("{}.events.ndjson", request_id));
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| format!("创建队列结果目录失败: {}", error))?;
+    }
+    let line = json!({"type": "task_event", "requestId": request_id, "event": event});
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    use std::io::Write;
+    let mut file = options.open(&path).map_err(|error| format!("写入队列事件失败: {}", error))?;
+    file.write_all(format!("{}\n", line).as_bytes())
+        .map_err(|error| format!("写入队列事件失败: {}", error))
+}
+
+fn queue_heartbeat(app: &tauri::AppHandle, ready: bool) {
+    let Some(root) = cli_queue_dir() else { return; };
+    let status = json!({
+        "type": "status",
+        "ok": true,
+        "ready": ready,
+        "queue": true,
+        "version": app.package_info().version.to_string(),
+        "updatedAt": chrono::Utc::now().to_rfc3339(),
+    });
+    let _ = queue_atomic_write(&root.join("status.json"), &status.to_string());
+}
+
+fn queue_recover_processing() {
+    let Some(root) = cli_queue_dir() else { return; };
+    let Ok(entries) = std::fs::read_dir(root.join("processing")) else { return; };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(request_id) = path.file_stem().and_then(|value| value.to_str()).map(str::to_string) else { continue; };
+        if !queue_valid_id(&request_id) {
+            let _ = std::fs::remove_file(path);
+            continue;
+        }
+        // A processing file means the previous app exited after accepting the
+        // task. Its tools may already have charged or produced artifacts, so
+        // recovery is fail-closed and never automatically replays the request.
+        let _ = queue_write_error(&request_id, "鲲鹏退出时任务仍在执行，结果未知；未自动重放，请核对任务记录和产物后再决定。");
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+fn queue_process_inbox(app: &tauri::AppHandle) {
+    let Some(root) = cli_queue_dir() else { return; };
+    let Ok(entries) = std::fs::read_dir(root.join("inbox")) else { return; };
+    let mut paths = entries.flatten().map(|entry| entry.path()).collect::<Vec<_>>();
+    paths.sort();
+    for path in paths {
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(request_id) = path.file_stem().and_then(|value| value.to_str()).map(str::to_string) else { continue; };
+        if !queue_valid_id(&request_id) {
+            let _ = std::fs::remove_file(path);
+            continue;
+        }
+        let processing = root.join("processing").join(format!("{}.json", request_id));
+        if std::fs::rename(&path, &processing).is_err() {
+            continue;
+        }
+        let message = std::fs::read_to_string(&processing)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<CliMessage>(&raw).ok());
+        let Some(message) = message else {
+            let _ = queue_write_error(&request_id, "队列任务格式无效，未执行。");
+            let _ = std::fs::remove_file(processing);
+            continue;
+        };
+        if message.request_id.as_deref() != Some(request_id.as_str()) {
+            let _ = queue_write_error(&request_id, "队列 requestId 与文件名不一致，未执行。");
+            let _ = std::fs::remove_file(processing);
+            continue;
+        }
+        let connection_id = "queue".to_string();
+        let emit_result = match message.kind.as_str() {
+            "run_task" => {
+                let prompt = message.prompt.unwrap_or_default().trim().to_string();
+                if prompt.is_empty() || prompt.len() > 256_000 {
+                    let _ = queue_write_error(&request_id, "prompt 为空或超过安全上限，未执行。");
+                    let _ = std::fs::remove_file(processing);
+                    continue;
+                }
+                app.emit_all(
+                    "cli-task-request",
+                    json!({
+                        "connectionId": connection_id,
+                        "requestId": request_id,
+                        "prompt": prompt,
+                        "session": normalized_session(message.session),
+                        "autoApprove": message.auto_approve.unwrap_or(false),
+                        "maxTurns": message.max_turns.unwrap_or(30).clamp(1, 50),
+                    }),
+                )
+            }
+            "run_tool" => {
+                let name = match direct_tool_name(message.name) {
+                    Ok(name) => name,
+                    Err(error) => {
+                        let _ = queue_write_error(&request_id, &error);
+                        let _ = std::fs::remove_file(processing);
+                        continue;
+                    }
+                };
+                let params = message.params.unwrap_or_else(|| json!({}));
+                if !params.is_object() {
+                    let _ = queue_write_error(&request_id, "直连工具 params 必须是 JSON 对象。");
+                    let _ = std::fs::remove_file(processing);
+                    continue;
+                }
+                app.emit_all(
+                    "cli-tool-request",
+                    json!({
+                        "connectionId": connection_id,
+                        "requestId": request_id,
+                        "session": format!("direct:{}", name),
+                        "name": name,
+                        "params": params,
+                    }),
+                )
+            }
+            _ => {
+                let _ = queue_write_error(&request_id, "未知队列任务类型，未执行。");
+                let _ = std::fs::remove_file(processing);
+                continue;
+            }
+        };
+        if let Err(error) = emit_result {
+            let _ = queue_write_error(&request_id, &format!("队列任务投递失败: {}", error));
+            let _ = std::fs::remove_file(processing);
+        }
+    }
+}
+
+fn queue_process_cancel(app: &tauri::AppHandle) {
+    let Some(root) = cli_queue_dir() else { return; };
+    let Ok(entries) = std::fs::read_dir(root.join("cancel")) else { return; };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(request_id) = path.file_stem().and_then(|value| value.to_str()).map(str::to_string) else { continue; };
+        if queue_valid_id(&request_id) {
+            emit_cancel(app, "queue", &request_id, "用户通过远程队列请求停止");
+        }
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+fn start_queue(app: &tauri::AppHandle) {
+    let inner = app.state::<CliState>().inner.clone();
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(root) = cli_queue_dir() else { return; };
+        for directory in ["inbox", "processing", "results", "cancel"] {
+            if let Err(error) = std::fs::create_dir_all(root.join(directory)) {
+                eprintln!("[cli-queue] directory init failed: {}", error);
+                return;
+            }
+        }
+        queue_recover_processing();
+        let mut heartbeat_ticks = 0u64;
+        loop {
+            let ready = inner.ready.load(Ordering::Acquire);
+            // Polling stays responsive, while shared-drive heartbeat writes are
+            // limited to once every three seconds instead of twice per second.
+            if heartbeat_ticks % 6 == 0 {
+                queue_heartbeat(&app, ready);
+            }
+            heartbeat_ticks = heartbeat_ticks.wrapping_add(1);
+            if ready {
+                queue_process_inbox(&app);
+                queue_process_cancel(&app);
+            }
+            sleep(Duration::from_millis(500)).await;
+        }
+    });
+}
+
 pub fn start(app: &tauri::AppHandle) {
+    start_queue(app);
     let inner = app.state::<CliState>().inner.clone();
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -499,6 +744,12 @@ pub async fn cli_task_event(
     request_id: String,
     event: Value,
 ) -> Result<(), String> {
+    if connection_id == "queue" {
+        if !queue_valid_id(&request_id) {
+            return Err("队列 requestId 无效".into());
+        }
+        return queue_append_event(&request_id, &event);
+    }
     let pending = state.inner.pending.lock().await;
     let task = pending.get(&request_id).ok_or_else(|| "CLI 任务已结束".to_string())?;
     if task.connection_id != connection_id {
@@ -512,6 +763,16 @@ pub async fn cli_task_respond(
     state: tauri::State<'_, CliState>,
     response: CliTaskResponse,
 ) -> Result<(), String> {
+    if response.connection_id == "queue" {
+        if !queue_valid_id(&response.request_id) {
+            return Err("队列 requestId 无效".into());
+        }
+        queue_write_response(&response)?;
+        if let Some(root) = cli_queue_dir() {
+            let _ = std::fs::remove_file(root.join("processing").join(format!("{}.json", response.request_id)));
+        }
+        return Ok(());
+    }
     let pending = {
         let mut tasks = state.inner.pending.lock().await;
         let task = tasks.get(&response.request_id).ok_or_else(|| "CLI 任务已结束".to_string())?;
@@ -597,6 +858,7 @@ exit /b 1
 pub async fn shutdown(app: &tauri::AppHandle) {
     let inner = app.state::<CliState>().inner.clone();
     inner.ready.store(false, Ordering::Release);
+    queue_heartbeat(app, false);
     let tasks = {
         let mut pending = inner.pending.lock().await;
         pending.drain().map(|(id, task)| (id, task.connection_id)).collect::<Vec<_>>()

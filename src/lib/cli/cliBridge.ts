@@ -446,6 +446,9 @@ async function executeDirectTool(request: CliToolRequest, task: ActiveTask): Pro
         tool: request.name,
         generatedImages: result.generatedImages ?? [],
         paidSubmissionState: result.paidSubmissionState,
+        artifactAccess: 'local_only',
+        artifacts: (result.generatedImages ?? []).map((path) => ({ path, access: 'local_only' })),
+        artifactNotice: '成品文件仍在本机；云端结果仅含元数据，本机绝对路径不可直接访问。',
       },
     });
   } catch (error) {

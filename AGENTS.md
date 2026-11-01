@@ -33,6 +33,6 @@
 - `src/lib/credentials.ts` — API 凭证注册表（key 单一事实源）
 - `dsh-runtime/` — DeepSeek Harness 运行时（vendored，含 ACP host 与 MCP 工具桥）
 - `src-tauri/src/dsh.rs` — DSH 进程生命周期/工具桥 Rust 侧
-- `src-tauri/src/cli.rs` + `src/lib/cli/cliBridge.ts` — 本地认证 CLI 控制通道；Agent 任务与生成直连都必须保留付费幂等/取消边界
+- `src-tauri/src/cli.rs` + `src/lib/cli/cliBridge.ts` — 本地认证 CLI 控制通道与 `~/.kunpeng/queue/` 远程队列；Agent 任务与生成直连都必须保留付费幂等/取消/中断不重放边界
 - `cli/kunpeng.mjs` — 零依赖 CLI 客户端；接入说明在 `cli/README.md`
 - `src/components/wizard/` — 新手引导（唯一使用浅色设置页视觉的浮层）

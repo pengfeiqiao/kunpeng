@@ -13,7 +13,44 @@ kunpeng status
 
 默认安装到 `~/.local/bin/kunpeng`；Windows 安装到 `~/.kunpeng/bin/kunpeng.cmd`。如果终端找不到命令，请把对应目录加入 PATH。
 
-CLI 只连接 `127.0.0.1`。鲲鹏每次启动会生成新的随机端口和令牌，写入仅当前用户可读的 `~/.kunpeng/cli.json`。不要把该文件发给他人，也不要把令牌写进日志、命令参数或提示词。
+本机 CLI 只连接 `127.0.0.1`。鲲鹏每次启动会生成新的随机端口和令牌，写入仅当前用户可读的 `~/.kunpeng/cli.json`。不要把该文件发给他人，也不要把令牌写进日志、命令参数或提示词。
+
+## 远程队列（云电脑 / 共享目录）
+
+云电脑不需要 `cli.json`、本机端口或供应商密钥。让云电脑与运行鲲鹏的电脑共享同一个任务目录（共享磁盘、同步目录或受控文件同步均可），然后给原命令添加 `--queue`：
+
+```bash
+# 云端查看本机执行桥是否在线
+kunpeng status --queue /shared/kunpeng-queue --json
+
+# 云端投递 Agent 任务并等待本机结果
+kunpeng task "整理当前项目" --session cloud-film --queue /shared/kunpeng-queue --json
+
+# 云端直接调用本机生图/生视频渠道
+kunpeng image "雨夜老街，电影感" --queue /shared/kunpeng-queue --json
+kunpeng video "镜头缓慢推进" --queue /shared/kunpeng-queue --json
+
+# 画布与工坊同样使用队列
+kunpeng canvas "生成画面" --node <节点ID> --model gpt-image-2.5 --queue /shared/kunpeng-queue --json
+kunpeng workshop --kind image --targets 01-01 --queue /shared/kunpeng-queue --json
+
+# 停止任务
+kunpeng cancel <requestId> --queue /shared/kunpeng-queue
+```
+
+云端也可用 `KUNPENG_QUEUE_DIR=/shared/kunpeng-queue` 代替每次传 `--queue`。本机默认消费 `~/.kunpeng/queue/`，启动鲲鹏前设置同名环境变量可改用其他根目录：
+
+```bash
+KUNPENG_QUEUE_DIR=/shared/kunpeng-queue /Applications/鲲鹏.app/Contents/MacOS/鲲鹏
+```
+
+云端队列目录必须与本机队列根目录指向同一共享内容。目录结构为 `inbox/`（新任务）、`processing/`（执行中）、`results/`（结果与进度）、`cancel/`（停止请求）和 `status.json`（心跳，每 3 秒一次，避免高频刷同步盘）。
+
+- 投递使用临时文件原子发布，鲲鹏先把任务移入 `processing/` 再执行，避免重复消费。
+- 断网时任务可以留在队列，心跳恢复后消费；`--stream-json` 可读取本机写入的进度事件。
+- 如果鲲鹏在执行中退出，恢复时只标记“结果未知”，**不会自动重放任务或付费生成**。
+- 生成结果的 `data.artifactAccess` 为 `local_only`：成品文件仍在本机，云端只接收元数据，本机绝对路径不可直接访问；不会把本地路径伪装成可下载 URL。
+- 当前远程方案是文件队列，不开放公网端口，也未启用隧道。共享目录本身必须配置正确的访问权限；不要把供应商密钥、`cli.json` 或整个 `.kunpeng` 目录同步到云端。
 
 ## 1. 交给鲲鹏 Agent 执行任务
 

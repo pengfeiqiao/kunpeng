@@ -46,10 +46,11 @@ Agent 任务选项:
   --json                      完成后输出一个 JSON 对象
   --stream-json               输出 NDJSON 进度事件和最终结果
   --output-last-message <路径> 将最终文本写入文件
+  --queue <共享目录>          改用远程队列，不连接 127.0.0.1
   --timeout <秒>              直连生成默认 3600 秒
 
 退出码: 0=成功，1=连接或运行错误，2=任务失败，3=超时，130=用户中止。
-鲲鹏必须保持运行。连接令牌只从 ~/.kunpeng/cli.json 读取，不会打印。`;
+本机模式从 ~/.kunpeng/cli.json 读取连接令牌且不会打印；队列模式无需密钥。`;
 }
 
 function parseArgs(args) {
@@ -74,6 +75,7 @@ function parseArgs(args) {
       case '--stream-json': options.streamJson = true; break;
       case '--always-approve': options.autoApprove = true; break;
       case '--session': options.session = take(arg, i); i += 1; break;
+      case '--queue': options.queue = take(arg, i); i += 1; break;
       case '--timeout': options.timeout = Number(take(arg, i)); i += 1; break;
       case '--max-turns': options.maxTurns = Number(take(arg, i)); i += 1; break;
       case '--params': options.params = take(arg, i); i += 1; break;
@@ -98,6 +100,7 @@ function parseArgs(args) {
   if (options.maxTurns !== undefined && (!Number.isInteger(options.maxTurns) || options.maxTurns < 1 || options.maxTurns > 50)) {
     throw new Error('--max-turns 必须是 1-50 的整数');
   }
+  options.queue ||= process.env.KUNPENG_QUEUE_DIR || '';
   return { options, positional };
 }
 
@@ -196,6 +199,121 @@ async function saveLastMessage(options, result) {
   await fs.promises.writeFile(target, result.text || '', 'utf8');
 }
 
+function queueDirectory(root) {
+  const resolved = path.resolve(root);
+  for (const name of ['inbox', 'processing', 'results', 'cancel']) {
+    fs.mkdirSync(path.join(resolved, name), { recursive: true });
+  }
+  return resolved;
+}
+
+function queueAtomicJson(file, value) {
+  const temp = `${file}.${crypto.randomUUID()}.tmp`;
+  fs.writeFileSync(temp, JSON.stringify(value), { mode: 0o600 });
+  fs.renameSync(temp, file);
+}
+
+function queueReadJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch { return null; }
+}
+
+function queueSleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runQueueTask(request, options) {
+  const root = queueDirectory(options.queue);
+  const requestId = request.requestId;
+  const input = request.directName
+    ? { type: 'run_tool', requestId, name: request.directName, params: request.params }
+    : {
+        type: 'run_task', requestId, prompt: request.prompt, session: options.session,
+        autoApprove: options.autoApprove, maxTurns: options.maxTurns,
+      };
+  queueAtomicJson(path.join(root, 'inbox', `${requestId}.json`), input);
+  printJson({ type: 'task_started', requestId, session: request.directName ? `direct:${request.directName}` : options.session, queue: true }, options.streamJson);
+
+  const timeoutMs = (options.timeout ?? (request.directName ? 3600 : 600)) * 1000;
+  const deadline = Date.now() + timeoutMs;
+  let interrupted = false;
+  let timedOut = false;
+  let cancelDeadline = 0;
+  let eventOffset = 0;
+  const eventsPath = path.join(root, 'results', `${requestId}.events.ndjson`);
+  const resultPath = path.join(root, 'results', `${requestId}.json`);
+  const cancel = () => {
+    queueAtomicJson(path.join(root, 'cancel', `${requestId}.json`), { type: 'cancel_task', requestId });
+    cancelDeadline = Date.now() + 5000;
+  };
+  const onSigint = () => {
+    if (!interrupted) cancel();
+    interrupted = true;
+  };
+  process.once('SIGINT', onSigint);
+  try {
+    while (true) {
+      if (options.streamJson && fs.existsSync(eventsPath)) {
+        const lines = fs.readFileSync(eventsPath, 'utf8').split('\n');
+        const complete = lines.at(-1) === '';
+        const available = complete ? lines.slice(0, -1) : lines.slice(0, -2);
+        for (const line of available.slice(eventOffset)) {
+          const message = JSON.parse(line);
+          printJson({ type: message.event?.type || 'progress', requestId, ...message.event }, true);
+        }
+        eventOffset = available.length;
+      }
+      const result = queueReadJson(resultPath);
+      if (result?.type === 'task_result' && result.requestId === requestId) {
+        printJson({ ...result, type: 'result' }, options.streamJson);
+        if (options.json && !options.streamJson) process.stdout.write(`${JSON.stringify(result)}\n`);
+        else if (!options.streamJson && result.ok) process.stdout.write(`${result.text || ''}\n`);
+        await saveLastMessage(options, result);
+        if (interrupted) return 130;
+        if (timedOut) return 3;
+        if (!result.ok) {
+          if (!options.json && !options.streamJson) process.stderr.write(`${result.error || '任务失败'}\n`);
+          return 2;
+        }
+        return 0;
+      }
+      if ((interrupted || timedOut) && Date.now() >= cancelDeadline) return interrupted ? 130 : 3;
+      if (!interrupted && !timedOut && Date.now() >= deadline) {
+        timedOut = true;
+        cancel();
+      }
+      await queueSleep(300);
+    }
+  } finally {
+    process.removeListener('SIGINT', onSigint);
+  }
+}
+
+async function queueStatus(options) {
+  const root = queueDirectory(options.queue);
+  const heartbeat = queueReadJson(path.join(root, 'status.json'));
+  const heartbeatTime = heartbeat?.updatedAt ? Date.parse(heartbeat.updatedAt) : 0;
+  const online = Boolean(heartbeatTime && Date.now() - heartbeatTime < 15_000);
+  const count = (name) => fs.readdirSync(path.join(root, name)).filter((file) => file.endsWith('.json')).length;
+  const result = {
+    type: 'status', ok: true, queue: true, online,
+    ready: Boolean(online && heartbeat?.ready),
+    activeTasks: count('processing'), queuedTasks: count('inbox'),
+    version: heartbeat?.version || null,
+  };
+  if (options.json || options.streamJson) process.stdout.write(`${JSON.stringify(result)}\n`);
+  else process.stdout.write(`鲲鹏远程队列${result.online ? '在线' : '离线'}\n执行桥: ${result.ready ? '就绪' : '未就绪'}\n运行中: ${result.activeTasks}\n排队中: ${result.queuedTasks}\n`);
+  return 0;
+}
+
+async function queueCancel(requestId, options) {
+  if (!requestId) throw new Error('请提供要停止的 requestId');
+  const root = queueDirectory(options.queue);
+  queueAtomicJson(path.join(root, 'cancel', `${requestId}.json`), { type: 'cancel_task', requestId });
+  process.stdout.write(`已向远程队列请求停止任务 ${requestId}\n`);
+  return 0;
+}
+
 async function runTask(command, options, positional) {
   const prompt = positional.join(' ').trim();
   let params = {};
@@ -238,6 +356,7 @@ async function runTask(command, options, positional) {
   }
 
   const requestId = crypto.randomUUID();
+  if (options.queue) return runQueueTask({ requestId, directName, prompt, params }, options);
   const connection = await CliConnection.open();
   const timeoutMs = (options.timeout ?? (direct ? 3600 : 600)) * 1000;
   let timedOut = false;
@@ -301,6 +420,7 @@ async function runTask(command, options, positional) {
 }
 
 async function status(options) {
+  if (options.queue) return queueStatus(options);
   const connection = await CliConnection.open();
   try {
     const requestId = crypto.randomUUID();
@@ -315,7 +435,8 @@ async function status(options) {
   } finally { connection.close(); }
 }
 
-async function cancelTask(requestId) {
+async function cancelTask(requestId, options) {
+  if (options.queue) return queueCancel(requestId, options);
   if (!requestId) throw new Error('请提供要停止的 requestId');
   const connection = await CliConnection.open();
   try {
@@ -366,7 +487,7 @@ async function main() {
   if (options.help) { process.stdout.write(`${usage()}\n`); return 0; }
   if (command === 'status') return status(options);
   if (['task', 'exec', 'image', 'video', 'canvas', 'workshop'].includes(command)) return runTask(command, options, positional);
-  if (command === 'cancel') return cancelTask(positional[0]);
+  if (command === 'cancel') return cancelTask(positional[0], options);
   if (command === 'install') return install();
   throw new Error(`未知命令: ${command}\n\n${usage()}`);
 }
