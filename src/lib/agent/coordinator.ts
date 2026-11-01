@@ -1,3 +1,4 @@
+import { loadProjectWorkflowContext } from './projectWorkflowContext';
 import type { ToolResult } from './types';
 import { ToolExposure } from './toolExposure';
 import { messageBudget, toolSchemaTokens } from './requestBudget';
@@ -359,6 +360,8 @@ export class AgentCoordinator {
   }> {
     this.refreshScopedSkills(userInput);
     const additions: string[] = [];
+    const projectWorkflow = await loadProjectWorkflowContext(this.config.cwd, userInput);
+    if (projectWorkflow) additions.push(projectWorkflow);
     const craftContext = buildReferenceCraftTurnContext(userInput);
     if (craftContext) additions.push(craftContext);
     const editorialContext = buildEditorialJudgmentTurnContext(userInput);
@@ -541,6 +544,9 @@ export class AgentCoordinator {
       });
       const speechRoutingNotice = buildDoubaoSpeechRoutingNotice(userInput);
       if (speechRoutingNotice) this.transientNotices.addOnce(speechRoutingNotice);
+
+      const projectWorkflow = await loadProjectWorkflowContext(this.config.cwd, userInput);
+      if (projectWorkflow) this.transientNotices.addOnce(projectWorkflow);
 
       // Tier 2.3: pick 3-4 memories relevant to this user turn and inject
       // them as a transient addendum on the outbound request only. They are

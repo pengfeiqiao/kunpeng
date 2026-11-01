@@ -1,5 +1,5 @@
 import type { Tool } from '../types';
-import { copyFile } from '@tauri-apps/api/fs';
+import { copyFile, createDir } from '@tauri-apps/api/fs';
 import { loadMediaInput } from '@/lib/agent/mediaInput';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { runGeneration, abortCanvasTask, type CoreGenRequest } from '@/lib/canvasGen';
@@ -79,7 +79,7 @@ export const imageGenerateTool: Tool = {
         style_weight: { type: 'number', description: '可选 MJ 风格参考权重 0-1000。通常由风格预设自动决定。' },
         image_weight: { type: 'number', description: '可选 MJ 主体参考图权重 0-3。主体必须保持时可提高，纯风格母图时由预设控制。' },
         inspect_result: { type: 'boolean', description: '仅在需要核验画面或继续视觉编辑时设为 true；默认直接返回本地成品，避免重复上传成品给语言模型。' },
-        output_path: { type: 'string', description: '可选的绝对输出路径' },
+        output_path: { type: 'string', description: '可选的绝对文件路径；首张按此保存，多张候选追加 _2、_3 等序号。归档失败返回原始路径和原因，不重新生成。' },
       },
       required: ['prompt'],
     },
@@ -92,6 +92,32 @@ export const imageGenerateTool: Tool = {
   },
   async execute(params, signal) {
     if (signal?.aborted) return { success: false, output: '', error: '已中止，未提交。', paidSubmissionState: 'not_submitted' };
+    const requestedOutput = String(params.output_path || '').trim();
+    if (requestedOutput && !/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(requestedOutput)) {
+      return { success: false, output: '', error: 'output_path 必须是绝对文件路径，尚未提交生成。', paidSubmissionState: 'not_submitted' };
+    }
+    const archiveResults = async (sources: string[]) => {
+      const paths: string[] = [];
+      const notes: string[] = [];
+      for (const [index, source] of sources.entries()) {
+        const dot = requestedOutput.lastIndexOf('.');
+        const slash = Math.max(requestedOutput.lastIndexOf('/'), requestedOutput.lastIndexOf('\\'));
+        const target = !index ? requestedOutput : dot > slash
+          ? `${requestedOutput.slice(0, dot)}_${index + 1}${requestedOutput.slice(dot)}`
+          : `${requestedOutput}_${index + 1}`;
+        if (!target || target === source) { paths.push(source); continue; }
+        try {
+          const parent = target.slice(0, Math.max(target.lastIndexOf('/'), target.lastIndexOf('\\')));
+          if (parent) await createDir(parent, { recursive: true });
+          await copyFile(source, target); paths.push(target);
+        }
+        catch (error) {
+          paths.push(source);
+          notes.push(`归档到 ${target} 失败：${String(error)}。原始成品保留在 ${source}；不要重新生成。`);
+        }
+      }
+      return { paths, note: notes.join('\n') };
+    };
     const generate = async (request: CoreGenRequest) => {
       let taskId = '';
       const abort = () => { if (taskId) abortCanvasTask(taskId); };
@@ -151,7 +177,8 @@ export const imageGenerateTool: Tool = {
       if (!result.success || result.resultPaths.length === 0) {
         return { success: false, output: '', error: result.error || '自定义插件图片生成失败' };
       }
-      const path = result.resultPaths[0];
+      const archived = await archiveResults(result.resultPaths);
+      const path = archived.paths[0];
       const api = findCustomMediaApi(requestedModel);
       return {
         success: true,
@@ -160,9 +187,10 @@ export const imageGenerateTool: Tool = {
           referenceReceipt,
           `模型：${api?.label ?? requestedModel}（自定义插件）`,
           `文件：${path}`,
+          archived.note,
         ].join('\n'),
-        generatedImages: result.resultPaths,
-        media: await resultMedia(result.resultPaths),
+        generatedImages: archived.paths,
+        media: await resultMedia(archived.paths),
       };
     }
 
@@ -222,6 +250,7 @@ export const imageGenerateTool: Tool = {
       if (!result.success || result.resultPaths.length === 0) {
         return { success: false, output: '', error: result.error || 'Midjourney 图片生成失败' };
       }
+      const archived = await archiveResults(result.resultPaths);
       return {
         success: true,
         output: [
@@ -231,10 +260,11 @@ export const imageGenerateTool: Tool = {
           `版本：${version.toUpperCase()}`,
           ...(style ? [`风格：${style.name}`] : []),
           `通道：APIMart`,
-          ...result.resultPaths.map((path, index) => `候选 ${index + 1}：${path}`),
+          archived.note,
+          ...archived.paths.map((path, index) => `候选 ${index + 1}：${path}`),
         ].join('\n'),
-        generatedImages: result.resultPaths,
-        media: await resultMedia(result.resultPaths),
+        generatedImages: archived.paths,
+        media: await resultMedia(archived.paths),
       };
     }
 
@@ -247,16 +277,9 @@ export const imageGenerateTool: Tool = {
     if (!result.success || !result.resultPaths.length) {
       return { success: false, output: '', error: result.error || '图片生成失败' };
     }
-    let path = result.resultPaths[0];
-    let saveNote = '';
-    if (params.output_path && String(params.output_path) !== path) {
-      try {
-        await copyFile(path, String(params.output_path));
-        path = String(params.output_path);
-      } catch {
-        saveNote = '指定路径复制失败，原始成品已保留在下方路径；不要重新生成。';
-      }
-    }
+    const archived = await archiveResults(result.resultPaths);
+    const path = archived.paths[0];
+    const saveNote = archived.note;
     return {
       success: true,
       output: [
@@ -268,8 +291,8 @@ export const imageGenerateTool: Tool = {
         `文件：${path}`,
         saveNote,
       ].filter(Boolean).join('\n'),
-      generatedImages: [path],
-      media: await resultMedia([path]),
+      generatedImages: archived.paths,
+      media: await resultMedia(archived.paths),
     };
   },
 };

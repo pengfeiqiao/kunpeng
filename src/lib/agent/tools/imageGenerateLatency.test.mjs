@@ -12,7 +12,7 @@ function load(path, modules, globals = {}) {
 function fixture({ inspectFail = false, copyFail = false, fail = false } = {}) {
   let inspections = 0; const requests = [], copies = [], aborts = [];
   const modules = {
-    '@tauri-apps/api/fs': { copyFile: async (...args) => { copies.push(args); if (copyFail) throw Error('disk'); } },
+    '@tauri-apps/api/fs': { createDir: async () => {}, copyFile: async (...args) => { copies.push(args); if (copyFail) throw Error('disk'); } },
     '@/lib/agent/mediaInput': { loadMediaInput: async () => { inspections++; if (inspectFail) throw Error('decode'); return { dataUrl: 'data:image/png;base64,AAAA', mediaType: 'image/png' }; } },
     '@/stores/settingsStore': { useSettingsStore: { getState: () => ({ chatImageModel: 'gpt-image-2.5' }) } },
     '@/lib/canvasGen': { runGeneration: async req => { requests.push(req); req.onTaskCreated('task'); return { success: !fail, taskId: 'task', resultPaths: fail ? [] : ['/tmp/image.png'], error: fail ? 'pending' : undefined }; }, abortCanvasTask: id => aborts.push(id) },
@@ -75,4 +75,17 @@ test('local previews render outside collapsed execution details, including parti
   assert.equal(children[1].props['aria-label'],'生成图片');
   const images=children[1].props.children;
   assert.equal(images.length,2); assert.equal(images[0].props.src,'asset:///tmp/a.png');
+});
+
+test('Midjourney and custom plugins honor output_path without another paid request',async()=>{
+  for(const model of ['midjourney-v82','custom-media:test']) {
+    const f=fixture();const r=await f.tool.execute({model,prompt:'test',output_path:'/project/10-24/hero.png'});
+    assert.equal(r.generatedImages[0],'/project/10-24/hero.png');
+    assert.equal(f.copies[0][1],'/project/10-24/hero.png');
+    assert.equal(f.requests.length,1);
+  }
+});
+test('invalid relative output_path is rejected before submitting paid generation',async()=>{
+  const f=fixture();const r=await f.tool.execute({prompt:'test',output_path:'hero.png'});
+  assert.equal(r.success,false);assert.equal(f.requests.length,0);
 });

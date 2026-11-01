@@ -18,7 +18,7 @@ test('small catalogs retain existing behavior and loaded names do not bypass dis
 test('search discovers a video model from full parameters even when absent from the short directory', () => {
  const video={name:'video_generate',description:'直接生成视频。'+'说明'.repeat(80),parameters:{type:'object' as const,properties:{engine:{type:'string' as const,description:'支持 wan-3.0、seedance-2.0'}}}};
  const all=[...catalog,video]; const exposure=new ToolExposure();
- assert.equal(exposure.definitions(all).some(t=>t.name==='video_generate'),false);
+ assert.equal(exposure.definitions(all).some(t=>t.name==='video_generate'),true);
  const result=exposure.load(undefined,all,'wan3.0');
  assert.equal(result.success,true);
  assert.deepEqual(JSON.parse(result.output).loaded,['video_generate']);

@@ -18,6 +18,7 @@ import { normalizeCustomRules } from '@/lib/agent/rulePolicy';
 import { getShellInfo, osDisplayName } from '@/lib/platform';
 import { withRemoteAgentTimeout } from '@/lib/messaging/remoteRun';
 import { compactRemoteHistory } from '@/lib/messaging/remoteHistory';
+import { parseRemoteCommand, REMOTE_COMMAND_HELP } from '@/lib/messaging/remoteCommands';
 
 export interface LarkMessage {
   bot_id: string;
@@ -202,7 +203,8 @@ function getLarkCircuitBreaker(botId: string): CircuitBreaker {
 function evictOldLarkCoordinators() {
   const keys = Object.keys(coordinators);
   if (keys.length <= MAX_LARK_COORDINATORS) return;
-  const sorted = keys.sort((a, b) => (larkCoordinatorLastUsed[a] ?? 0) - (larkCoordinatorLastUsed[b] ?? 0));
+  const sorted = keys.filter((key) => !activeControls[key])
+    .sort((a, b) => (larkCoordinatorLastUsed[a] ?? 0) - (larkCoordinatorLastUsed[b] ?? 0));
   const toEvict = sorted.slice(0, keys.length - MAX_LARK_COORDINATORS);
   for (const key of toEvict) {
     delete coordinators[key];
@@ -321,8 +323,12 @@ function getCoordinatorConfig() {
   const signature = currentCoordinatorConfigSignature();
   if (coordinatorConfigSignature && coordinatorConfigSignature !== signature) {
     coordinatorConfigPromise = null;
-    for (const key of Object.keys(coordinators)) delete coordinators[key];
-    for (const key of Object.keys(larkCoordinatorLastUsed)) delete larkCoordinatorLastUsed[key];
+    for (const key of Object.keys(coordinators)) {
+      if (!activeControls[key]) {
+        delete coordinators[key];
+        delete larkCoordinatorLastUsed[key];
+      }
+    }
   }
   coordinatorConfigSignature = signature;
   coordinatorConfigPromise ||= initCoordinatorConfig();
@@ -369,7 +375,7 @@ async function getCoordinator(botId: string, chatId: string) {
     cwd: config.cwd,
     os: osDisplayName(shellEnv.platform),
     shell: shellEnv.shell,
-    maxTurns: 15,
+    maxTurns: 30,
     skillDescriptions: config.skillDescriptions || undefined,
     customRules: config.customRules,
     routeStrategy: config.routeStrategy,
@@ -560,6 +566,47 @@ function defaultReplyMode(contact?: LarkContact, settings?: LarkPluginSettings):
   return 'auto';
 }
 
+const activeControls: Record<string, { coordinator: AgentCoordinator; startedAt: number }> = {};
+const resetSessions = new Set<string>();
+
+function handleLarkRemoteCommand(get: () => LarkState, msg: LarkMessage): boolean {
+  const command = parseRemoteCommand(msg.text);
+  if (!command) return false;
+  const botId = msg.bot_id;
+  const chatId = msg.chat_id;
+  const settings = get().bots[botId]?.pluginSettings || defaultPluginSettings;
+  const historyKey = `${botId}:${getCoordinatorKey(msg, settings)}`;
+  const control = activeControls[historyKey];
+  const send = (text: string) => { void get().sendMessage(botId, chatId, text).catch(() => {}); };
+  if (command === 'help') {
+    send(REMOTE_COMMAND_HELP);
+    return true;
+  }
+  if (command === 'status') {
+    const queued = replyQueue.filter((item) => item.botId === botId && item.chatId === chatId).length;
+    const elapsed = control ? Math.max(1, Math.round((Date.now() - control.startedAt) / 1000)) : 0;
+    send(control
+      ? `任务运行中，已用时 ${elapsed} 秒，待处理 ${queued} 条。发送 /stop 可停止。`
+      : `当前没有运行中的任务，待处理 ${queued} 条。`);
+    return true;
+  }
+  replyQueue = replyQueue.filter((item) => !(item.botId === botId && item.chatId === chatId));
+  control?.coordinator.abort();
+  if (command === 'stop') {
+    send(control ? '已请求停止当前任务，并清空本会话待处理消息。' : '当前没有运行中的任务，待处理消息已清空。');
+    return true;
+  }
+  if (control) resetSessions.add(historyKey);
+  else {
+    resetSessions.delete(historyKey);
+    coordinators[historyKey]?.clear();
+  }
+  agentHistories[historyKey] = [];
+  void invoke('lark_save_data', { key: 'agent-histories', data: JSON.stringify(agentHistories) }).catch(() => {});
+  send('已开启全新会话，之前的上下文不会再带入后续任务。');
+  return true;
+}
+
 async function processReplyTask(get: () => LarkState, task: LarkReplyTask) {
     const { botId, chatId, force } = task;
     // Hoisted so the catch block can finish THIS run (not whatever run
@@ -594,6 +641,8 @@ async function processReplyTask(get: () => LarkState, task: LarkReplyTask) {
       const coordinator = await getCoordinator(botId, getCoordinatorKey(lastMsg, settings));
       runSteps.ensureSystemStep('整理上下文', '合并飞书消息上下文，准备交给 Agent 处理。', larkRunId);
 
+      const historyKey = `${botId}:${getCoordinatorKey(lastMsg, settings)}`;
+      activeControls[historyKey] = { coordinator, startedAt: Date.now() };
       setAgentHeadless(true);
       let reply = '';
       let streamedText = '';
@@ -659,15 +708,23 @@ async function processReplyTask(get: () => LarkState, task: LarkReplyTask) {
             onSubAgentDelta: () => {},
             onCompacting: () => {},
           };
-          coordinator.run(userText, callbacks).catch(reject);
+          coordinator.run(userText, callbacks, [], larkRunId).catch(reject);
         }), () => coordinator.abort());
       } finally {
-        persistAgentHistory(`${botId}:${getCoordinatorKey(lastMsg, settings)}`, coordinator);
+        delete activeControls[historyKey];
+        if (resetSessions.delete(historyKey)) {
+          coordinator.clear();
+          agentHistories[historyKey] = [];
+          void invoke('lark_save_data', { key: 'agent-histories', data: JSON.stringify(agentHistories) }).catch(() => {});
+        } else {
+          persistAgentHistory(historyKey, coordinator);
+        }
         setAgentHeadless(false);
       }
 
+      const wasAborted = coordinator.getAbortController()?.signal.aborted === true;
       const plain = stripMarkdown(reply);
-      if (plain) {
+      if (plain && !wasAborted) {
         runSteps.ensureSystemStep('发送飞书回复', plain.slice(0, 180), larkRunId);
         if (streamCardId) {
           try {
@@ -687,8 +744,17 @@ async function processReplyTask(get: () => LarkState, task: LarkReplyTask) {
         } else {
           await get().sendMessage(botId, chatId, plain);
         }
+      } else if (wasAborted && streamCardId) {
+        await updateStreamCard(botId, streamCardId, larkStreamCard({
+          title: '鲲鹏任务已停止',
+          content: streamedText || '任务已由用户停止。',
+          status: '已停止',
+          elapsedMs: Date.now() - startedAt,
+          done: true,
+          settings,
+        })).catch(() => {});
       }
-      runSteps.finishRun('done', larkRunId);
+      runSteps.finishRun(wasAborted ? 'aborted' : 'done', larkRunId);
     } catch (e) {
       const bot = get().bots[botId];
       const contact = bot?.contacts[chatId];
@@ -937,6 +1003,7 @@ export const useLarkStore = create<LarkState>()((set, get) => ({
       });
       debounceSave(get);
       downloadLarkResource(botId, chatId, msg);
+      if (handleLarkRemoteCommand(get, msg)) return;
       if (defaultReplyMode(get().bots[botId]?.contacts[chatId], get().bots[botId]?.pluginSettings) === 'auto') {
         const debounceKey = `${botId}:${chatId}`;
         if (larkReplyDebounceTimers[debounceKey]) clearTimeout(larkReplyDebounceTimers[debounceKey]);

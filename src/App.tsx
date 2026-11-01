@@ -38,6 +38,7 @@ import { runCleanupFunctions } from './lib/cleanupRegistry';
 import { runHousekeeping } from './lib/housekeeping';
 import { migrateLocalStorageToFiles, cleanupLegacySessionMedia } from './lib/historyPersistence';
 import { appWindow } from '@tauri-apps/api/window';
+import { initCliBridge } from './lib/cli/cliBridge';
 
 function App() {
   useEffect(() => {
@@ -271,6 +272,20 @@ function App() {
       cleanup?.();
     };
   }, [settingsReady, initWechatListener, restoreWechatSession]);
+
+  // 本地 CLI 与消息频道一样常驻：外部 Agent 不依赖当前打开的页面。
+  useEffect(() => {
+    if (!settingsReady) return;
+    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    void initCliBridge().then((fn) => {
+      if (!cancelled) cleanup = fn;
+    }).catch((error) => console.error('[App] CLI 执行桥启动失败:', error));
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, [settingsReady]);
 
   // Tier 4: auto-resume the most recent session for the current agent on
   // first ready. Runs once. If no sessions exist, no-op (welcome screen

@@ -8,6 +8,8 @@
 extern crate objc;
 
 mod browser;
+mod cli;
+
 mod commands;
 mod dsh;
 mod kimi;
@@ -331,9 +333,12 @@ fn main() {
         .manage(lark::LarkState::default())
         .manage(tools::bash::BashProcessState::default())
         .manage(wechat::WechatState::default())
+        .manage(cli::CliState::default())
         .setup(|app| {
             // 部署内置资源（AGENT.md/skills/aigc-memory 种子），版本变更时覆盖
             commands::deploy_bundled_resources(&app.handle());
+            cli::start(&app.handle());
+
 
             // Windows：补 python3 shim（有 python 无 python3 时自愈）
             #[cfg(target_os = "windows")]
@@ -418,6 +423,11 @@ fn main() {
             dsh::dsh_start,
             dsh::dsh_send,
             dsh::dsh_stop,
+            cli::cli_bridge_ready,
+            cli::cli_task_event,
+            cli::cli_task_respond,
+            cli::cli_install,
+
             stream_proxy::stream_http_request,
             stream_proxy::abort_stream_request,
             wechat::wechat_get_qrcode,
@@ -467,7 +477,10 @@ fn main() {
                     eprintln!("[shutdown] killed {} active bash command(s)", killed);
                 }
                 let dsh_state = app.state::<dsh::DshState>().inner().clone();
+                let cli_app = app.clone();
                 tauri::async_runtime::block_on(async move {
+                    cli::shutdown(&cli_app).await;
+
                     let stopped = dsh_state.stop_all().await;
                     if stopped > 0 {
                         eprintln!("[shutdown] stopped {} Harness process(es)", stopped);

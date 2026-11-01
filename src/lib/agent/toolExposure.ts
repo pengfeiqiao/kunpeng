@@ -1,5 +1,5 @@
 import type { ToolDefinition } from './types';
-const CORE = new Set(['bash','bash_read_output','read_file','write_file','edit_file','glob_search','grep_search','list_directory','ask_user_question','skill_invoke','image_recognition','browser_control','web_fetch','web_search','todo_write','tool_search','view_capabilities','switch_view']);
+const CORE = new Set(['bash','bash_read_output','read_file','write_file','edit_file','glob_search','grep_search','list_directory','ask_user_question','skill_invoke','image_recognition','browser_control','web_fetch','web_search','todo_write','image_generate','image_generate_batch','video_generate','tool_search','view_capabilities','switch_view']);
 /** One instance per coordinator. Discovery never expands another conversation. */
 export class ToolExposure {
   private loaded = new Set<string>();

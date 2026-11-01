@@ -1,6 +1,6 @@
 import { VIDEO_PROMPT_DRAFTING_POLICY } from '@/lib/videoPrompt/template';
 import type { Tool } from '../types';
-import { runGeneration } from '@/lib/canvasGen';
+import { runGeneration, abortCanvasTask, type CoreGenRequest } from '@/lib/canvasGen';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   DREAMINA_SEEDANCE_20_DIRECT_ENGINE_ID,
@@ -110,9 +110,21 @@ export const videoGenerateTool: Tool = {
     },
   },
   risk: 'ask',
-  async execute(params) {
+  async execute(params, signal) {
     const prompt = String(params.prompt ?? '').trim();
     if (!prompt) return { success: false, output: '', error: '视频提示词不能为空' };
+    if (signal?.aborted) return { success: false, output: '', error: '已中止，未提交。', paidSubmissionState: 'not_submitted' };
+    const generate = async (request: CoreGenRequest) => {
+      let taskId = '';
+      const abort = () => { if (taskId) abortCanvasTask(taskId); };
+      signal?.addEventListener('abort', abort, { once: true });
+      try {
+        return await runGeneration({ ...request, onTaskCreated: (id) => {
+          taskId = id;
+          if (signal?.aborted) abort();
+        } });
+      } finally { signal?.removeEventListener('abort', abort); }
+    };
 
     const imageUrls = stringList(params.image_urls);
     const videoUrls = stringList(params.video_urls);
@@ -141,7 +153,7 @@ export const videoGenerateTool: Tool = {
       }
       const rawDuration = Number(params.duration ?? 5);
       const duration = Number.isFinite(rawDuration) ? Math.min(30, Math.max(2, Math.round(rawDuration || 5))) : 5;
-      const result = await runGeneration({
+      const result = await generate({
         engineId: selected,
         prompt,
         referenceUrls: imageUrls,
@@ -223,7 +235,7 @@ export const videoGenerateTool: Tool = {
           ...(params.video_edit === true && videoUrls.length > 0 ? { videoEdit: true } : {}),
         };
 
-    const result = await runGeneration({
+    const result = await generate({
       engineId: normalized.engineId,
       prompt,
       referenceUrls: imageUrls,

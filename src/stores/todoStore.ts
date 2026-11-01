@@ -14,7 +14,9 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
+import { safeLocalStorage } from '@/lib/safeStorage';
 
 export type TodoStatus = 'pending' | 'in_progress' | 'completed';
 
@@ -65,6 +67,7 @@ export const useTodoStore = create<TodoState>()(
     }),
     {
       name: 'kunpeng.todos.v1',
+      storage: createJSONStorage(() => safeLocalStorage),
       // Sets don't survive JSON serialization; only persist the todo lists.
       partialize: (state) => ({ todosBySession: state.todosBySession }),
     },

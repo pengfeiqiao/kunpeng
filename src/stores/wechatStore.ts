@@ -19,6 +19,7 @@ import { normalizeCustomRules } from '@/lib/agent/rulePolicy';
 import { getShellInfo, osDisplayName } from '@/lib/platform';
 import { withRemoteAgentTimeout } from '@/lib/messaging/remoteRun';
 import { compactRemoteHistory } from '@/lib/messaging/remoteHistory';
+import { parseRemoteCommand, REMOTE_COMMAND_HELP } from '@/lib/messaging/remoteCommands';
 
 export interface FileAttachment {
   url: string;
@@ -130,7 +131,8 @@ function getCircuitBreaker(botId: string): CircuitBreaker {
 function evictOldCoordinators() {
   const keys = Object.keys(coordinators);
   if (keys.length <= MAX_COORDINATORS) return;
-  const sorted = keys.sort((a, b) => (coordinatorLastUsed[a] ?? 0) - (coordinatorLastUsed[b] ?? 0));
+  const sorted = keys.filter((key) => !activeControls[key])
+    .sort((a, b) => (coordinatorLastUsed[a] ?? 0) - (coordinatorLastUsed[b] ?? 0));
   const toEvict = sorted.slice(0, keys.length - MAX_COORDINATORS);
   for (const key of toEvict) {
     delete coordinators[key];
@@ -397,8 +399,12 @@ function getCoordinatorConfig() {
   const signature = currentCoordinatorConfigSignature();
   if (coordinatorConfigSignature && coordinatorConfigSignature !== signature) {
     coordinatorConfigPromise = null;
-    for (const key of Object.keys(coordinators)) delete coordinators[key];
-    for (const key of Object.keys(coordinatorLastUsed)) delete coordinatorLastUsed[key];
+    for (const key of Object.keys(coordinators)) {
+      if (!activeControls[key]) {
+        delete coordinators[key];
+        delete coordinatorLastUsed[key];
+      }
+    }
   }
   coordinatorConfigSignature = signature;
   if (!coordinatorConfigPromise) {
@@ -444,7 +450,7 @@ async function getCoordinator(botId: string, userId: string): Promise<AgentCoord
     cwd: config.cwd,
     os: osDisplayName(shellEnv.platform),
     shell: shellEnv.shell,
-    maxTurns: 15,
+    maxTurns: 30,
     skillDescriptions: config.skillDescriptions || undefined,
     customRules: config.customRules,
     routeStrategy: config.routeStrategy,
@@ -500,6 +506,47 @@ function getSessionKey(msg: Pick<WechatMessage, 'from_user_id' | 'room_id'>): st
 
 function defaultReplyModeForContact(contact?: WechatContact): WechatReplyMode {
   return contact?.isGroup ? 'ignore' : (contact?.replyMode ?? 'auto');
+}
+
+const activeControls: Record<string, { coordinator: AgentCoordinator; startedAt: number }> = {};
+const resetSessions = new Set<string>();
+
+function handleWechatRemoteCommand(get: () => WechatState, msg: WechatMessage): boolean {
+  const command = parseRemoteCommand(msg.text);
+  if (!command) return false;
+  const botId = msg.bot_id;
+  const userId = getSessionKey(msg);
+  const key = `${botId}:${userId}`;
+  const control = activeControls[key];
+  const send = (text: string) => { void get().sendMessage(botId, userId, text).catch(() => {}); };
+  if (command === 'help') {
+    send(REMOTE_COMMAND_HELP);
+    return true;
+  }
+  if (command === 'status') {
+    const queued = replyQueue.filter((item) => item.botId === botId && item.userId === userId).length;
+    const stage = get().processingStatus[key];
+    const elapsed = control ? Math.max(1, Math.round((Date.now() - control.startedAt) / 1000)) : 0;
+    send(control
+      ? `任务运行中：${stage?.stage === 'tool' ? `正在执行 ${stage.toolName || '工具'}` : stage?.stage === 'generating' ? '正在生成回复' : '正在思考'}，已用时 ${elapsed} 秒，待处理 ${queued} 条。发送 /stop 可停止。`
+      : `当前没有运行中的任务，待处理 ${queued} 条。`);
+    return true;
+  }
+  replyQueue = replyQueue.filter((item) => !(item.botId === botId && item.userId === userId));
+  control?.coordinator.abort();
+  if (command === 'stop') {
+    send(control ? '已请求停止当前任务，并清空本会话待处理消息。' : '当前没有运行中的任务，待处理消息已清空。');
+    return true;
+  }
+  if (control) resetSessions.add(key);
+  else {
+    resetSessions.delete(key);
+    coordinators[key]?.clear();
+  }
+  agentHistories[key] = [];
+  void invoke('wechat_save_data', { key: 'agent-histories', data: JSON.stringify(agentHistories) }).catch(() => {});
+  send('已开启全新会话，之前的上下文不会再带入后续任务。');
+  return true;
 }
 
 async function processReplyTask(get: () => WechatState, task: WechatReplyTask) {
@@ -574,6 +621,7 @@ async function processReplyTask(get: () => WechatState, task: WechatReplyTask) {
       }, 10_000);
 
       const statusKey = `${botId}:${userId}`;
+      activeControls[statusKey] = { coordinator, startedAt: Date.now() };
       const setStatus = (stage: 'thinking' | 'tool' | 'generating', toolName?: string) => {
         useWechatStore.setState((s) => ({
           processingStatus: { ...s.processingStatus, [statusKey]: { stage, toolName, startedAt: Date.now() } },
@@ -619,19 +667,27 @@ async function processReplyTask(get: () => WechatState, task: WechatReplyTask) {
             onSubAgentDelta: () => {},
             onCompacting: () => {},
           };
-          coordinator.run(userText, callbacks).catch((e) => {
+          coordinator.run(userText, callbacks, [], wechatRunId).catch((e) => {
             console.error('[wechat] coordinator.run unhandled rejection:', e);
             reject(e);
           });
         }), () => coordinator.abort());
       } finally {
-        persistAgentHistory(botId, userId, coordinator);
+        delete activeControls[statusKey];
+        if (resetSessions.delete(statusKey)) {
+          coordinator.clear();
+          agentHistories[wechatHistoryKey(botId, userId)] = [];
+          void invoke('wechat_save_data', { key: 'agent-histories', data: JSON.stringify(agentHistories) }).catch(() => {});
+        } else {
+          persistAgentHistory(botId, userId, coordinator);
+        }
         clearInterval(typingInterval);
         clearStatus();
         setAgentHeadless(false);
       }
 
-      if (reply) {
+      const wasAborted = coordinator.getAbortController()?.signal.aborted === true;
+      if (reply && !wasAborted) {
         const plainReply = stripMarkdown(reply);
         console.log('[wechat] agent reply ready', { botId, userId, outputChars: plainReply.length });
         invoke('wechat_send_typing', { botId, toUserId: userId, status: 2 }).catch(() => {});
@@ -648,7 +704,7 @@ async function processReplyTask(get: () => WechatState, task: WechatReplyTask) {
         useRunStepStore.getState().finishRun('done', wechatRunId);
       } else {
         invoke('wechat_send_typing', { botId, toUserId: userId, status: 2 }).catch(() => {});
-        useRunStepStore.getState().finishRun('done', wechatRunId);
+        useRunStepStore.getState().finishRun(wasAborted ? 'aborted' : 'done', wechatRunId);
       }
     } catch (e) {
       invoke('wechat_send_typing', { botId, toUserId: userId, status: 2 }).catch(() => {});
@@ -1077,6 +1133,7 @@ export const useWechatStore = create<WechatState>()((set, get) => ({
       });
 
       debounceSaveMessages(get);
+      if (handleWechatRemoteCommand(get, msg)) return;
 
       const mode = defaultReplyModeForContact(get().bots[botId]?.contacts[userId]);
       if (mode === 'auto' && (msg.text || msg.images?.length || msg.files?.length)) {
